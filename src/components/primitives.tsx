@@ -79,6 +79,8 @@ type SegmentedControlProps<T extends string> = {
   options: readonly { value: T; label: string }[];
   value: T;
   onChange: (value: T) => void;
+  /** Full-width track with equal segments (Settings tabs). */
+  fill?: boolean;
 };
 
 /** A row of Figma "Segment" options. */
@@ -86,10 +88,17 @@ export function SegmentedControl<T extends string>({
   options,
   value,
   onChange,
+  fill,
 }: SegmentedControlProps<T>) {
   const { colors } = useTheme();
   return (
-    <View style={styles.segments} accessibilityRole="tablist">
+    <View
+      style={[
+        styles.segments,
+        fill && [styles.segmentsFill, { backgroundColor: colors.surface, borderColor: colors.stroke }],
+      ]}
+      accessibilityRole="tablist"
+    >
       {options.map((option) => {
         const selected = option.value === value;
         return (
@@ -98,7 +107,11 @@ export function SegmentedControl<T extends string>({
             accessibilityRole="tab"
             accessibilityState={{ selected }}
             onPress={() => onChange(option.value)}
-            style={[styles.segment, selected && { backgroundColor: colors.surfaceRaised }]}
+            style={[
+              styles.segment,
+              fill && styles.segmentFill,
+              selected && { backgroundColor: colors.surfaceRaised },
+            ]}
           >
             <Text variant="label" color={selected ? 'text' : 'text2'}>
               {option.label}
@@ -132,6 +145,8 @@ const styles = StyleSheet.create({
   knob: { position: 'absolute', top: 3, width: 22, height: 22, borderRadius: 11 },
   disabled: { opacity: 0.4 },
   segments: { flexDirection: 'row', gap: 12 },
+  segmentsFill: { gap: 0, padding: 3, borderRadius: 12, borderWidth: 1 },
+  segmentFill: { flex: 1 },
   segment: {
     paddingHorizontal: 12,
     paddingVertical: 9,

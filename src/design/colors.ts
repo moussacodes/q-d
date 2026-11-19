@@ -17,6 +17,7 @@ export const neutral = {
   okLine: '#5cd89a73',
   statusWarn: '#f4b740',
   warnSoft: '#f4b74024',
+  danger: '#ff6b6b',
   /** Glass icon button fill (Figma: rgba(0,0,0,0.45)). */
   glassFill: '#00000073',
   /** Text on an avatar's user color. */

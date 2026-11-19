@@ -2,6 +2,29 @@
 
 Product and technical decisions that are not obvious from the code. Newest first.
 
+## 2026-11-19 · Screen shells
+
+The Figma page `20 · Mobile` is an initial direction. Where it conflicts with plan.md, the plan wins (team decision, 2026-11-19). The shells keep the Figma layout and change only what's below.
+
+- **Aux mode, not sync.** The Figma room screens assume everyone listens on their own service. The demo is aux: only the host's phone plays.
+  - Removed **Resync**. The room strip now says "N in the room" instead of "5 of 6 in sync".
+  - Listeners see the host chip, and the host sees an **Invite** chip.
+  - Copy now says the host's phone plays the music, and that guests don't need a music service: Welcome, onboarding step 2, Join, Invite, empty room and Add a song.
+  - **4.3 "Not on your service"** is shown from the host's side. The song isn't on the service the host's phone plays through, so the host can skip it or switch services for the next song (plan.md §2). A listener no longer "sits it out".
+  - Settings no longer has "When a song isn't on your service" (Play via YouTube Music / Sit it out).
+- **Room codes have six characters** (QD-7K4F9X), not four. The Join screen has six code boxes.
+- **Demo room rules are fixed.**
+  - Everyone can add songs. Only the host can play, skip, reorder or remove.
+  - Start a room and Listeners show these rules as text. "Chosen people", "Ask before people join" and per-person skip chips are post-demo, so they're absent.
+  - Start a room gained a "Plays on this phone · Through Spotify" row, because hosting needs a connected service.
+- **Only Apple Music and Spotify appear.** YouTube Music and the "Soon: Tidal · Deezer · Amazon Music" card are removed everywhere. Add a song filters by All / Spotify / Apple Music, and each result says whether it's on the host's service.
+- **18+ confirmation** was added to onboarding step 1, which plan.md §2 requires but Figma doesn't show.
+- **Welcome headline** is the product line "Different apps. One aux.". "Listen together, on any service." overstated support.
+- **Create account** reuses the Sign in layout. There's no Figma frame for it.
+- **QR code** is a placeholder until the QR-invitation card, which uses a separate high-entropy token.
+- **Sheets** (Up next, Add a song, Invite, Listeners) are modal routes under `/room/[code]/…`, so each can be opened and reviewed directly.
+- **`/dev`** lists every screen and state, numbered like the Figma page. The Welcome screen links to it in development builds only.
+
 ## 2026-11-19 · Design tokens and core components
 
 - **Fonts: Geist and Geist Mono.** The Figma page `20 · Mobile` uses Geist and Geist Mono. Both are free under the SIL Open Font License and ship through `@expo-google-fonts/geist` and `@expo-google-fonts/geist-mono`. So the iOS-system-font fallback in plan.md isn't needed. Each weight is loaded as its own font family (for example `Geist-SemiBold`), so iOS and Android render the same file.

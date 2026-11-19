@@ -203,5 +203,6 @@ const styles = StyleSheet.create({
     gap: 10,
     overflow: 'hidden',
   },
-  input: { flex: 1, paddingVertical: 0 },
+  // outlineWidth hides the browser focus ring on web; the field's own border shows focus.
+  input: { flex: 1, paddingVertical: 0, outlineWidth: 0 },
 });

@@ -4,7 +4,7 @@ import { typography, useTheme, type ThemeColors, type TypographyVariant } from '
 
 type ColorToken = Extract<
   keyof ThemeColors,
-  'text' | 'text2' | 'text3' | 'accent' | 'onAccent' | 'statusOk' | 'statusWarn'
+  'text' | 'text2' | 'text3' | 'accent' | 'onAccent' | 'statusOk' | 'statusWarn' | 'danger'
 >;
 
 export type TextProps = RNTextProps & {
