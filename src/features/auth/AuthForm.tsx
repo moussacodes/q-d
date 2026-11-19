@@ -2,7 +2,15 @@ import { router, type Href } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import { Button, Intro, Screen, ScreenHeader, Text, TextField, useScreenPalette } from '@/components';
+import {
+  Button,
+  Intro,
+  Screen,
+  ScreenHeader,
+  Text,
+  TextField,
+  useScreenPalette,
+} from '@/components';
 import { useTheme } from '@/design';
 
 type AuthFormProps = {
@@ -90,7 +98,12 @@ export function AuthForm({
         <View style={[styles.line, { backgroundColor: colors.stroke }]} />
       </View>
       <View style={styles.form}>
-        <Button block icon="apple" label="Continue with Apple" onPress={() => router.replace(next)} />
+        <Button
+          block
+          icon="apple"
+          label="Continue with Apple"
+          onPress={() => router.replace(next)}
+        />
         <Button
           block
           kind="secondary"

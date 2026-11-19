@@ -104,14 +104,24 @@ export default function Home() {
           <Text variant="bodyStrong">Join with a code</Text>
           <View style={styles.joinRow}>
             <View
-              style={[styles.codeInput, { backgroundColor: colors.surface, borderColor: colors.stroke }]}
+              style={[
+                styles.codeInput,
+                { backgroundColor: colors.surface, borderColor: colors.stroke },
+              ]}
             >
               <Text variant="mono" color="text3">
                 QD-
               </Text>
               <TextInput
                 value={code}
-                onChangeText={(t) => setCode(t.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6))}
+                onChangeText={(t) =>
+                  setCode(
+                    t
+                      .toUpperCase()
+                      .replace(/[^A-Z0-9]/g, '')
+                      .slice(0, 6),
+                  )
+                }
                 placeholder="XXXXXX"
                 placeholderTextColor={colors.text3}
                 autoCapitalize="characters"
@@ -151,7 +161,9 @@ export default function Home() {
                 <Text variant="bodyStrong">{room.name}</Text>
                 <Text variant="caption" color="text2">
                   {room.youHost ? 'You host' : `Hosted by ${room.hostName}`} ·{' '}
-                  {live ? `${room.people.length} listening now` : `${room.people.length} people · ${room.lastActive}`}
+                  {live
+                    ? `${room.people.length} listening now`
+                    : `${room.people.length} people · ${room.lastActive}`}
                 </Text>
               </View>
               {live ? (

@@ -22,7 +22,9 @@ export function ServicesSection() {
       <ServiceCard
         provider="spotify"
         name="Spotify"
-        description={connected.spotify ? 'Connected as baron.li · Premium' : 'Premium needed to play rooms'}
+        description={
+          connected.spotify ? 'Connected as baron.li · Premium' : 'Premium needed to play rooms'
+        }
         state={connected.spotify ? 'connected' : 'connect'}
         onConnect={() => setConnected((c) => ({ ...c, spotify: true }))}
       />
@@ -30,7 +32,9 @@ export function ServicesSection() {
         provider="apple_music"
         name="Apple Music"
         description={
-          connected.apple_music ? 'Connected · Apple Music subscription' : 'Subscription needed for full tracks'
+          connected.apple_music
+            ? 'Connected · Apple Music subscription'
+            : 'Subscription needed for full tracks'
         }
         state={connected.apple_music ? 'connected' : 'connect'}
         onConnect={() => setConnected((c) => ({ ...c, apple_music: true }))}

@@ -95,7 +95,10 @@ export function SegmentedControl<T extends string>({
     <View
       style={[
         styles.segments,
-        fill && [styles.segmentsFill, { backgroundColor: colors.surface, borderColor: colors.stroke }],
+        fill && [
+          styles.segmentsFill,
+          { backgroundColor: colors.surface, borderColor: colors.stroke },
+        ],
       ]}
       accessibilityRole="tablist"
     >

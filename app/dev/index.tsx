@@ -1,14 +1,7 @@
 import { router, type Href } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import {
-  Icon,
-  Screen,
-  ScreenHeader,
-  SectionLabel,
-  Text,
-  useScreenPalette,
-} from '@/components';
+import { Icon, Screen, ScreenHeader, SectionLabel, Text, useScreenPalette } from '@/components';
 import { useTheme } from '@/design';
 import { useMockSession } from '@/features/session/MockSession';
 
@@ -40,17 +33,35 @@ const sections: { title: string; links: { label: string; href: Href; enter?: boo
     links: [
       { label: '3.1 Room · host', href: { pathname: '/room/[code]', params: { code: room } } },
       { label: '3.3 Up next', href: { pathname: '/room/[code]/queue', params: { code: room } } },
-      { label: '3.4 Add a song', href: { pathname: '/room/[code]/add-song', params: { code: room } } },
-      { label: '3.5 Invite people', href: { pathname: '/room/[code]/invite', params: { code: room } } },
-      { label: '3.6 Listeners', href: { pathname: '/room/[code]/listeners', params: { code: room } } },
+      {
+        label: '3.4 Add a song',
+        href: { pathname: '/room/[code]/add-song', params: { code: room } },
+      },
+      {
+        label: '3.5 Invite people',
+        href: { pathname: '/room/[code]/invite', params: { code: room } },
+      },
+      {
+        label: '3.6 Listeners',
+        href: { pathname: '/room/[code]/listeners', params: { code: room } },
+      },
     ],
   },
   {
     title: '4 · Room states',
     links: [
-      { label: '4.1 Listener view', href: { pathname: '/room/[code]', params: { code: room, view: 'listener' } } },
-      { label: '4.2 Empty queue', href: { pathname: '/room/[code]', params: { code: room, view: 'empty' } } },
-      { label: '4.3 Song not on host’s service', href: { pathname: '/room/[code]', params: { code: room, view: 'unavailable' } } },
+      {
+        label: '4.1 Listener view',
+        href: { pathname: '/room/[code]', params: { code: room, view: 'listener' } },
+      },
+      {
+        label: '4.2 Empty queue',
+        href: { pathname: '/room/[code]', params: { code: room, view: 'empty' } },
+      },
+      {
+        label: '4.3 Song not on host’s service',
+        href: { pathname: '/room/[code]', params: { code: room, view: 'unavailable' } },
+      },
     ],
   },
   {

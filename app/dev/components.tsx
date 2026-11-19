@@ -129,8 +129,16 @@ export default function ComponentGallery() {
           <View style={styles.row}>
             <Logo />
             <Avatar initial="B" />
-            <Toggle value={toggleOn} onValueChange={setToggleOn} accessibilityLabel="Sample toggle" />
-            <Toggle value={!toggleOn} onValueChange={(v) => setToggleOn(!v)} accessibilityLabel="Sample toggle 2" />
+            <Toggle
+              value={toggleOn}
+              onValueChange={setToggleOn}
+              accessibilityLabel="Sample toggle"
+            />
+            <Toggle
+              value={!toggleOn}
+              onValueChange={(v) => setToggleOn(!v)}
+              accessibilityLabel="Sample toggle 2"
+            />
           </View>
           <SegmentedControl
             options={[
