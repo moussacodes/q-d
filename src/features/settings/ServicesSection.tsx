@@ -4,37 +4,51 @@ import { StyleSheet, View } from 'react-native';
 import { Icon, Panel, ServiceCard, Text } from '@/components';
 import { providerColors, useTheme } from '@/design';
 import { providerNames, type MusicProvider } from '@/domain/music-provider';
+import { createPlayback, type ConnectionState } from '@/providers';
+
+const hints: Record<MusicProvider, string> = {
+  spotify: 'Premium needed to play rooms',
+  apple_music: 'Subscription needed for full tracks',
+};
+
+/** A mock connection says so, so it's never mistaken for a real account. */
+function describe(provider: MusicProvider, connection: ConnectionState | undefined) {
+  if (!connection) return hints[provider];
+  if (connection.isMock) return `Mock connection · no ${providerNames[provider]} account used`;
+  return connection.accountLabel ?? 'Connected';
+}
+
+const mockSpotify: ConnectionState = { status: 'connected', isMock: true };
 
 /**
  * Music-service cards plus the "Play rooms through" choice. Shared by
- * onboarding step 2 and Settings → Music services. Connecting is mocked.
+ * onboarding step 2 and Settings → Music services. Connecting goes through
+ * the provider adapter, which is a mock for now.
  */
 export function ServicesSection() {
   const { colors } = useTheme();
-  const [connected, setConnected] = useState<Record<MusicProvider, boolean>>({
-    spotify: true,
-    apple_music: false,
-  });
-  const playsThrough: MusicProvider = connected.spotify ? 'spotify' : 'apple_music';
+  const [connections, setConnections] = useState<Partial<Record<MusicProvider, ConnectionState>>>(
+    { spotify: mockSpotify },
+  );
+  const playsThrough: MusicProvider = connections.spotify ? 'spotify' : 'apple_music';
+
+  const connect = async (provider: MusicProvider) => {
+    const connection = await createPlayback(provider).connect();
+    setConnections((current) => ({ ...current, [provider]: connection }));
+  };
 
   return (
     <View style={styles.group}>
-      <ServiceCard
-        provider="spotify"
-        name="Spotify"
-        description={connected.spotify ? 'Connected as baron.li · Premium' : 'Premium needed to play rooms'}
-        state={connected.spotify ? 'connected' : 'connect'}
-        onConnect={() => setConnected((c) => ({ ...c, spotify: true }))}
-      />
-      <ServiceCard
-        provider="apple_music"
-        name="Apple Music"
-        description={
-          connected.apple_music ? 'Connected · Apple Music subscription' : 'Subscription needed for full tracks'
-        }
-        state={connected.apple_music ? 'connected' : 'connect'}
-        onConnect={() => setConnected((c) => ({ ...c, apple_music: true }))}
-      />
+      {(['spotify', 'apple_music'] as const).map((provider) => (
+        <ServiceCard
+          key={provider}
+          provider={provider}
+          name={providerNames[provider]}
+          description={describe(provider, connections[provider])}
+          state={connections[provider] ? 'connected' : 'connect'}
+          onConnect={() => connect(provider)}
+        />
+      ))}
       <Panel style={styles.picker}>
         <View style={styles.flex}>
           <Text variant="eyebrow" color="text3">

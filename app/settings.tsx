@@ -6,7 +6,6 @@ import {
   Avatar,
   Button,
   Icon,
-  MiniPlayer,
   Panel,
   Screen,
   ScreenHeader,
@@ -17,6 +16,8 @@ import {
   useScreenPalette,
 } from '@/components';
 import { idlePalette } from '@/design';
+import { RoomMiniPlayer } from '@/features/playback/RoomMiniPlayer';
+import { useLiveRoom } from '@/features/playback/usePlayback';
 import { useMockSession } from '@/features/session/MockSession';
 import { ServicesSection } from '@/features/settings/ServicesSection';
 
@@ -24,7 +25,8 @@ type Tab = 'services' | 'account';
 
 /** 5.1 Settings · Music services and 5.2 Settings · Account. */
 export default function Settings() {
-  const { user, activeRoom, leaveRoom } = useMockSession();
+  const { user, activeRoom: joined, leaveRoom } = useMockSession();
+  const { room: activeRoom, playback } = useLiveRoom(joined);
   useScreenPalette(activeRoom?.nowPlaying?.palette ?? idlePalette);
   const params = useLocalSearchParams<{ tab?: Tab }>();
   const [tab, setTab] = useState<Tab>(params.tab === 'account' ? 'account' : 'services');
@@ -35,17 +37,7 @@ export default function Settings() {
       header={<ScreenHeader title="Settings" />}
       footer={
         activeRoom?.nowPlaying ? (
-          <View style={styles.stretch}>
-            <MiniPlayer
-              title={activeRoom.nowPlaying.title}
-              subtitle={`${activeRoom.nowPlaying.artist} · ${activeRoom.name}`}
-              playing
-              progress={0.45}
-              onPress={() =>
-                router.push({ pathname: '/room/[code]', params: { code: activeRoom.code } })
-              }
-            />
-          </View>
+          <RoomMiniPlayer room={activeRoom} playback={playback} />
         ) : undefined
       }
     >
@@ -107,7 +99,6 @@ export default function Settings() {
 }
 
 const styles = StyleSheet.create({
-  stretch: { alignSelf: 'stretch' },
   profile: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   group: { gap: 10 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 14 },

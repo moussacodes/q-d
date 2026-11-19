@@ -5,6 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 
 import { fontAssets, neutral, ThemeProvider } from '@/design';
+import { MockModeFrame } from '@/features/dev/MockModeFrame';
 import { MockSessionProvider } from '@/features/session/MockSession';
 
 SplashScreen.preventAutoHideAsync();
@@ -29,17 +30,19 @@ export default function RootLayout() {
     <ThemeProvider>
       <MockSessionProvider>
         <StatusBar style="light" />
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: neutral.bg },
-          }}
-        >
-          <Stack.Screen name="room/[code]/queue" options={sheet} />
-          <Stack.Screen name="room/[code]/add-song" options={sheet} />
-          <Stack.Screen name="room/[code]/invite" options={sheet} />
-          <Stack.Screen name="room/[code]/listeners" options={sheet} />
-        </Stack>
+        <MockModeFrame>
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: { backgroundColor: neutral.bg },
+            }}
+          >
+            <Stack.Screen name="room/[code]/queue" options={sheet} />
+            <Stack.Screen name="room/[code]/add-song" options={sheet} />
+            <Stack.Screen name="room/[code]/invite" options={sheet} />
+            <Stack.Screen name="room/[code]/listeners" options={sheet} />
+          </Stack>
+        </MockModeFrame>
       </MockSessionProvider>
     </ThemeProvider>
   );

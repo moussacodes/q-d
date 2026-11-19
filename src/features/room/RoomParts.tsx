@@ -15,6 +15,7 @@ import {
 } from '@/components';
 import { useTheme } from '@/design';
 import { providerNames } from '@/domain/music-provider';
+import { formatDuration } from '@/domain/time';
 import type { MockRoom, MockTrack } from '@/test/fixtures/mock-data';
 
 /** Song details under the cover: title, artist · album, added-by line. */
@@ -40,10 +41,15 @@ export function TrackInfo({ track, room }: { track: MockTrack; room: MockRoom })
 }
 
 /** Progress bar with elapsed / remaining time. */
-export function Timeline({ progress = 0.45 }: { progress?: number }) {
+export function Timeline({ positionMs, durationMs }: { positionMs: number; durationMs: number }) {
   const { colors } = useTheme();
+  const progress = durationMs ? Math.min(Math.max(positionMs / durationMs, 0), 1) : 0;
   return (
-    <View style={styles.timeline}>
+    <View
+      style={styles.timeline}
+      accessibilityRole="progressbar"
+      accessibilityLabel={`${formatDuration(positionMs)} of ${formatDuration(durationMs)}`}
+    >
       <View style={[styles.track2, { backgroundColor: colors.surfaceRaised }]}>
         <View
           style={[styles.fill, { width: `${progress * 100}%`, backgroundColor: colors.accent }]}
@@ -54,10 +60,10 @@ export function Timeline({ progress = 0.45 }: { progress?: number }) {
       </View>
       <View style={styles.times}>
         <Text variant="monoSmall" color="text3">
-          1:40
+          {formatDuration(positionMs)}
         </Text>
         <Text variant="monoSmall" color="text3">
-          -2:05
+          -{formatDuration(durationMs - positionMs)}
         </Text>
       </View>
     </View>
@@ -68,11 +74,25 @@ export function Timeline({ progress = 0.45 }: { progress?: number }) {
  * Host playback controls. Aux mode: only the host's phone plays, so there is
  * no "Resync". Listeners see the controls disabled.
  */
-export function Controls({ isHost }: { isHost: boolean }) {
+export function Controls({
+  isHost,
+  playing,
+  onTogglePlay,
+}: {
+  isHost: boolean;
+  playing: boolean;
+  onTogglePlay: () => void;
+}) {
   const { colors } = useTheme();
   return (
     <View style={[styles.controls, !isHost && styles.disabled]}>
-      <ControlButton icon="pause" label="Pause" big disabled={!isHost} />
+      <ControlButton
+        icon={playing ? 'pause' : 'play'}
+        label={playing ? 'Pause' : 'Play'}
+        big
+        disabled={!isHost}
+        onPress={onTogglePlay}
+      />
       <ControlButton icon="skip" label="Skip" disabled={!isHost} color={colors.text} />
     </View>
   );
@@ -84,12 +104,14 @@ function ControlButton({
   big,
   disabled,
   color,
+  onPress,
 }: {
   icon: IconName;
   label: string;
   big?: boolean;
   disabled?: boolean;
   color?: string;
+  onPress?: () => void;
 }) {
   const { colors } = useTheme();
   return (
@@ -98,6 +120,7 @@ function ControlButton({
         accessibilityRole="button"
         accessibilityLabel={label}
         disabled={disabled}
+        onPress={onPress}
         style={[
           styles.controlButton,
           big

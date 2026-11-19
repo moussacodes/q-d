@@ -137,6 +137,15 @@ export const mockRooms: MockRoom[] = [
 export const findRoom = (code: string | undefined) =>
   mockRooms.find((room) => room.code === code) ?? mockRooms[0];
 
+/** A room as it looks once the mock player has moved on to `trackId`. */
+export function roomAt(room: MockRoom, trackId: string | undefined): MockRoom {
+  const index = room.queue.findIndex((t) => t.id === trackId);
+  if (index < 0) {
+    return room;
+  }
+  return { ...room, nowPlaying: room.queue[index], queue: room.queue.slice(index + 1) };
+}
+
 export const mockSearchResults = [
   { ...mockNowPlaying, status: 'playing' as const },
   { ...mockQueue[1], status: 'queued' as const },

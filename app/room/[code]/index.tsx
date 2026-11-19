@@ -24,6 +24,7 @@ import {
   TrackInfo,
   UpNextPeek,
 } from '@/features/room/RoomParts';
+import { useLiveRoom } from '@/features/playback/usePlayback';
 import { findRoom, mockQueue, type MockRoom } from '@/test/fixtures/mock-data';
 
 type Preview = 'listener' | 'empty' | 'unavailable';
@@ -35,7 +36,7 @@ type Preview = 'listener' | 'empty' | 'unavailable';
 export default function Room() {
   const params = useLocalSearchParams<{ code: string; view?: Preview }>();
   const base = findRoom(params.code);
-  const room: MockRoom =
+  const previewed: MockRoom =
     params.view === 'empty'
       ? { ...base, nowPlaying: null, queue: [], people: base.people.slice(0, 1) }
       : params.view === 'unavailable'
@@ -45,6 +46,7 @@ export default function Room() {
             queue: base.queue.slice(3),
           }
         : base;
+  const { room, playback } = useLiveRoom(previewed);
   const isHost = params.view === 'listener' ? false : room.youHost;
   const track = room.nowPlaying;
   useScreenPalette(track?.palette ?? idlePalette);
@@ -141,8 +143,12 @@ export default function Room() {
 
       {track ? (
         <>
-          <Timeline />
-          <Controls isHost={isHost} />
+          <Timeline positionMs={playback.positionMs} durationMs={playback.durationMs} />
+          <Controls
+            isHost={isHost}
+            playing={playback.playing}
+            onTogglePlay={playback.togglePlay}
+          />
         </>
       ) : null}
 
