@@ -20,6 +20,30 @@ export const landingFor: Record<AuthStatus, Href> = {
   ready: '/home',
 };
 
+export type SignInMethod = 'apple' | 'google' | 'email';
+
+export const signInMethodNames: Record<SignInMethod, string> = {
+  apple: 'Apple',
+  google: 'Google',
+  email: 'Email',
+};
+
+/** What onboarding step 1 collects (plan.md §2). Stored in `profiles` later. */
+export type Profile = { name: string; color: string };
+
+/** The longest display name onboarding and Settings accept. */
+export const MAX_NAME_LENGTH = 30;
+
+export type User = Profile & { email: string; signedInWith: SignInMethod };
+
+type Account = {
+  id: number;
+  returning: boolean;
+  method: SignInMethod;
+  /** Null until onboarding step 1 is done. */
+  profile: Profile | null;
+};
+
 type MockSessionValue = {
   auth: AuthStatus;
   /**
@@ -29,12 +53,15 @@ type MockSessionValue = {
   accountId: number;
   /** A returning account has signed in before; a new one was just created. */
   returning: boolean;
-  user: typeof mockUser;
+  user: User;
+  /** Apple and Google share a name; email sign-ups start blank. */
+  suggestedName: string;
+  saveProfile: (profile: Profile) => void;
   activeRoom: MockRoom | null;
   /** Returning user: straight to Home. */
-  signIn: () => void;
+  signIn: (method: SignInMethod) => void;
   /** New account (email sign-up, or Apple/Google for the first time): onboarding. */
-  createAccount: () => void;
+  createAccount: (method: SignInMethod) => void;
   /** Ends onboarding on Home, or on `next` with Home underneath it. */
   finishOnboarding: (next?: Href) => void;
   signOut: () => void;
@@ -56,7 +83,12 @@ const MockSessionContext = createContext<MockSessionValue | null>(null);
 
 export function MockSessionProvider({ children }: { children: ReactNode }) {
   const [auth, setAuth] = useState<AuthStatus>('signedOut');
-  const [account, setAccount] = useState({ id: 0, returning: false });
+  const [account, setAccount] = useState<Account>({
+    id: 0,
+    returning: false,
+    method: 'email',
+    profile: null,
+  });
   const [hosted, setHosted] = useState<Pick<MockRoom, 'code' | 'name' | 'playsThrough'> | null>(
     null,
   );
@@ -83,28 +115,36 @@ export function MockSessionProvider({ children }: { children: ReactNode }) {
       setAuth(next);
       setTrip({ mode: 'replace', hrefs });
     };
-    const switchAccount = (returning: boolean) =>
-      setAccount((current) => ({ id: current.id + 1, returning }));
+    const switchAccount = (next: Omit<Account, 'id'>) =>
+      setAccount((current) => ({ id: current.id + 1, ...next }));
+    // Dev previews can open Home without onboarding; they show the sample profile.
+    const profile = account.profile ?? { name: mockUser.name, color: mockUser.color };
     const room = activeCode ? findRoom(activeCode) : null;
     return {
       auth,
       accountId: account.id,
       returning: account.returning,
-      user: mockUser,
+      user: { ...profile, email: mockUser.email, signedInWith: account.method },
+      suggestedName: account.method === 'email' ? '' : mockUser.name,
+      saveProfile: (next) => setAccount((current) => ({ ...current, profile: next })),
       activeRoom: room && hosted?.code === room.code ? { ...room, ...hosted } : room,
-      signIn: () => {
-        switchAccount(true);
+      signIn: (method) => {
+        switchAccount({
+          returning: true,
+          method,
+          profile: { name: mockUser.name, color: mockUser.color },
+        });
         go('ready');
       },
-      createAccount: () => {
-        switchAccount(false);
+      createAccount: (method) => {
+        switchAccount({ returning: false, method, profile: null });
         go('onboarding');
       },
       finishOnboarding: (next) => go('ready', next ? [landingFor.ready, next] : undefined),
       signOut: () => {
         setActiveCode(null);
         setHosted(null);
-        switchAccount(false);
+        switchAccount({ returning: false, method: 'email', profile: null });
         go('signedOut');
       },
       previewAs: (next, href) => {

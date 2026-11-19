@@ -83,6 +83,10 @@ describe('q’d sign-in and music services are separate', () => {
 
     await pressLabel('Continue with email');
     await pressLabel('Create account');
+    await act(async () => {
+      // Email sign-ups start without a name.
+      fireEvent.changeText(await screen.findByLabelText('Display name'), 'Sam');
+    });
     await pressLabel('I’m 18 or older');
     await pressLabel('Continue');
     expect(await screen.findByText('Premium needed to play rooms')).toBeVisible();

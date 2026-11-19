@@ -14,18 +14,30 @@ import {
   Text,
   TextField,
   useScreenPalette,
+  type IconName,
 } from '@/components';
 import { idlePalette } from '@/design';
 import { RoomMiniPlayer } from '@/features/playback/RoomMiniPlayer';
 import { useLiveRoom } from '@/features/playback/usePlayback';
-import { useMockSession } from '@/features/session/MockSession';
+import {
+  MAX_NAME_LENGTH,
+  signInMethodNames,
+  useMockSession,
+  type SignInMethod,
+} from '@/features/session/MockSession';
 import { ServicesSection } from '@/features/settings/ServicesSection';
 
 type Tab = 'services' | 'account';
 
+const methodIcons: Record<SignInMethod, IconName> = {
+  apple: 'apple',
+  google: 'google',
+  email: 'mail',
+};
+
 /** 5.1 Settings · Music services and 5.2 Settings · Account. */
 export default function Settings() {
-  const { user, activeRoom: joined, signOut } = useMockSession();
+  const { user, activeRoom: joined, signOut, saveProfile } = useMockSession();
   const { room: activeRoom, playback } = useLiveRoom(joined);
   useScreenPalette(activeRoom?.nowPlaying?.palette ?? idlePalette);
   const params = useLocalSearchParams<{ tab?: Tab }>();
@@ -70,13 +82,22 @@ export default function Settings() {
               </Text>
             </View>
           </View>
-          <TextField label="Display name" value={name} onChangeText={setName} />
+          <TextField
+            label="Display name"
+            value={name}
+            maxLength={MAX_NAME_LENGTH}
+            onChangeText={(text) => {
+              setName(text);
+              // An empty name isn't saved; the last one stays until a new one is typed.
+              if (text.trim()) saveProfile({ name: text.trim(), color: user.color });
+            }}
+          />
           <TextField label="Email" value={user.email} editable={false} />
           <View style={styles.group}>
             <SectionLabel>Signed in with</SectionLabel>
             <Panel style={styles.row}>
-              <Icon name="apple" size={18} />
-              <Text variant="bodyStrong">{user.signedInWith}</Text>
+              <Icon name={methodIcons[user.signedInWith]} size={18} />
+              <Text variant="bodyStrong">{signInMethodNames[user.signedInWith]}</Text>
             </Panel>
           </View>
           <Button block kind="secondary" icon="log-out" label="Sign out" onPress={signOut} />

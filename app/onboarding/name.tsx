@@ -17,28 +17,33 @@ import {
   useScreenPalette,
 } from '@/components';
 import { useTheme } from '@/design';
-import { avatarColors, mockUser } from '@/test/fixtures/mock-data';
+import { MAX_NAME_LENGTH, useMockSession } from '@/features/session/MockSession';
+import { avatarColors } from '@/test/fixtures/mock-data';
 
-/** 1.3 Onboarding step 1: name, color and 18+ confirmation (plan.md §2). */
+/**
+ * 1.3 Onboarding step 1: display name, color and 18+ confirmation
+ * (plan.md §2). Continue saves the profile; all three are required.
+ * Back cancels sign-up and returns to Welcome.
+ */
 export default function OnboardingName() {
   useScreenPalette();
   const { colors } = useTheme();
-  const [name, setName] = useState(mockUser.name);
+  const { suggestedName, saveProfile, signOut } = useMockSession();
+  const [name, setName] = useState(suggestedName);
   const [color, setColor] = useState(avatarColors[0]);
   const [adult, setAdult] = useState(false);
-  const displayName = name.trim() || 'You';
+  const trimmed = name.trim();
+  const displayName = trimmed || 'You';
+
+  const next = () => {
+    saveProfile({ name: trimmed, color });
+    router.push('/onboarding/services');
+  };
 
   return (
     <Screen
-      header={<ScreenHeader center={<Stepper step={1} />} />}
-      footer={
-        <Button
-          block
-          label="Continue"
-          disabled={!name.trim() || !adult}
-          onPress={() => router.push('/onboarding/services')}
-        />
-      }
+      header={<ScreenHeader center={<Stepper step={1} />} onBack={signOut} />}
+      footer={<Button block label="Continue" disabled={!trimmed || !adult} onPress={next} />}
     >
       <Intro
         eyebrow="Step 1 of 3 · You"
@@ -49,20 +54,22 @@ export default function OnboardingName() {
         label="Display name"
         value={name}
         onChangeText={setName}
+        placeholder="Your name"
+        maxLength={MAX_NAME_LENGTH}
         autoCapitalize="words"
         textContentType="nickname"
       />
       <View style={styles.group}>
         <SectionLabel>Your color</SectionLabel>
         <View style={styles.swatches}>
-          {avatarColors.map((swatch) => {
+          {avatarColors.map((swatch, index) => {
             const selected = swatch === color;
             return (
               <Pressable
                 key={swatch}
                 accessibilityRole="radio"
                 accessibilityState={{ selected }}
-                accessibilityLabel={`Color ${swatch}`}
+                accessibilityLabel={`Color ${index + 1} of ${avatarColors.length}`}
                 onPress={() => setColor(swatch)}
                 style={[styles.ring, selected && { borderColor: colors.text }]}
               >

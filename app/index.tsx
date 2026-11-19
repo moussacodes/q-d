@@ -30,13 +30,18 @@ export default function Welcome() {
       }
       footer={
         <View style={styles.actions}>
-          <Button block icon="apple" label="Continue with Apple" onPress={createAccount} />
+          <Button
+            block
+            icon="apple"
+            label="Continue with Apple"
+            onPress={() => createAccount('apple')}
+          />
           <Button
             block
             kind="secondary"
             icon="google"
             label="Continue with Google"
-            onPress={createAccount}
+            onPress={() => createAccount('google')}
           />
           <Button
             block

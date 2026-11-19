@@ -12,7 +12,7 @@ import {
   useScreenPalette,
 } from '@/components';
 import { useTheme } from '@/design';
-import { useMockSession } from '@/features/session/MockSession';
+import { useMockSession, type SignInMethod } from '@/features/session/MockSession';
 
 type AuthFormProps = {
   title: string;
@@ -40,7 +40,8 @@ export function AuthForm({
   useScreenPalette();
   const { colors } = useTheme();
   const { signIn, createAccount } = useMockSession();
-  const submit = mode === 'sign-in' ? signIn : createAccount;
+  const submit = (method: SignInMethod) =>
+    mode === 'sign-in' ? signIn(method) : createAccount(method);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -91,7 +92,7 @@ export function AuthForm({
             Forgot password?
           </Text>
         ) : null}
-        <Button block label={submitLabel} onPress={submit} />
+        <Button block label={submitLabel} onPress={() => submit('email')} />
       </View>
       <View style={styles.divider}>
         <View style={[styles.line, { backgroundColor: colors.stroke }]} />
@@ -101,13 +102,13 @@ export function AuthForm({
         <View style={[styles.line, { backgroundColor: colors.stroke }]} />
       </View>
       <View style={styles.form}>
-        <Button block icon="apple" label="Continue with Apple" onPress={submit} />
+        <Button block icon="apple" label="Continue with Apple" onPress={() => submit('apple')} />
         <Button
           block
           kind="secondary"
           icon="google"
           label="Continue with Google"
-          onPress={submit}
+          onPress={() => submit('google')}
         />
       </View>
     </Screen>

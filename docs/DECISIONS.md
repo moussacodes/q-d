@@ -2,6 +2,16 @@
 
 Product and technical decisions that are not obvious from the code. Newest first.
 
+## 2026-11-19 · Three-step onboarding
+
+- **The three steps follow the Figma page.** Step 1 collects display name, color and 18+ on one screen. Step 2 is music services (optional, with Skip). Step 3 is start or join. The card's "display name", "color" and "18+" items are the three fields of step 1, not three screens.
+- **Required on step 1:** a display name that isn't blank (trimmed, up to 30 characters) and the 18+ confirmation. Color defaults to the first swatch.
+- **Name suggestion.** Apple and Google suggest the account's name. Email sign-ups start blank.
+- **The profile is saved when step 1 continues.** Home's greeting, the avatar and Settings use it. Settings → Account edits the display name, and an empty name isn't saved.
+- **Back on step 1 cancels sign-up** and returns to Welcome. Otherwise Back would land on a signed-out screen that redirects straight back.
+- **Settings shows the sign-in method** (Apple, Google or Email).
+- **Not done here:** saving the profile to Supabase `profiles` under RLS. That needs the Supabase cards.
+
 ## 2026-11-19 · Provider-optional flow
 
 - **Music services are separate from q’d sign-in.** Connections live in their own state (`features/connections`). Signing in never connects a service, and connecting one never changes the sign-in state.
