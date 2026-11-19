@@ -1,4 +1,4 @@
-import { router, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
@@ -25,7 +25,7 @@ type Tab = 'services' | 'account';
 
 /** 5.1 Settings · Music services and 5.2 Settings · Account. */
 export default function Settings() {
-  const { user, activeRoom: joined, leaveRoom } = useMockSession();
+  const { user, activeRoom: joined, signOut } = useMockSession();
   const { room: activeRoom, playback } = useLiveRoom(joined);
   useScreenPalette(activeRoom?.nowPlaying?.palette ?? idlePalette);
   const params = useLocalSearchParams<{ tab?: Tab }>();
@@ -79,16 +79,7 @@ export default function Settings() {
               <Text variant="bodyStrong">{user.signedInWith}</Text>
             </Panel>
           </View>
-          <Button
-            block
-            kind="secondary"
-            icon="log-out"
-            label="Sign out"
-            onPress={() => {
-              leaveRoom();
-              router.dismissTo('/');
-            }}
-          />
+          <Button block kind="secondary" icon="log-out" label="Sign out" onPress={signOut} />
           <Text variant="caption" color="danger" style={styles.center}>
             Delete account
           </Text>

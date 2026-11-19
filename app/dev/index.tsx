@@ -1,9 +1,9 @@
-import { router, type Href } from 'expo-router';
+import { type Href } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { Icon, Screen, ScreenHeader, SectionLabel, Text, useScreenPalette } from '@/components';
 import { useTheme } from '@/design';
-import { useMockSession } from '@/features/session/MockSession';
+import { useMockSession, type AuthStatus } from '@/features/session/MockSession';
 
 const room = 'QD-7K4F9X';
 
@@ -77,16 +77,28 @@ const sections: { title: string; links: { label: string; href: Href; enter?: boo
   },
 ];
 
-/** Development-only index of every screen shell, matching the Figma sections. */
+/** The sign-in state a screen belongs to, so its route guard lets it open. */
+function authFor(href: Href): AuthStatus {
+  const path = typeof href === 'string' ? href : href.pathname;
+  if (path === '/' || path === '/sign-in' || path === '/create-account') return 'signedOut';
+  if (path.startsWith('/onboarding')) return 'onboarding';
+  return 'ready';
+}
+
+/**
+ * Development-only index of every screen shell, matching the Figma sections.
+ * Opening a screen switches the mock session to the state that screen needs.
+ */
 export default function ScreenIndex() {
   useScreenPalette();
   const { colors } = useTheme();
-  const { enterRoom, leaveRoom } = useMockSession();
+  const { enterRoom, leaveRoom, previewAs } = useMockSession();
   return (
     <Screen header={<ScreenHeader title="Screens" />}>
       <Text variant="footnote" color="text2">
-        Every screen shell, numbered like the Figma page. Mock data only. Tip: 3.2 Expanded is the
-        resize button on the room cover.
+        Every screen shell, numbered like the Figma page. Mock data only. Opening a screen switches
+        the mock sign-in state to the one it needs. Tip: 3.2 Expanded is the resize button on the
+        room cover.
       </Text>
       {sections.map((section) => (
         <View key={section.title} style={styles.section}>
@@ -98,7 +110,7 @@ export default function ScreenIndex() {
               onPress={() => {
                 if (link.enter) enterRoom(room);
                 else if (link.href === '/home') leaveRoom();
-                router.push(link.href);
+                previewAs(authFor(link.href), link.href);
               }}
               style={[styles.link, { borderColor: colors.stroke }]}
             >

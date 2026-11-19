@@ -12,13 +12,14 @@ import {
   useScreenPalette,
 } from '@/components';
 import { useTheme } from '@/design';
+import { useMockSession } from '@/features/session/MockSession';
 
 type AuthFormProps = {
   title: string;
   body: string;
   submitLabel: string;
-  /** Where the mock submit goes. */
-  next: Href;
+  /** Signing in goes to Home; creating an account goes to onboarding. */
+  mode: 'sign-in' | 'create-account';
   showForgot?: boolean;
   switchPrompt: string;
   switchLabel: string;
@@ -30,7 +31,7 @@ export function AuthForm({
   title,
   body,
   submitLabel,
-  next,
+  mode,
   showForgot,
   switchPrompt,
   switchLabel,
@@ -38,6 +39,8 @@ export function AuthForm({
 }: AuthFormProps) {
   useScreenPalette();
   const { colors } = useTheme();
+  const { signIn, createAccount } = useMockSession();
+  const submit = mode === 'sign-in' ? signIn : createAccount;
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -88,7 +91,7 @@ export function AuthForm({
             Forgot password?
           </Text>
         ) : null}
-        <Button block label={submitLabel} onPress={() => router.replace(next)} />
+        <Button block label={submitLabel} onPress={submit} />
       </View>
       <View style={styles.divider}>
         <View style={[styles.line, { backgroundColor: colors.stroke }]} />
@@ -98,18 +101,13 @@ export function AuthForm({
         <View style={[styles.line, { backgroundColor: colors.stroke }]} />
       </View>
       <View style={styles.form}>
-        <Button
-          block
-          icon="apple"
-          label="Continue with Apple"
-          onPress={() => router.replace(next)}
-        />
+        <Button block icon="apple" label="Continue with Apple" onPress={submit} />
         <Button
           block
           kind="secondary"
           icon="google"
           label="Continue with Google"
-          onPress={() => router.replace(next)}
+          onPress={submit}
         />
       </View>
     </Screen>

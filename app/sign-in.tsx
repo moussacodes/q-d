@@ -7,7 +7,7 @@ export default function SignIn() {
       title="Welcome back."
       body="Sign in to get back to your rooms."
       submitLabel="Sign in"
-      next="/home"
+      mode="sign-in"
       showForgot
       switchPrompt="New to q’d?"
       switchLabel="Create an account"

@@ -2,10 +2,15 @@ import { router } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { Button, Cover, Logo, ProviderBadge, Screen, Text, useScreenPalette } from '@/components';
+import { useMockSession } from '@/features/session/MockSession';
 
-/** 1.1 Welcome. Sign-in buttons are mock until the auth cards land. */
+/**
+ * 1.1 Welcome. Sign-in is mock until the auth cards land: Apple and Google
+ * here start a new account (onboarding); Sign in is for returning users.
+ */
 export default function Welcome() {
   useScreenPalette();
+  const { createAccount } = useMockSession();
   return (
     <Screen
       scroll={false}
@@ -25,18 +30,13 @@ export default function Welcome() {
       }
       footer={
         <View style={styles.actions}>
-          <Button
-            block
-            icon="apple"
-            label="Continue with Apple"
-            onPress={() => router.push('/onboarding/name')}
-          />
+          <Button block icon="apple" label="Continue with Apple" onPress={createAccount} />
           <Button
             block
             kind="secondary"
             icon="google"
             label="Continue with Google"
-            onPress={() => router.push('/onboarding/name')}
+            onPress={createAccount}
           />
           <Button
             block
