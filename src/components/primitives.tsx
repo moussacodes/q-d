@@ -10,7 +10,7 @@ export function Logo() {
   const { colors } = useTheme();
   return (
     <View style={styles.logo} accessibilityRole="header" accessibilityLabel="q’d">
-      <Text variant="logo">q'd</Text>
+      <Text variant="logo">{"q'd"}</Text>
       <View style={[styles.logoDot, { backgroundColor: colors.accent }]} />
     </View>
   );
