@@ -62,7 +62,7 @@ npm start
 - **On a phone:** scan the QR code from `npm start`. On iPhone, use the Camera app. On Android, use the scanner in Expo Go. The phone and the computer must be on the same Wi‑Fi. If they can't reach each other, run `npx expo start --tunnel`.
 - **In a browser:** `npm run web`.
 - **Every screen at once:** in development, the Welcome screen has a **Screens** button. It opens `/dev`, which lists every screen and state with its Figma number. `/dev/components` is the component gallery.
-- **Before pushing:** `npm run typecheck`. Lint, tests, and CI arrive with the quality-gates card.
+- **Before pushing:** `npm run check` runs the typecheck, lint, format check and tests. CI runs the same checks, plus Expo Doctor, on every pull request. `npm run format` fixes formatting.
 
 ### Windows (Baron)
 

@@ -59,10 +59,19 @@ npm ci              # install exactly what package-lock.json says
 npm start           # Metro + QR code for Expo Go
 npm run web         # web preview with mock data
 npm run ios         # Mac only: Expo Go in the iOS Simulator
-npm run typecheck   # tsc --noEmit (the only automated gate today)
+npm run check       # typecheck + lint + format:check + test, in that order
+npm run typecheck   # tsc --noEmit
+npm run lint        # ESLint: Expo rules plus the import rules in ARCHITECTURE.md §4. No warnings allowed
+npm run format      # Prettier rewrites files. format:check only reports
+npm test            # Jest (jest-expo + React Native Testing Library)
+npm run doctor      # Expo Doctor: dependency versions and config
 ```
 
-Lint, tests, Expo Doctor and CI arrive with the quality-gates card. Once they exist, run every one of them before handing off, and report the results.
+Run `npm run check` and `npm run doctor` before handing off, and report the results. CI (`.github/workflows/ci.yml`) runs all of them on every pull request and on pushes to `main`.
+
+- `tsc` checks links against the typed-route declarations that `npm start` writes to `.expo/types`. After adding or renaming a route without starting Metro, run `npx expo customize tsconfig.json` to regenerate them.
+- Unit tests sit next to their code as `*.test.ts(x)`. Route tests go in `__tests__/`, because every file under `app/` becomes a route.
+- Maestro flows live in `.maestro/`. They run on the Mac against a development build, not in CI.
 
 ## Workflow
 
