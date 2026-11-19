@@ -17,9 +17,8 @@ import {
 import { useTheme } from '@/design';
 import { providerNames, type MusicProvider } from '@/domain/music-provider';
 import { formatDuration } from '@/domain/time';
-import { useLiveRoom } from '@/features/playback/usePlayback';
+import { useRoom, type RoomView } from '@/features/room/useRoom';
 import { useCatalogSearch, type SearchResult } from '@/features/search/useCatalogSearch';
-import { findRoom } from '@/test/fixtures/mock-data';
 
 type Filter = 'all' | MusicProvider;
 
@@ -35,8 +34,8 @@ function ordinal(n: number) {
  * says whether it's on the service the host's phone plays through.
  */
 export default function AddSongSheet() {
-  const { code } = useLocalSearchParams<{ code: string }>();
-  const { room } = useLiveRoom(findRoom(code));
+  const params = useLocalSearchParams<{ code: string; view?: RoomView }>();
+  const { room } = useRoom(params.code, params.view);
   const { colors } = useTheme();
   const [query, setQuery] = useState('daniel caesar');
   const [filter, setFilter] = useState<Filter>('all');

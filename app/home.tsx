@@ -18,7 +18,7 @@ import {
 import { typography, useTheme } from '@/design';
 import { RoomMiniPlayer } from '@/features/playback/RoomMiniPlayer';
 import { roomPalette } from '@/features/playback/palette';
-import { useLiveRoom } from '@/features/playback/usePlayback';
+import { useActiveRoom } from '@/features/room/useRoom';
 import { useMockSession } from '@/features/session/MockSession';
 import { mockRooms, type MockRoom } from '@/test/fixtures/mock-data';
 
@@ -31,8 +31,8 @@ function greeting(date = new Date()) {
 
 /** 2.1 Home (nothing playing) and 2.2 Home (mini player while a room plays). */
 export default function Home() {
-  const { user, activeRoom: joined } = useMockSession();
-  const { room: activeRoom, playback } = useLiveRoom(joined);
+  const { user } = useMockSession();
+  const { room: activeRoom, playback } = useActiveRoom();
   useScreenPalette(roomPalette(activeRoom));
   const { colors } = useTheme();
   const [code, setCode] = useState('');

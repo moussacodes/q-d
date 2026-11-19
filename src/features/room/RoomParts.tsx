@@ -1,8 +1,10 @@
 import { router } from 'expo-router';
+import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import {
   Avatar,
+  Button,
   Chip,
   Cover,
   Icon,
@@ -15,8 +17,21 @@ import {
 } from '@/components';
 import { useTheme } from '@/design';
 import { providerNames } from '@/domain/music-provider';
-import { formatDuration } from '@/domain/time';
+import { formatDuration, formatMinutes, parseDuration } from '@/domain/time';
 import type { MockRoom, MockTrack } from '@/providers/mock/data';
+
+import { roomParams, type LiveRoom, type RoomHandle } from './useRoom';
+
+/** "1 song", "7 songs". */
+export function songCount(count: number) {
+  return count === 1 ? '1 song' : `${count} songs`;
+}
+
+/** "7 songs · 25 min" for the Up next sheet. */
+export function queueSummary(queue: MockTrack[]) {
+  const total = queue.reduce((sum, track) => sum + parseDuration(track.duration), 0);
+  return queue.length ? `${songCount(queue.length)} · ${formatMinutes(total)}` : songCount(0);
+}
 
 /** Song details under the cover: title, artist · album, added-by line. */
 export function TrackInfo({ track, room }: { track: MockTrack; room: MockRoom }) {
@@ -76,10 +91,12 @@ export function Controls({
   isHost,
   playing,
   onTogglePlay,
+  onSkip,
 }: {
   isHost: boolean;
   playing: boolean;
   onTogglePlay: () => void;
+  onSkip: () => void;
 }) {
   const { colors } = useTheme();
   return (
@@ -91,7 +108,13 @@ export function Controls({
         disabled={!isHost}
         onPress={onTogglePlay}
       />
-      <ControlButton icon="skip" label="Skip" disabled={!isHost} color={colors.text} />
+      <ControlButton
+        icon="skip"
+        label="Skip"
+        disabled={!isHost}
+        color={colors.text}
+        onPress={onSkip}
+      />
     </View>
   );
 }
@@ -172,32 +195,87 @@ export function RoomStrip({ room, isHost }: { room: MockRoom; isHost: boolean })
   );
 }
 
-/** "Up next" list (default layout and the queue sheet). */
-export function QueueList({ room, isHost }: { room: MockRoom; isHost: boolean }) {
+/** The host's queue actions. Listeners get none. */
+export type QueueControls = Pick<RoomHandle, 'moveUp' | 'moveDown' | 'remove'>;
+
+/**
+ * "Up next" list (default layout and the queue sheet). The host taps a song
+ * to move it up or down, or remove it. Buttons stand in for dragging the
+ * grip until a gesture library is chosen (ARCHITECTURE.md, open decision 4).
+ */
+export function QueueList({ room, controls }: { room: LiveRoom; controls?: QueueControls }) {
+  const [open, setOpen] = useState<string | null>(null);
+  const last = room.queue.length - 1;
   return (
     <View>
-      {room.queue.map((track) => (
-        <QueueRow
-          key={track.id}
-          title={track.title}
-          artist={track.artist}
-          provider={room.playsThrough}
-          addedBy={`by ${track.addedBy}`}
-          duration={track.duration}
-          showGrip={isHost}
-          note={
-            track.unavailableOn
-              ? `Not on ${providerNames[track.unavailableOn]} · the host can skip it`
-              : undefined
-          }
-        />
-      ))}
+      {room.queue.map((entry, index) => {
+        const { entryId, title } = entry;
+        const editing = controls && open === entryId;
+        return (
+          <QueueRow
+            key={entryId}
+            title={title}
+            artist={entry.artist}
+            provider={room.playsThrough}
+            addedBy={`by ${entry.addedBy}`}
+            duration={entry.duration}
+            showGrip={!!controls}
+            note={
+              entry.unavailableOn === room.playsThrough
+                ? `Not on ${providerNames[entry.unavailableOn]} · the host can skip it`
+                : undefined
+            }
+            onPress={
+              controls
+                ? () => setOpen((current) => (current === entryId ? null : entryId))
+                : undefined
+            }
+            accessibilityLabel={controls ? `Reorder or remove ${title}` : undefined}
+            selected={editing}
+            footer={
+              editing ? (
+                <View style={styles.rowActions}>
+                  <Button
+                    size="small"
+                    kind="secondary"
+                    icon="chevron-up"
+                    label="Up"
+                    accessibilityLabel={`Move ${title} up`}
+                    disabled={index === 0}
+                    onPress={() => controls.moveUp(entryId)}
+                  />
+                  <Button
+                    size="small"
+                    kind="secondary"
+                    icon="chevron-down"
+                    label="Down"
+                    accessibilityLabel={`Move ${title} down`}
+                    disabled={index === last}
+                    onPress={() => controls.moveDown(entryId)}
+                  />
+                  <Button
+                    size="small"
+                    kind="ghost"
+                    icon="x"
+                    label="Remove"
+                    accessibilityLabel={`Remove ${title}`}
+                    onPress={() => {
+                      setOpen(null);
+                      controls.remove(entryId);
+                    }}
+                  />
+                </View>
+              ) : undefined
+            }
+          />
+        );
+      })}
     </View>
   );
 }
 
 /** Expanded layout: bar that opens the queue sheet, plus the add button. */
-export function UpNextPeek({ room }: { room: MockRoom }) {
+export function UpNextPeek({ room }: { room: LiveRoom }) {
   const { colors } = useTheme();
   const next = room.queue[0];
   return (
@@ -205,7 +283,7 @@ export function UpNextPeek({ room }: { room: MockRoom }) {
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Open up next"
-        onPress={() => router.push({ pathname: '/room/[code]/queue', params: { code: room.code } })}
+        onPress={() => router.push({ pathname: '/room/[code]/queue', params: roomParams(room) })}
         style={[
           styles.peek,
           { backgroundColor: colors.sheetGlass, borderColor: colors.strokeStrong },
@@ -214,7 +292,7 @@ export function UpNextPeek({ room }: { room: MockRoom }) {
         <Cover size={36} radius={8} />
         <View style={styles.flex}>
           <Text variant="eyebrow" color="text3">
-            Up next · {room.queue.length} songs
+            Up next · {songCount(room.queue.length)}
           </Text>
           {next ? (
             <Text variant="label" numberOfLines={1}>
@@ -228,9 +306,7 @@ export function UpNextPeek({ room }: { room: MockRoom }) {
         icon="plus"
         kind="accent"
         accessibilityLabel="Add a song"
-        onPress={() =>
-          router.push({ pathname: '/room/[code]/add-song', params: { code: room.code } })
-        }
+        onPress={() => router.push({ pathname: '/room/[code]/add-song', params: roomParams(room) })}
       />
     </View>
   );
@@ -249,6 +325,7 @@ const styles = StyleSheet.create({
   disabled: { opacity: 0.45 },
   control: { alignItems: 'center', gap: 6 },
   controlButton: { borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
+  rowActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingLeft: 54 },
   strip: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10 },
   avatars: { flexDirection: 'row' },
   peekRow: { flexDirection: 'row', alignItems: 'center', gap: 10, alignSelf: 'stretch' },

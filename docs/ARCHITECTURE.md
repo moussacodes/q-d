@@ -116,7 +116,7 @@ Each boundary below says what belongs on each side, the rule, and the reason. Wh
 | `src/services/` | `domain` | `features`, `components`, `providers`, `app/` |
 | `src/test/` | anything | — (production code must not import it) |
 
-**Known exception.** Some screen shells still import sample data from `src/test/fixtures/mock-data.ts`. That file now only re-exports `src/providers/mock/data.ts`, the mock mode's sample data. It's temporary scaffolding: each screen card replaces the import with a feature hook backed by mock or real providers (Add a song already uses `features/search/useCatalogSearch`). New code shouldn't add more imports from `src/test`.
+**Known exception.** Some screen shells still import sample data from `src/test/fixtures/mock-data.ts`. That file now only re-exports `src/providers/mock/data.ts`, the mock mode's sample data. It's temporary scaffolding: each screen card replaces the import with a feature hook backed by mock or real providers (the room screen, Up next and Add a song already read the room through `features/room/useRoom`, and Add a song searches through `features/search/useCatalogSearch`). New code shouldn't add more imports from `src/test`.
 
 ESLint enforces these rules (`no-restricted-imports` in `eslint.config.js`), so they don't depend on memory. The known exception is a fixed list of files there. Remove a file from that list once it stops importing `src/test`. ESLint doesn't catch one feature importing another feature's internals, so reviewers check that.
 
@@ -200,7 +200,7 @@ ESLint enforces these rules (`no-restricted-imports` in `eslint.config.js`), so 
 
 - **TanStack Query** caches everything that comes from Supabase: room, members, queue, search results. Realtime events invalidate those queries.
 - **Zustand** holds small, short-lived state that never needs to reach the server, such as the local player's progress tick or which sheet is open.
-- **React context** holds app-wide UI state that's already built: the theme palette (`ThemeProvider`) and, for now, the mock session (`MockSessionProvider`).
+- **React context** holds app-wide UI state that's already built: the theme palette (`ThemeProvider`) and, for now, the mock session (`MockSessionProvider`) and the mock rooms (`RoomsProvider`). The mock room store stands in for the queue rows in Postgres and follows the queue RPCs, so the Supabase cards swap it for TanStack Query without changing the screens.
 - **Why:** server data has its own lifecycle (loading, stale, refetch, retry). Mixing it into a client store recreates that machinery badly. Keeping the client store tiny keeps the real state in one place.
 
 ### 4.13 Demo vs. production backend
@@ -236,6 +236,7 @@ Planned · Initial Supabase migrations card. Shapes are in [API_CONTRACTS.md](AP
 
 - Only the host's device creates a `PlaybackAdapter`. Listeners' devices never play audio from q’d.
 - The host plays the queue in order. After each change (play, pause, seek, skip, song end), it reports the state through an RPC. Listeners render "Now playing" and progress from that state.
+- The host's player holds one song at a time, the room's now-playing entry (`features/room/RoomPlayer`). When it ends, the host calls `advance_queue` and loads the next entry. The player keeps no copy of the queue, so reorders and removals apply immediately. Built in mock mode; the real adapters follow the same pattern.
 - **Apple Music:** plays inside q’d through MusicKit and keeps playing with the screen locked (background audio).
 - **Spotify:** q’d tells the Spotify app what to play. The host needs Spotify installed and Premium for on-demand playback, and q’d stays in the foreground for the demo.
 - **Switching services:** only between songs, never during one, and only after the host agrees (see [PRODUCT_SPEC.md § 6](PRODUCT_SPEC.md#song-not-on-the-hosts-service)).

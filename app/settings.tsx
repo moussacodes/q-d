@@ -18,7 +18,7 @@ import {
 } from '@/components';
 import { RoomMiniPlayer } from '@/features/playback/RoomMiniPlayer';
 import { roomPalette } from '@/features/playback/palette';
-import { useLiveRoom } from '@/features/playback/usePlayback';
+import { useActiveRoom } from '@/features/room/useRoom';
 import {
   MAX_NAME_LENGTH,
   signInMethodNames,
@@ -37,8 +37,8 @@ const methodIcons: Record<SignInMethod, IconName> = {
 
 /** 5.1 Settings · Music services and 5.2 Settings · Account. */
 export default function Settings() {
-  const { user, activeRoom: joined, signOut, saveProfile } = useMockSession();
-  const { room: activeRoom, playback } = useLiveRoom(joined);
+  const { user, signOut, saveProfile } = useMockSession();
+  const { room: activeRoom, playback } = useActiveRoom();
   useScreenPalette(roomPalette(activeRoom));
   const params = useLocalSearchParams<{ tab?: Tab }>();
   const [tab, setTab] = useState<Tab>(params.tab === 'account' ? 'account' : 'services');

@@ -25,6 +25,13 @@ type QueueRowProps = {
   note?: string;
   /** Show the reorder handle (host only). */
   showGrip?: boolean;
+  /** Makes the row a button, e.g. to open the host's queue actions. */
+  onPress?: () => void;
+  accessibilityLabel?: string;
+  /** Highlights the row while its actions are open. */
+  selected?: boolean;
+  /** Shown under the row, e.g. the host's queue actions. */
+  footer?: ReactNode;
 };
 
 /** Figma "Queue Row". */
@@ -37,11 +44,27 @@ export function QueueRow({
   cover,
   note,
   showGrip,
+  onPress,
+  accessibilityLabel,
+  selected,
+  footer,
 }: QueueRowProps) {
   const { colors } = useTheme();
   return (
-    <View style={styles.queueRow}>
-      <View style={styles.queueMain}>
+    <View
+      style={[
+        styles.queueRow,
+        selected && [styles.queueRowSelected, { backgroundColor: colors.surface }],
+      ]}
+    >
+      <Pressable
+        accessibilityRole={onPress ? 'button' : undefined}
+        accessibilityLabel={accessibilityLabel}
+        accessibilityState={onPress ? { expanded: !!selected } : undefined}
+        disabled={!onPress}
+        onPress={onPress}
+        style={styles.queueMain}
+      >
         <Cover source={cover} size={44} />
         <View style={styles.info}>
           <Text variant="bodyStrong" numberOfLines={1}>
@@ -66,12 +89,13 @@ export function QueueRow({
           </View>
         </View>
         {showGrip ? <Icon name="grip" size={18} color={colors.text3} /> : null}
-      </View>
+      </Pressable>
       {note ? (
         <Text variant="caption" color="statusWarn" style={styles.note}>
           {note}
         </Text>
       ) : null}
+      {footer}
     </View>
   );
 }
@@ -231,6 +255,12 @@ export function ServiceCard({ provider, name, description, state, onConnect }: S
 const styles = StyleSheet.create({
   info: { flex: 1, minWidth: 0, gap: 2 },
   queueRow: { paddingVertical: 10, gap: 4 },
+  queueRowSelected: {
+    marginHorizontal: -10,
+    paddingHorizontal: 10,
+    borderRadius: radii.tile,
+    gap: 10,
+  },
   queueMain: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   meta: { alignItems: 'flex-end', gap: 4 },
   addedLine: { flexDirection: 'row', alignItems: 'center', gap: 4 },

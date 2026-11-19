@@ -15,43 +15,32 @@ import {
   useScreenPalette,
 } from '@/components';
 import { useTheme } from '@/design';
-import { providerNames } from '@/domain/music-provider';
+import { otherProvider, providerNames } from '@/domain/music-provider';
+import { roomPalette } from '@/features/playback/palette';
 import {
   Controls,
   QueueList,
   RoomStrip,
+  songCount,
   Timeline,
   TrackInfo,
   UpNextPeek,
 } from '@/features/room/RoomParts';
-import { roomPalette } from '@/features/playback/palette';
-import { useLiveRoom } from '@/features/playback/usePlayback';
-import { findRoom, mockQueue, type MockRoom } from '@/test/fixtures/mock-data';
-
-type Preview = 'listener' | 'empty' | 'unavailable' | 'apple';
+import { roomParams, useRoom, type RoomView } from '@/features/room/useRoom';
 
 /**
  * 3.1 Room (default) and 3.2 (expanded), plus the 4.x states via `?view=`:
  * listener (4.1), empty (4.2) and unavailable (4.3, host side in aux mode).
  */
 export default function Room() {
-  const params = useLocalSearchParams<{ code: string; view?: Preview }>();
-  const base = findRoom(params.code);
-  const previewed: MockRoom =
-    params.view === 'empty'
-      ? { ...base, nowPlaying: null, queue: [], people: base.people.slice(0, 1) }
-      : params.view === 'unavailable'
-        ? {
-            ...base,
-            nowPlaying: mockQueue[2],
-            queue: base.queue.slice(3),
-          }
-        : params.view === 'apple'
-          ? { ...base, playsThrough: 'apple_music' }
-          : base;
-  const { room, playback } = useLiveRoom(previewed);
-  const isHost = params.view === 'listener' ? false : room.youHost;
+  const params = useLocalSearchParams<{ code: string; view?: RoomView }>();
+  const { room, playback, isHost, skip, moveUp, moveDown, remove } = useRoom(
+    params.code,
+    params.view,
+  );
   const track = room.nowPlaying;
+  // 4.3: the song isn't on the service the host's phone plays through.
+  const missing = track?.unavailableOn === room.playsThrough;
   useScreenPalette(roomPalette(room));
 
   const { colors } = useTheme();
@@ -60,7 +49,7 @@ export default function Room() {
   const coverSize = expanded ? width - 40 : Math.min(200, width * 0.52);
 
   const openSheet = (sheet: 'add-song' | 'invite' | 'listeners' | 'queue') =>
-    router.push({ pathname: `/room/[code]/${sheet}`, params: { code: room.code } });
+    router.push({ pathname: `/room/[code]/${sheet}`, params: roomParams(room) });
 
   const header = (
     <View style={styles.header}>
@@ -125,20 +114,20 @@ export default function Room() {
         </View>
       )}
 
-      {params.view === 'unavailable' && track ? (
+      {missing && isHost ? (
         <Panel style={[styles.notice, { borderColor: colors.statusWarn }]}>
           <View style={styles.noticeRow}>
             <Icon name="alert" size={18} color={colors.statusWarn} />
             <View style={styles.flex}>
               <Text variant="bodyStrong">Not on {providerNames[room.playsThrough]}</Text>
               <Text variant="caption" color="text2">
-                This song isn’t on the service your phone plays through. Skip it, or switch to Apple
-                Music for the next song.
+                This song isn’t on the service your phone plays through. Skip it, or switch to{' '}
+                {providerNames[otherProvider(room.playsThrough)]} for the next song.
               </Text>
             </View>
           </View>
           <View style={styles.noticeActions}>
-            <Button size="small" label="Skip" />
+            <Button size="small" label="Skip" accessibilityLabel="Skip this song" onPress={skip} />
             <Button size="small" kind="secondary" label="Switch for next song" />
           </View>
         </Panel>
@@ -147,7 +136,12 @@ export default function Room() {
       {track ? (
         <>
           <Timeline positionMs={playback.positionMs} durationMs={playback.durationMs} />
-          <Controls isHost={isHost} playing={playback.playing} onTogglePlay={playback.togglePlay} />
+          <Controls
+            isHost={isHost}
+            playing={playback.playing}
+            onTogglePlay={playback.togglePlay}
+            onSkip={skip}
+          />
         </>
       ) : null}
 
@@ -155,9 +149,9 @@ export default function Room() {
         <>
           <RoomStrip room={room} isHost={isHost} />
           <View style={styles.gap6}>
-            <SectionLabel right={`${room.queue.length} songs`}>Up next</SectionLabel>
+            <SectionLabel right={songCount(room.queue.length)}>Up next</SectionLabel>
             {room.queue.length ? (
-              <QueueList room={room} isHost={isHost} />
+              <QueueList room={room} controls={isHost ? { moveUp, moveDown, remove } : undefined} />
             ) : (
               <View style={[styles.emptyQueue, { borderColor: colors.strokeStrong }]}>
                 <Text variant="bodyStrong">The queue is empty</Text>

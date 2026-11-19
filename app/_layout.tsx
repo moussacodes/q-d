@@ -7,6 +7,7 @@ import { useEffect } from 'react';
 import { fontAssets, neutral, ThemeProvider } from '@/design';
 import { ProviderConnectionsProvider } from '@/features/connections/ProviderConnections';
 import { MockModeFrame } from '@/features/dev/MockModeFrame';
+import { RoomsProvider } from '@/features/room/useRoom';
 import { landingFor, MockSessionProvider, useMockSession } from '@/features/session/MockSession';
 
 SplashScreen.preventAutoHideAsync();
@@ -31,10 +32,12 @@ export default function RootLayout() {
     <ThemeProvider>
       <MockSessionProvider>
         <ProviderConnectionsProvider>
-          <StatusBar style="light" />
-          <MockModeFrame>
-            <RootStack />
-          </MockModeFrame>
+          <RoomsProvider>
+            <StatusBar style="light" />
+            <MockModeFrame>
+              <RootStack />
+            </MockModeFrame>
+          </RoomsProvider>
         </ProviderConnectionsProvider>
       </MockSessionProvider>
     </ThemeProvider>
