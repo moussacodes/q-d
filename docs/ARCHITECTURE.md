@@ -2,7 +2,7 @@
 
 How q’d is built, where each piece of code belongs, and why each boundary exists. Product rules are in [PRODUCT_SPEC.md](PRODUCT_SPEC.md), contracts are in [API_CONTRACTS.md](API_CONTRACTS.md), and decisions are logged in [DECISIONS.md](DECISIONS.md).
 
-> **Status, 2026-11-19.** Only the app shell and its quality gates exist so far: the Expo app, design tokens, components and mock screen shells (branches `feat/bootstrap`, `feat/design-tokens` and `feat/screen-shells`), plus lint, formatting, tests and CI (`feat/quality-gates`). All are in review. Everything marked **Planned** below is the target design, and it gets built by the Forge Trello card named next to it. When a card lands, change its status here in the same PR.
+> **Status, 2026-11-19.** Only the app shell and its quality gates exist so far: the Expo app, design tokens, components and mock screen shells (branches `feat/bootstrap`, `feat/design-tokens` and `feat/screen-shells`), plus lint, formatting, tests, CI and a pre-push hook (`feat/quality-gates`). All are in review. Everything marked **Planned** below is the target design, and it gets built by the Forge Trello card named next to it. When a card lands, change its status here in the same PR.
 
 ## 1. System overview
 
@@ -64,7 +64,7 @@ A broadcast that never arrives costs freshness but never correctness, because th
 | Apple playback | Local Swift Expo module around MusicKit | Planned · qd-music-kit card |
 | Spotify playback | Spotify iOS SDK (App Remote) and the Web API | Planned · Spotify cards |
 | Tests | Jest/jest-expo, React Native Testing Library, Supabase integration tests, Maestro | Built: Jest, React Native Testing Library, `.maestro/` smoke flow (first runs with a development build). Planned: Supabase tests · Supabase cards |
-| Quality gates | ESLint, Prettier, `tsc`, Jest, Expo Doctor, GitHub Actions | Built · `npm run check`, `.github/workflows/ci.yml` |
+| Quality gates | ESLint, Prettier, `tsc`, Jest, Expo Doctor, GitHub Actions, Git pre-push hook | Built · `npm run check`, `.github/workflows/ci.yml`, `.githooks/pre-push` (every push) |
 | Builds | EAS development, preview (internal) and production (TestFlight) profiles | Planned · EAS card |
 | Observability | Redacting structured logger, privacy-filtered crash reports, opt-in analytics | Planned · Logging card |
 

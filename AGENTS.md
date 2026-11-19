@@ -69,6 +69,10 @@ npm run doctor      # Expo Doctor: dependency versions and config
 
 Run `npm run check` and `npm run doctor` before handing off, and report the results. CI (`.github/workflows/ci.yml`) runs all of them on every pull request and on pushes to `main`.
 
+**Every push passes the checks first.** `npm ci` turns on the Git `pre-push` hook in `.githooks/`. It runs the whole CI job: it regenerates the typed routes, then runs `npm run check` and `npm run doctor`. There's no pre-commit hook, so commits stay fast.
+
+Never bypass the hook with `--no-verify`. If it fails, fix the cause and push again. It checks the working tree, so commit or stash edits before pushing. If `git config core.hooksPath` doesn't print `.githooks`, run `npm ci` again.
+
 - `tsc` checks links against the typed-route declarations that `npm start` writes to `.expo/types`. After adding or renaming a route without starting Metro, run `npx expo customize tsconfig.json` to regenerate them.
 - Unit tests sit next to their code as `*.test.ts(x)`. Route tests go in `__tests__/`, because every file under `app/` becomes a route.
 - Maestro flows live in `.maestro/`. They run on the Mac against a development build, not in CI.
