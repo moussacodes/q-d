@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { createPlayback, type PlaybackAdapter, type PlaybackState } from '@/providers';
 import { toProviderTrack } from '@/providers/mock/catalog';
-import { roomAt, type MockRoom } from '@/test/fixtures/mock-data';
+import { roomAt, type MockRoom } from '@/providers/mock/data';
 
 /** Mock rooms open part-way into the song, like the Figma frames (1:40). */
 const MOCK_START_MS = 100_000;
@@ -39,17 +39,15 @@ const idle: PlaybackState = { status: 'idle', track: null, positionMs: 0 };
 /** Playback state for a room's now-playing song, refreshed twice a second. */
 export function usePlayback(room: MockRoom | null) {
   const player = room ? playerFor(room) : null;
-  const [state, setState] = useState<PlaybackState>(idle);
+  // Tagged with its player, so switching rooms never shows the old room's state.
+  const [snapshot, setSnapshot] = useState<{ player: PlaybackAdapter; state: PlaybackState }>();
 
   useEffect(() => {
-    if (!player) {
-      setState(idle);
-      return;
-    }
+    if (!player) return;
     let active = true;
     const refresh = () =>
       player.getState().then((next) => {
-        if (active) setState(next);
+        if (active) setSnapshot({ player, state: next });
       });
     refresh();
     const timer = setInterval(refresh, POLL_MS);
@@ -63,18 +61,19 @@ export function usePlayback(room: MockRoom | null) {
     if (!player) return;
     const current = await player.getState();
     await (current.status === 'playing' ? player.pause() : player.play());
-    setState(await player.getState());
+    setSnapshot({ player, state: await player.getState() });
   }, [player]);
 
   const seek = useCallback(
     async (positionMs: number) => {
       if (!player) return;
       await player.seek(positionMs);
-      setState(await player.getState());
+      setSnapshot({ player, state: await player.getState() });
     },
     [player],
   );
 
+  const state = player && snapshot?.player === player ? snapshot.state : idle;
   const durationMs = state.track?.durationMs ?? 0;
   return {
     state,

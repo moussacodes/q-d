@@ -144,11 +144,7 @@ export default function Room() {
       {track ? (
         <>
           <Timeline positionMs={playback.positionMs} durationMs={playback.durationMs} />
-          <Controls
-            isHost={isHost}
-            playing={playback.playing}
-            onTogglePlay={playback.togglePlay}
-          />
+          <Controls isHost={isHost} playing={playback.playing} onTogglePlay={playback.togglePlay} />
         </>
       ) : null}
 

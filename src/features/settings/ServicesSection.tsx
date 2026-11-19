@@ -27,9 +27,9 @@ const mockSpotify: ConnectionState = { status: 'connected', isMock: true };
  */
 export function ServicesSection() {
   const { colors } = useTheme();
-  const [connections, setConnections] = useState<Partial<Record<MusicProvider, ConnectionState>>>(
-    { spotify: mockSpotify },
-  );
+  const [connections, setConnections] = useState<Partial<Record<MusicProvider, ConnectionState>>>({
+    spotify: mockSpotify,
+  });
   const playsThrough: MusicProvider = connections.spotify ? 'spotify' : 'apple_music';
 
   const connect = async (provider: MusicProvider) => {

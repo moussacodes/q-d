@@ -2,7 +2,7 @@ import { router } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 
 import { MiniPlayer } from '@/components';
-import type { MockRoom } from '@/test/fixtures/mock-data';
+import type { MockRoom } from '@/providers/mock/data';
 
 import type { Playback } from './usePlayback';
 

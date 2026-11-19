@@ -16,7 +16,7 @@ import {
 import { useTheme } from '@/design';
 import { providerNames } from '@/domain/music-provider';
 import { formatDuration } from '@/domain/time';
-import type { MockRoom, MockTrack } from '@/test/fixtures/mock-data';
+import type { MockRoom, MockTrack } from '@/providers/mock/data';
 
 /** Song details under the cover: title, artist · album, added-by line. */
 export function TrackInfo({ track, room }: { track: MockTrack; room: MockRoom }) {

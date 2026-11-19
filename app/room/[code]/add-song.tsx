@@ -1,5 +1,5 @@
 import { useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import {
@@ -18,7 +18,7 @@ import { useTheme } from '@/design';
 import { providerNames, type MusicProvider } from '@/domain/music-provider';
 import { formatDuration } from '@/domain/time';
 import { useLiveRoom } from '@/features/playback/usePlayback';
-import { catalog, type CatalogResult } from '@/providers';
+import { useCatalogSearch, type SearchResult } from '@/features/search/useCatalogSearch';
 import { findRoom } from '@/test/fixtures/mock-data';
 
 type Filter = 'all' | MusicProvider;
@@ -39,20 +39,11 @@ export default function AddSongSheet() {
   const { room } = useLiveRoom(findRoom(code));
   const { colors } = useTheme();
   const [query, setQuery] = useState('daniel caesar');
-  const [results, setResults] = useState<CatalogResult[]>([]);
   const [filter, setFilter] = useState<Filter>('all');
-  const [added, setAdded] = useState<CatalogResult | null>(null);
+  const [added, setAdded] = useState<SearchResult | null>(null);
   const service = providerNames[room.playsThrough];
 
-  useEffect(() => {
-    let current = true;
-    catalog.search(query, 'US').then((found) => {
-      if (current) setResults(found);
-    });
-    return () => {
-      current = false;
-    };
-  }, [query]);
+  const results = useCatalogSearch(query);
 
   const shown = filter === 'all' ? results : results.filter((r) => r.availableOn.includes(filter));
 

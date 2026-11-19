@@ -1,6 +1,6 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
 
-import { findRoom, mockUser, type MockRoom } from '@/test/fixtures/mock-data';
+import { findRoom, mockUser, type MockRoom } from '@/providers/mock/data';
 
 /**
  * Screen-shell session state: who "you" are and which room is playing.

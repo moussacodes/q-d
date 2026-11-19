@@ -1,11 +1,6 @@
 import type { MusicProvider } from '@/domain/music-provider';
 import { parseDuration } from '@/domain/time';
-import {
-  mockNowPlaying,
-  mockQueue,
-  mockSearchResults,
-  type MockTrack,
-} from '@/test/fixtures/mock-data';
+import { mockNowPlaying, mockQueue, mockSearchResults, type MockTrack } from './data';
 
 import type { CatalogAdapter, CatalogResult, ProviderTrack } from '../types';
 

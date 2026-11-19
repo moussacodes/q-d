@@ -97,8 +97,6 @@ const mockDataImporters = [
   'app/room/[[]code]/invite.tsx',
   'app/room/[[]code]/listeners.tsx',
   'app/room/[[]code]/queue.tsx',
-  'src/features/room/RoomParts.tsx',
-  'src/features/session/MockSession.tsx',
 ];
 
 const testFiles = ['**/*.test.ts', '**/*.test.tsx', '__tests__/**', 'src/test/**'];
