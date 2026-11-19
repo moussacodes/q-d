@@ -1,10 +1,13 @@
-import { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import { Icon, Panel, ServiceCard, Text } from '@/components';
 import { providerColors, useTheme } from '@/design';
 import { providerNames, type MusicProvider } from '@/domain/music-provider';
-import { createPlayback, type ConnectionState } from '@/providers';
+import {
+  supportedProviders,
+  useProviderConnections,
+} from '@/features/connections/ProviderConnections';
+import type { ConnectionState } from '@/providers';
 
 const hints: Record<MusicProvider, string> = {
   spotify: 'Premium needed to play rooms',
@@ -18,28 +21,15 @@ function describe(provider: MusicProvider, connection: ConnectionState | undefin
   return connection.accountLabel ?? 'Connected';
 }
 
-const mockSpotify: ConnectionState = { status: 'connected', isMock: true };
-
 /**
  * Music-service cards plus the "Play rooms through" choice. Shared by
- * onboarding step 2 and Settings → Music services. Connecting goes through
- * the provider adapter, which is a mock for now.
+ * onboarding step 2, Start a room and Settings → Music services.
  */
-export function ServicesSection() {
-  const { colors } = useTheme();
-  const [connections, setConnections] = useState<Partial<Record<MusicProvider, ConnectionState>>>({
-    spotify: mockSpotify,
-  });
-  const playsThrough: MusicProvider = connections.spotify ? 'spotify' : 'apple_music';
-
-  const connect = async (provider: MusicProvider) => {
-    const connection = await createPlayback(provider).connect();
-    setConnections((current) => ({ ...current, [provider]: connection }));
-  };
-
+export function ServicesSection({ showPicker = true }: { showPicker?: boolean }) {
+  const { connections, connect } = useProviderConnections();
   return (
     <View style={styles.group}>
-      {(['spotify', 'apple_music'] as const).map((provider) => (
+      {supportedProviders.map((provider) => (
         <ServiceCard
           key={provider}
           provider={provider}
@@ -49,6 +39,30 @@ export function ServicesSection() {
           onConnect={() => connect(provider)}
         />
       ))}
+      {showPicker ? <PlaysThroughPicker /> : null}
+    </View>
+  );
+}
+
+/**
+ * Which connected service rooms play through. Hidden with nothing connected;
+ * with both connected, tapping switches to the other one.
+ */
+export function PlaysThroughPicker() {
+  const { colors } = useTheme();
+  const { connected, playsThrough, choose } = useProviderConnections();
+  if (!playsThrough) {
+    return null;
+  }
+  const other = connected.find((provider) => provider !== playsThrough);
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Play rooms through ${providerNames[playsThrough]}`}
+      accessibilityHint={other ? `Switches to ${providerNames[other]}` : undefined}
+      disabled={!other}
+      onPress={() => other && choose(other)}
+    >
       <Panel style={styles.picker}>
         <View style={styles.flex}>
           <Text variant="eyebrow" color="text3">
@@ -59,9 +73,9 @@ export function ServicesSection() {
             <Text variant="bodyStrong">{providerNames[playsThrough]}</Text>
           </View>
         </View>
-        <Icon name="chevron-down" size={18} color={colors.text2} />
+        {other ? <Icon name="chevron-down" size={18} color={colors.text2} /> : null}
       </Panel>
-    </View>
+    </Pressable>
   );
 }
 

@@ -2,6 +2,14 @@
 
 Product and technical decisions that are not obvious from the code. Newest first.
 
+## 2026-11-19 · Provider-optional flow
+
+- **Music services are separate from q’d sign-in.** Connections live in their own state (`features/connections`). Signing in never connects a service, and connecting one never changes the sign-in state.
+- **Connections belong to the account.** A new account starts with none. A returning mock account already has Spotify (mock), the way a real returning user would have a saved connection. Signing out clears them.
+- **Only hosting needs a service** (plan.md §2). Start a room shows "Connect a music service to host" with a Connect button per service, and Start room stays disabled until one is connected. Join, the room and Add a song never ask for one. Claiming a sync slot is post-demo, so it isn't built.
+- **"Play rooms through"** chooses between connected services and is hidden with none connected. With both connected, tapping it switches.
+- **Known gap:** the room screen still reads its service from sample data. The room screen card moves it to the session's room, which already records the chosen service.
+
 ## 2026-11-19 · Auth and onboarding navigation
 
 - **Three sign-in states.** Signed out, onboarding (signed in, profile not finished) and ready. They live in the mock session for now; Supabase Auth and the profile row decide them once the auth cards land.

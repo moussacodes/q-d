@@ -1,6 +1,7 @@
 import { router, type Href } from 'expo-router';
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
+import type { MusicProvider } from '@/domain/music-provider';
 import { findRoom, mockUser, type MockRoom } from '@/providers/mock/data';
 
 /**
@@ -21,6 +22,13 @@ export const landingFor: Record<AuthStatus, Href> = {
 
 type MockSessionValue = {
   auth: AuthStatus;
+  /**
+   * Changes whenever a different account signs in or out, so per-account
+   * state (like music-service connections) starts fresh.
+   */
+  accountId: number;
+  /** A returning account has signed in before; a new one was just created. */
+  returning: boolean;
   user: typeof mockUser;
   activeRoom: MockRoom | null;
   /** Returning user: straight to Home. */
@@ -33,6 +41,8 @@ type MockSessionValue = {
   /** Development screen index: open a screen in the state it needs. */
   previewAs: (auth: AuthStatus, href: Href) => void;
   enterRoom: (code: string) => void;
+  /** Start hosting: the room plays through `playsThrough` on this phone. */
+  startRoom: (code: string, room: { name: string; playsThrough: MusicProvider }) => void;
   leaveRoom: () => void;
 };
 
@@ -46,6 +56,10 @@ const MockSessionContext = createContext<MockSessionValue | null>(null);
 
 export function MockSessionProvider({ children }: { children: ReactNode }) {
   const [auth, setAuth] = useState<AuthStatus>('signedOut');
+  const [account, setAccount] = useState({ id: 0, returning: false });
+  const [hosted, setHosted] = useState<Pick<MockRoom, 'code' | 'name' | 'playsThrough'> | null>(
+    null,
+  );
   const [trip, setTrip] = useState<Trip | null>(null);
   const [activeCode, setActiveCode] = useState<string | null>(null);
 
@@ -69,15 +83,28 @@ export function MockSessionProvider({ children }: { children: ReactNode }) {
       setAuth(next);
       setTrip({ mode: 'replace', hrefs });
     };
+    const switchAccount = (returning: boolean) =>
+      setAccount((current) => ({ id: current.id + 1, returning }));
+    const room = activeCode ? findRoom(activeCode) : null;
     return {
       auth,
+      accountId: account.id,
+      returning: account.returning,
       user: mockUser,
-      activeRoom: activeCode ? findRoom(activeCode) : null,
-      signIn: () => go('ready'),
-      createAccount: () => go('onboarding'),
+      activeRoom: room && hosted?.code === room.code ? { ...room, ...hosted } : room,
+      signIn: () => {
+        switchAccount(true);
+        go('ready');
+      },
+      createAccount: () => {
+        switchAccount(false);
+        go('onboarding');
+      },
       finishOnboarding: (next) => go('ready', next ? [landingFor.ready, next] : undefined),
       signOut: () => {
         setActiveCode(null);
+        setHosted(null);
+        switchAccount(false);
         go('signedOut');
       },
       previewAs: (next, href) => {
@@ -85,9 +112,13 @@ export function MockSessionProvider({ children }: { children: ReactNode }) {
         setTrip({ mode: 'push', hrefs: [href] });
       },
       enterRoom: setActiveCode,
+      startRoom: (code, room) => {
+        setHosted({ code, ...room });
+        setActiveCode(code);
+      },
       leaveRoom: () => setActiveCode(null),
     };
-  }, [auth, activeCode]);
+  }, [auth, account, activeCode, hosted]);
 
   return <MockSessionContext.Provider value={value}>{children}</MockSessionContext.Provider>;
 }
