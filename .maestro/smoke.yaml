@@ -1,0 +1,10 @@
+# Smoke flow: the app launches on Welcome and email sign-up opens.
+# Runs against an iOS development build (bundle ID app.qd.mobile), not Expo Go.
+appId: app.qd.mobile
+name: Smoke · Welcome to Create account
+---
+- launchApp:
+    clearState: true
+- assertVisible: 'Different apps. One aux.'
+- tapOn: 'Continue with email'
+- assertVisible: 'Create your account.'

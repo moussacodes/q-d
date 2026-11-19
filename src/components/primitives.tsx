@@ -10,7 +10,7 @@ export function Logo() {
   const { colors } = useTheme();
   return (
     <View style={styles.logo} accessibilityRole="header" accessibilityLabel="q’d">
-      <Text variant="logo">q'd</Text>
+      <Text variant="logo">{"q'd"}</Text>
       <View style={[styles.logoDot, { backgroundColor: colors.accent }]} />
     </View>
   );
@@ -95,7 +95,10 @@ export function SegmentedControl<T extends string>({
     <View
       style={[
         styles.segments,
-        fill && [styles.segmentsFill, { backgroundColor: colors.surface, borderColor: colors.stroke }],
+        fill && [
+          styles.segmentsFill,
+          { backgroundColor: colors.surface, borderColor: colors.stroke },
+        ],
       ]}
       accessibilityRole="tablist"
     >

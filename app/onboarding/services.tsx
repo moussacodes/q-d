@@ -1,15 +1,7 @@
 import { router } from 'expo-router';
 import { Pressable } from 'react-native';
 
-import {
-  Button,
-  Intro,
-  Screen,
-  ScreenHeader,
-  Stepper,
-  Text,
-  useScreenPalette,
-} from '@/components';
+import { Button, Intro, Screen, ScreenHeader, Stepper, Text, useScreenPalette } from '@/components';
 import { ServicesSection } from '@/features/settings/ServicesSection';
 
 /** 1.4 Onboarding step 2: connecting a service is optional (plan.md §2). */

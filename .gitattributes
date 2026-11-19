@@ -1,0 +1,9 @@
+# Check out text files with LF on every machine (Windows included), so
+# Prettier and ESLint see the same bytes as the Mac and CI.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.ttf binary
+*.otf binary
+*.pdf binary
