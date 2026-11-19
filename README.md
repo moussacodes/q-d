@@ -82,6 +82,7 @@ npm start
 
 | Document | What's in it |
 |---|---|
+| [PLAN.md](docs/PLAN.md) | The team's original plan, which the other docs draw their rules from |
 | [PRODUCT_SPEC.md](docs/PRODUCT_SPEC.md) | What q’d does, its rules, and the claims it never makes |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | How it's built, the boundaries, and why each exists |
 | [API_CONTRACTS.md](docs/API_CONTRACTS.md) | RPC functions, realtime events, provider adapters, and shared types |
