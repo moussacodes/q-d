@@ -18,7 +18,16 @@ const config: ExpoConfig = {
   web: {
     favicon: './assets/favicon.png',
   },
-  plugins: ['expo-router', 'expo-status-bar'],
+  plugins: [
+    'expo-router',
+    'expo-status-bar',
+    'expo-font',
+    'expo-image',
+    [
+      'expo-splash-screen',
+      { backgroundColor: '#000000', image: './assets/splash-icon.png', imageWidth: 200 },
+    ],
+  ],
   experiments: {
     typedRoutes: true,
   },
