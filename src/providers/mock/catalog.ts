@@ -17,7 +17,8 @@ export function toProviderTrack(track: MockTrack): ProviderTrack {
     durationMs: parseDuration(track.duration),
     explicit: false,
     artworkUrl: null,
-    artworkBackgroundColor: null,
+    // The canonical catalog is Apple's, which supplies this color.
+    artworkBackgroundColor: track.artworkColor,
   };
 }
 

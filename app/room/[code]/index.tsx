@@ -14,7 +14,7 @@ import {
   Text,
   useScreenPalette,
 } from '@/components';
-import { idlePalette, previewPalettes, useTheme } from '@/design';
+import { useTheme } from '@/design';
 import { providerNames } from '@/domain/music-provider';
 import {
   Controls,
@@ -24,10 +24,11 @@ import {
   TrackInfo,
   UpNextPeek,
 } from '@/features/room/RoomParts';
+import { roomPalette } from '@/features/playback/palette';
 import { useLiveRoom } from '@/features/playback/usePlayback';
 import { findRoom, mockQueue, type MockRoom } from '@/test/fixtures/mock-data';
 
-type Preview = 'listener' | 'empty' | 'unavailable';
+type Preview = 'listener' | 'empty' | 'unavailable' | 'apple';
 
 /**
  * 3.1 Room (default) and 3.2 (expanded), plus the 4.x states via `?view=`:
@@ -42,14 +43,16 @@ export default function Room() {
       : params.view === 'unavailable'
         ? {
             ...base,
-            nowPlaying: { ...mockQueue[2], palette: previewPalettes.rebel },
+            nowPlaying: mockQueue[2],
             queue: base.queue.slice(3),
           }
-        : base;
+        : params.view === 'apple'
+          ? { ...base, playsThrough: 'apple_music' }
+          : base;
   const { room, playback } = useLiveRoom(previewed);
   const isHost = params.view === 'listener' ? false : room.youHost;
   const track = room.nowPlaying;
-  useScreenPalette(track?.palette ?? idlePalette);
+  useScreenPalette(roomPalette(room));
 
   const { colors } = useTheme();
   const { width } = useWindowDimensions();

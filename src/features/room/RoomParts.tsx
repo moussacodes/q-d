@@ -34,7 +34,7 @@ export function TrackInfo({ track, room }: { track: MockTrack; room: MockRoom })
         <Text variant="caption" color="text2">
           Added by {track.addedBy}
         </Text>
-        <ProviderBadge provider={track.provider} />
+        <ProviderBadge provider={room.playsThrough} />
       </View>
     </View>
   );
@@ -181,7 +181,7 @@ export function QueueList({ room, isHost }: { room: MockRoom; isHost: boolean })
           key={track.id}
           title={track.title}
           artist={track.artist}
-          provider={track.provider}
+          provider={room.playsThrough}
           addedBy={`by ${track.addedBy}`}
           duration={track.duration}
           showGrip={isHost}

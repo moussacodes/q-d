@@ -51,6 +51,10 @@ const sections: { title: string; links: { label: string; href: Href; enter?: boo
     title: '4 · Room states',
     links: [
       {
+        label: '3.1 Room · plays through Apple Music (artwork colors)',
+        href: { pathname: '/room/[code]', params: { code: room, view: 'apple' } },
+      },
+      {
         label: '4.1 Listener view',
         href: { pathname: '/room/[code]', params: { code: room, view: 'listener' } },
       },

@@ -1,4 +1,3 @@
-import { previewPalettes, type NowPlayingPalette } from '@/design';
 import type { MusicProvider } from '@/domain/music-provider';
 
 /**
@@ -18,7 +17,12 @@ export type MockTrack = {
   /** The service the host's phone plays this song through. */
   provider: MusicProvider;
   addedBy: string;
-  palette: NowPlayingPalette;
+  /**
+   * The artwork background color Apple Music supplies with a song (sample
+   * values chosen to match the Figma color modes). Only Apple-played songs
+   * use it; Spotify supplies no usable color.
+   */
+  artworkColor: string;
   /** Set when the song is not on the host's service. */
   unavailableOn?: MusicProvider;
 };
@@ -63,8 +67,8 @@ const people: MockPerson[] = [
   { id: 'sam', name: 'Sam', color: '#8fe0b8' },
 ];
 
-const track = (t: Omit<MockTrack, 'palette'> & { palette?: NowPlayingPalette }): MockTrack => ({
-  palette: previewPalettes.sonOfSpergy,
+const track = (t: Omit<MockTrack, 'artworkColor'> & { artworkColor?: string }): MockTrack => ({
+  artworkColor: '#c41e2a', // Figma "Son of Spergy" hue
   ...t,
 });
 
@@ -77,7 +81,7 @@ export const mockQueue: MockTrack[] = [
     duration: '3:33',
     provider: 'spotify',
     addedBy: 'Jules',
-    palette: previewPalettes.frenchExit,
+    artworkColor: '#c2186f', // Figma "French Exit" hue
   }),
   track({
     id: 'q2',
@@ -87,7 +91,7 @@ export const mockQueue: MockTrack[] = [
     duration: '3:45',
     provider: 'spotify',
     addedBy: 'Priya',
-    palette: previewPalettes.neverEnough,
+    artworkColor: '#1f3ac4', // Figma "Never Enough" hue
   }),
   track({
     id: 'q3',
@@ -97,7 +101,7 @@ export const mockQueue: MockTrack[] = [
     duration: '1:49',
     provider: 'spotify',
     addedBy: 'Theo',
-    palette: previewPalettes.rebel,
+    artworkColor: '#5a5a5a', // grey, like Figma "Rebel"
     unavailableOn: 'spotify',
   }),
   track({

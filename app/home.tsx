@@ -15,8 +15,9 @@ import {
   Text,
   useScreenPalette,
 } from '@/components';
-import { idlePalette, typography, useTheme } from '@/design';
+import { typography, useTheme } from '@/design';
 import { RoomMiniPlayer } from '@/features/playback/RoomMiniPlayer';
+import { roomPalette } from '@/features/playback/palette';
 import { useLiveRoom } from '@/features/playback/usePlayback';
 import { useMockSession } from '@/features/session/MockSession';
 import { mockRooms, type MockRoom } from '@/test/fixtures/mock-data';
@@ -32,7 +33,7 @@ function greeting(date = new Date()) {
 export default function Home() {
   const { user, activeRoom: joined } = useMockSession();
   const { room: activeRoom, playback } = useLiveRoom(joined);
-  useScreenPalette(activeRoom?.nowPlaying?.palette ?? idlePalette);
+  useScreenPalette(roomPalette(activeRoom));
   const { colors } = useTheme();
   const [code, setCode] = useState('');
 

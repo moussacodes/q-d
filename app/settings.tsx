@@ -16,8 +16,8 @@ import {
   useScreenPalette,
   type IconName,
 } from '@/components';
-import { idlePalette } from '@/design';
 import { RoomMiniPlayer } from '@/features/playback/RoomMiniPlayer';
+import { roomPalette } from '@/features/playback/palette';
 import { useLiveRoom } from '@/features/playback/usePlayback';
 import {
   MAX_NAME_LENGTH,
@@ -39,7 +39,7 @@ const methodIcons: Record<SignInMethod, IconName> = {
 export default function Settings() {
   const { user, activeRoom: joined, signOut, saveProfile } = useMockSession();
   const { room: activeRoom, playback } = useLiveRoom(joined);
-  useScreenPalette(activeRoom?.nowPlaying?.palette ?? idlePalette);
+  useScreenPalette(roomPalette(activeRoom));
   const params = useLocalSearchParams<{ tab?: Tab }>();
   const [tab, setTab] = useState<Tab>(params.tab === 'account' ? 'account' : 'services');
   const [name, setName] = useState(user.name);
