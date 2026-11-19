@@ -3,9 +3,10 @@ import { findRoom, mockQueue, type MockRoom, type MockTrack } from '@/providers/
 /**
  * Mock mode's stand-in for the room's rows in Postgres: what's playing and
  * what's next. Its actions follow the queue RPCs in docs/API_CONTRACTS.md
- * (`reorder_queue`, `remove_queue_entry`, `advance_queue`), so the screens
- * call the same operations the real backend will offer. The Supabase cards
- * replace it; the server, not this store, will check who may do what.
+ * (`enqueue_recording`, `reorder_queue`, `remove_queue_entry`, `advance_queue`),
+ * so the screens call the same operations the real backend will offer. The
+ * Supabase cards replace it; the server, not this store, will check who may
+ * do what.
  */
 
 /** A song in a room's queue. Entries have their own id, so one song can be queued twice. */
@@ -29,6 +30,11 @@ export type RoomView = 'listener' | 'empty' | 'unavailable' | 'apple';
 export type RoomRef = { code: string; view?: RoomView };
 
 export type AdvanceReason = 'ended' | 'skipped' | 'unavailable';
+
+/** What `enqueue_recording` answers. `queueLength` gives "Rain Down added · 8th in line". */
+export type EnqueueResult =
+  | { ok: true; entryId: string; playingNow: boolean; queueLength: number }
+  | { ok: false; error: 'already_in_queue' };
 
 /** Mock rooms open 1:40 into the song, like the Figma frames. */
 export const MOCK_START_MS = 100_000;
@@ -69,6 +75,7 @@ export type RoomStore = ReturnType<typeof createRoomStore>;
 export function createRoomStore() {
   const rooms = new Map<string, RoomQueue>();
   const listeners = new Set<() => void>();
+  let added = 0;
 
   /**
    * The room's current state. A room nobody has touched yet starts from the
@@ -97,6 +104,37 @@ export function createRoomStore() {
       return () => {
         listeners.delete(listener);
       };
+    },
+
+    /**
+     * `enqueue_recording`: adds the song at the end of the queue. A song
+     * that's already queued or playing needs `allowDuplicate` (PRODUCT_SPEC.md
+     * §5, "Already in queue"). With nothing playing, the song plays at once.
+     */
+    enqueue(
+      ref: RoomRef,
+      track: Omit<MockTrack, 'addedBy'>,
+      addedBy: string,
+      allowDuplicate = false,
+    ): EnqueueResult {
+      const room = get(ref);
+      const present =
+        room.nowPlaying?.id === track.id || room.queue.some((entry) => entry.id === track.id);
+      if (present && !allowDuplicate) return { ok: false, error: 'already_in_queue' };
+      added += 1;
+      const entry: RoomEntry = { ...track, addedBy, entryId: `${roomKey(ref)}/added-${added}` };
+      if (!room.nowPlaying) {
+        update(ref, { nowPlaying: entry, queue: room.queue, startAtMs: 0 });
+        return {
+          ok: true,
+          entryId: entry.entryId,
+          playingNow: true,
+          queueLength: room.queue.length,
+        };
+      }
+      const queue = [...room.queue, entry];
+      update(ref, { ...room, queue });
+      return { ok: true, entryId: entry.entryId, playingNow: false, queueLength: queue.length };
     },
 
     /**

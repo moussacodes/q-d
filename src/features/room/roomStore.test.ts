@@ -34,6 +34,70 @@ describe('room store', () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
+  describe('add (enqueue_recording)', () => {
+    const rainDown = { ...findRoom(room.code).queue[0], id: 's3', title: 'Rain Down' };
+
+    it('adds the song at the end and says where it landed', () => {
+      const store = createRoomStore();
+      const result = store.enqueue(room, rainDown, 'Maya');
+      expect(result).toEqual({
+        ok: true,
+        entryId: expect.any(String),
+        playingNow: false,
+        queueLength: 8,
+      });
+      const last = store.get(room).queue[7];
+      expect(last.title).toBe('Rain Down');
+      expect(last.addedBy).toBe('Maya');
+    });
+
+    it('asks before adding a song that’s already queued or playing', () => {
+      const store = createRoomStore();
+      const { nowPlaying, queue } = store.get(room);
+      expect(store.enqueue(room, queue[1], 'Maya')).toEqual({
+        ok: false,
+        error: 'already_in_queue',
+      });
+      expect(store.enqueue(room, nowPlaying!, 'Maya')).toEqual({
+        ok: false,
+        error: 'already_in_queue',
+      });
+      expect(store.get(room).queue).toHaveLength(7);
+    });
+
+    it('adds it again once confirmed, as its own entry', () => {
+      const store = createRoomStore();
+      const always = store.get(room).queue[1];
+      const result = store.enqueue(room, always, 'Maya', true);
+      expect(result.ok).toBe(true);
+      const copies = store.get(room).queue.filter((entry) => entry.title === always.title);
+      expect(copies).toHaveLength(2);
+      expect(copies[0].entryId).not.toBe(copies[1].entryId);
+    });
+
+    it('plays the song at once when nothing is playing', () => {
+      const store = createRoomStore();
+      const empty = { code: room.code, view: 'empty' as const };
+      const result = store.enqueue(empty, rainDown, 'Maya');
+      expect(result).toEqual({
+        ok: true,
+        entryId: expect.any(String),
+        playingNow: true,
+        queueLength: 0,
+      });
+      expect(store.get(empty).nowPlaying?.title).toBe('Rain Down');
+      expect(store.get(empty).startAtMs).toBe(0);
+    });
+
+    it('can be taken back while it’s still queued', () => {
+      const store = createRoomStore();
+      const result = store.enqueue(room, rainDown, 'Maya');
+      if (!result.ok) throw new Error('expected the add to work');
+      expect(store.remove(room, result.entryId)).toBe(true);
+      expect(store.get(room).queue).toHaveLength(7);
+    });
+  });
+
   describe('reorder (reorder_queue)', () => {
     it('moves an entry after another one, or to the top', () => {
       const store = createRoomStore();

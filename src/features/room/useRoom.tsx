@@ -8,11 +8,12 @@ import {
   type ReactNode,
 } from 'react';
 
-import { parseDuration } from '@/domain/time';
+import type { MusicProvider } from '@/domain/music-provider';
+import { formatDuration, parseDuration } from '@/domain/time';
 import { usePlayback, type Playback } from '@/features/playback/usePlayback';
 import { useMockSession } from '@/features/session/MockSession';
-import { createPlayback } from '@/providers';
-import { findRoom, type MockRoom } from '@/providers/mock/data';
+import { createPlayback, type CatalogResult } from '@/providers';
+import { findRoom, type MockRoom, type MockTrack } from '@/providers/mock/data';
 
 import { RoomPlayer } from './RoomPlayer';
 import {
@@ -25,7 +26,7 @@ import {
   type RoomView,
 } from './roomStore';
 
-export type { RoomEntry, RoomView } from './roomStore';
+export type { EnqueueResult, RoomEntry, RoomView } from './roomStore';
 
 /** A room as everyone in it sees it right now. */
 export type LiveRoom = Omit<MockRoom, 'nowPlaying' | 'queue'> & {
@@ -38,6 +39,25 @@ export type LiveRoom = Omit<MockRoom, 'nowPlaying' | 'queue'> & {
 /** Route params for the room and its sheets, keeping the development preview. */
 export function roomParams(room: Pick<LiveRoom, 'code' | 'view'>) {
   return room.view ? { code: room.code, view: room.view } : { code: room.code };
+}
+
+/** A catalog search result as a queue song, played through the room's service. */
+export function trackFromResult(
+  { track, availableOn }: CatalogResult,
+  playsThrough: MusicProvider,
+): Omit<MockTrack, 'addedBy'> {
+  const missing = (['apple_music', 'spotify'] as const).find((p) => !availableOn.includes(p));
+  return {
+    id: track.providerTrackId,
+    title: track.title,
+    artist: track.artist,
+    album: track.album,
+    duration: formatDuration(track.durationMs),
+    provider: playsThrough,
+    // Mock catalog songs always carry Apple's color; grey is the Figma "Rebel" fallback.
+    artworkColor: track.artworkBackgroundColor ?? '#5a5a5a',
+    ...(missing ? { unavailableOn: missing } : {}),
+  };
 }
 
 type Rooms = { store: RoomStore; players: Map<string, RoomPlayer> };
@@ -121,13 +141,15 @@ function useLiveRoom(base: MockRoom | null, view?: RoomView) {
  * queue actions. With `view`, a development preview of it.
  */
 export function useRoom(code: string | undefined, view?: RoomView) {
-  const { activeRoom } = useMockSession();
+  const { activeRoom, user } = useMockSession();
   // The room you started or joined, with the name and service you chose.
   const base = activeRoom && activeRoom.code === code ? activeRoom : findRoom(code);
   const { store } = useRooms();
   const { room, playback, ref } = useLiveRoom(base, view);
+  // There's always a room here: an unknown code shows the sample room.
   const live = room!;
-  const at = (entryId: string) => live.queue.findIndex((e) => e.entryId === entryId);
+  const at = ref!;
+  const index = (entryId: string) => live.queue.findIndex((e) => e.entryId === entryId);
 
   return {
     room: live,
@@ -135,20 +157,30 @@ export function useRoom(code: string | undefined, view?: RoomView) {
     /** Only the host plays, skips, reorders and removes (PRODUCT_SPEC.md §4). */
     isHost: view === 'listener' ? false : live.youHost,
     skip: () => {
-      if (ref && live.nowPlaying) store.advance(ref, live.nowPlaying.entryId, 'skipped');
+      if (live.nowPlaying) store.advance(at, live.nowPlaying.entryId, 'skipped');
     },
     moveUp: (entryId: string) => {
-      const index = at(entryId);
-      if (!ref || index < 1) return;
-      store.move(ref, entryId, index === 1 ? null : live.queue[index - 2].entryId);
+      const i = index(entryId);
+      if (i < 1) return;
+      store.move(at, entryId, i === 1 ? null : live.queue[i - 2].entryId);
     },
     moveDown: (entryId: string) => {
-      const index = at(entryId);
-      if (!ref || index < 0 || index >= live.queue.length - 1) return;
-      store.move(ref, entryId, live.queue[index + 1].entryId);
+      const i = index(entryId);
+      if (i < 0 || i >= live.queue.length - 1) return;
+      store.move(at, entryId, live.queue[i + 1].entryId);
     },
     remove: (entryId: string) => {
-      if (ref) store.remove(ref, entryId);
+      store.remove(at, entryId);
+    },
+    /**
+     * Everyone adds songs. A song that's already queued or playing comes back
+     * as `already_in_queue` unless `allowDuplicate` confirms it.
+     */
+    add: (result: CatalogResult, allowDuplicate = false) =>
+      store.enqueue(at, trackFromResult(result, live.playsThrough), user.name, allowDuplicate),
+    /** Undo on the "added" toast: takes back your own song while it's still queued. */
+    undoAdd: (entryId: string) => {
+      store.remove(at, entryId);
     },
   };
 }

@@ -105,7 +105,8 @@ Why it's shaped this way: [ARCHITECTURE.md § 4.10](ARCHITECTURE.md#410-client-v
 - **Input:** `room_id uuid`, `recording_id uuid`, `allow_duplicate boolean = false`, `idempotency_key uuid`
 - **Effect:** inserts a queue entry at the end, with a position the server assigns while holding a lock on the room's queue.
 - **Returns:** `{ entry_id, position, queue_length }`. The app uses `queue_length` for "Rain Down added · 8th in line".
-- **Errors:** `already_in_queue` (unless `allow_duplicate`), `room_ended`, `not_member`
+- **Errors:** `already_in_queue` (unless `allow_duplicate`), `room_ended`, `not_member`. A song counts as already in the queue while it's queued or playing.
+- **Proposed (Add a song card):** when nothing is playing, the new entry becomes the playing one and `queue_length` is 0, so the toast says "playing now". The mock store does this; the RPC contracts card confirms it.
 - **Note:** `recording_id` comes from a catalog search result. How search results become `recordings` rows depends on where search runs ([ARCHITECTURE.md, open decision 1](ARCHITECTURE.md#open-technical-decisions)).
 
 #### `enqueue_batch` (post-demo, `playlist import` flag)
@@ -130,7 +131,7 @@ Why it's shaped this way: [ARCHITECTURE.md § 4.10](ARCHITECTURE.md#410-client-v
 
 #### `remove_queue_entry`
 
-- **Caller:** host.
+- **Caller:** host. **Proposed (Add a song card):** also the member who added the entry, for the Undo on the "added" toast, while the entry is still queued. The RPC contracts card confirms or drops it.
 - **Input:** `room_id uuid`, `entry_id uuid`, `idempotency_key uuid`
 - **Errors:** `entry_not_found`, `not_host`
 
