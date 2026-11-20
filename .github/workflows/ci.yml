@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A new push to the same PR or branch cancels the run already in progress.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Typecheck, lint, format, test, Expo Doctor
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          # The minimum in package.json "engines", so nothing newer slips in.
+          node-version: '22.13'
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # Expo Router's typed-route declarations (.expo/types) are generated and
+      # gitignored. `expo start` writes them locally; CI generates them here so
+      # `tsc` checks every href against the real routes.
+      - name: Generate Expo Router types
+        run: npx expo customize tsconfig.json
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Format
+        run: npm run format:check
+
+      - name: Test
+        run: npm test -- --ci
+
+      - name: Expo Doctor
+        run: npx expo-doctor

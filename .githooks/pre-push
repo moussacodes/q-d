@@ -1,0 +1,24 @@
+#!/bin/sh
+# Every push runs the same steps as CI (.github/workflows/ci.yml) first.
+# `npm ci` turns this folder on with `git config core.hooksPath .githooks`.
+#
+# The checks read the working tree, so commit or stash edits before pushing.
+set -e
+
+# Deleting a remote branch pushes nothing, so there's nothing to check.
+# Git sends one line per ref: <local ref> <local sha> <remote ref> <remote sha>.
+only_deletes=true
+while read -r _ local_sha _ _; do
+  case "$local_sha" in
+    *[!0]*) only_deletes=false ;;
+  esac
+done
+if [ "$only_deletes" = true ]; then
+  exit 0
+fi
+
+# Regenerate the typed-route declarations, as CI does, so a new or renamed
+# route can't pass against stale ones.
+npx expo customize tsconfig.json
+npm run check
+npm run doctor

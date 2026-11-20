@@ -40,7 +40,9 @@ const style = (
   fontFamily,
   fontSize,
   ...(lineHeight === undefined ? {} : { lineHeight }),
-  ...(letterSpacingPercent === 0 ? {} : { letterSpacing: tracking(fontSize, letterSpacingPercent) }),
+  ...(letterSpacingPercent === 0
+    ? {}
+    : { letterSpacing: tracking(fontSize, letterSpacingPercent) }),
 });
 
 /** Text styles named after the Figma "Mobile/…" styles. */

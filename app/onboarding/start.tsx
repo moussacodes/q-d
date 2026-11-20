@@ -22,7 +22,12 @@ export default function OnboardingStart() {
     <Screen
       header={<ScreenHeader center={<Stepper step={3} />} />}
       footer={
-        <Button block kind="ghost" label="I’ll do this later" onPress={() => router.replace('/home')} />
+        <Button
+          block
+          kind="ghost"
+          label="I’ll do this later"
+          onPress={() => router.replace('/home')}
+        />
       }
     >
       <Intro
@@ -48,7 +53,17 @@ export default function OnboardingStart() {
   );
 }
 
-function Option({ icon, title, body, href }: { icon: IconName; title: string; body: string; href: Href }) {
+function Option({
+  icon,
+  title,
+  body,
+  href,
+}: {
+  icon: IconName;
+  title: string;
+  body: string;
+  href: Href;
+}) {
   const { colors } = useTheme();
   return (
     <Pressable accessibilityRole="button" onPress={() => router.push(href)}>
@@ -72,5 +87,11 @@ const styles = StyleSheet.create({
   options: { gap: 10 },
   option: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   optionText: { flex: 1, gap: 2 },
-  iconCircle: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  iconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });

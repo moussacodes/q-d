@@ -1,15 +1,7 @@
 import { router } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import {
-  Button,
-  Cover,
-  Logo,
-  ProviderBadge,
-  Screen,
-  Text,
-  useScreenPalette,
-} from '@/components';
+import { Button, Cover, Logo, ProviderBadge, Screen, Text, useScreenPalette } from '@/components';
 
 /** 1.1 Welcome. Sign-in buttons are mock until the auth cards land. */
 export default function Welcome() {

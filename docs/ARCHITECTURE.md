@@ -2,7 +2,7 @@
 
 How q’d is built, where each piece of code belongs, and why each boundary exists. Product rules are in [PRODUCT_SPEC.md](PRODUCT_SPEC.md), contracts are in [API_CONTRACTS.md](API_CONTRACTS.md), and decisions are logged in [DECISIONS.md](DECISIONS.md).
 
-> **Status, 2026-11-19.** Only the app shell exists so far: the Expo app, design tokens, components and mock screen shells (branches `feat/bootstrap`, `feat/design-tokens` and `feat/screen-shells`, all in review). Everything marked **Planned** below is the target design, and it gets built by the Forge Trello card named next to it. When a card lands, change its status here in the same PR.
+> **Status, 2026-11-19.** Only the app shell and its quality gates exist so far: the Expo app, design tokens, components and mock screen shells (branches `feat/bootstrap`, `feat/design-tokens` and `feat/screen-shells`), plus lint, formatting, tests, CI and a pre-push hook (`feat/quality-gates`). All are in review. Everything marked **Planned** below is the target design, and it gets built by the Forge Trello card named next to it. When a card lands, change its status here in the same PR.
 
 ## 1. System overview
 
@@ -63,8 +63,8 @@ A broadcast that never arrives costs freshness but never correctness, because th
 | Device storage | Supabase's recommended Expo session storage, plus SecureStore for provider credentials | Planned · Supabase client card |
 | Apple playback | Local Swift Expo module around MusicKit | Planned · qd-music-kit card |
 | Spotify playback | Spotify iOS SDK (App Remote) and the Web API | Planned · Spotify cards |
-| Tests | Jest/jest-expo, React Native Testing Library, Supabase integration tests, Maestro | Planned · Quality gates card |
-| Quality gates | ESLint, Prettier, `tsc`, Jest, Expo Doctor, GitHub Actions | Planned · Quality gates card (only `npm run typecheck` exists today) |
+| Tests | Jest/jest-expo, React Native Testing Library, Supabase integration tests, Maestro | Built: Jest, React Native Testing Library, `.maestro/` smoke flow (first runs with a development build). Planned: Supabase tests · Supabase cards |
+| Quality gates | ESLint, Prettier, `tsc`, Jest, Expo Doctor, GitHub Actions, Git pre-push hook | Built · `npm run check`, `.github/workflows/ci.yml`, `.githooks/pre-push` (every push) |
 | Builds | EAS development, preview (internal) and production (TestFlight) profiles | Planned · EAS card |
 | Observability | Redacting structured logger, privacy-filtered crash reports, opt-in analytics | Planned · Logging card |
 
@@ -118,7 +118,7 @@ Each boundary below says what belongs on each side, the rule, and the reason. Wh
 
 **Known exception.** The screen shells import sample data from `src/test/fixtures/mock-data.ts`, either directly or through `features/session/MockSession.tsx`. That's temporary scaffolding. The mock-data development mode and the real data cards replace it with feature hooks backed by mock or real providers. New code shouldn't add more imports from `src/test`.
 
-The quality-gates card should enforce these rules with ESLint (`no-restricted-imports`) so they don't depend on memory.
+ESLint enforces these rules (`no-restricted-imports` in `eslint.config.js`), so they don't depend on memory. The known exception is a fixed list of files there. Remove a file from that list once it stops importing `src/test`. ESLint doesn't catch one feature importing another feature's internals, so reviewers check that.
 
 ### 4.1 Screens vs. everything else (`app/`)
 
@@ -277,7 +277,7 @@ The screen shells use only modules that ship inside Expo Go (expo-image, expo-bl
 
 ## 10. Testing strategy
 
-Planned · Quality gates card, plus each feature card adds its own tests.
+Jest, React Native Testing Library and the Maestro folder are set up. Each feature card adds its own tests. Unit tests sit next to their code as `*.test.ts(x)`. Route tests live in `__tests__/`, because every file under `app/` becomes a route.
 
 | Layer | Tool | What it proves |
 |---|---|---|

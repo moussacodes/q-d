@@ -48,9 +48,7 @@ export function Timeline({ progress = 0.45 }: { progress?: number }) {
         <View
           style={[styles.fill, { width: `${progress * 100}%`, backgroundColor: colors.accent }]}
         />
-        <View
-          style={[styles.knob, { left: `${progress * 100}%`, backgroundColor: colors.text }]}
-        />
+        <View style={[styles.knob, { left: `${progress * 100}%`, backgroundColor: colors.text }]} />
       </View>
       <View style={styles.times}>
         <Text variant="monoSmall" color="text3">
@@ -185,7 +183,10 @@ export function UpNextPeek({ room }: { room: MockRoom }) {
         accessibilityRole="button"
         accessibilityLabel="Open up next"
         onPress={() => router.push({ pathname: '/room/[code]/queue', params: { code: room.code } })}
-        style={[styles.peek, { backgroundColor: colors.sheetGlass, borderColor: colors.strokeStrong }]}
+        style={[
+          styles.peek,
+          { backgroundColor: colors.sheetGlass, borderColor: colors.strokeStrong },
+        ]}
       >
         <Cover size={36} radius={8} />
         <View style={styles.flex}>

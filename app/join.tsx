@@ -88,7 +88,12 @@ export default function Join() {
           ref={input}
           value={code}
           onChangeText={(t) =>
-            setCode(t.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, CODE_LENGTH))
+            setCode(
+              t
+                .toUpperCase()
+                .replace(/[^A-Z0-9]/g, '')
+                .slice(0, CODE_LENGTH),
+            )
           }
           autoFocus
           autoCapitalize="characters"

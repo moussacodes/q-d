@@ -1,0 +1,9 @@
+# Prettier also skips everything in .gitignore.
+package-lock.json
+coverage/
+assets/
+docs/pitch/
+
+# Markdown is prose (and covers the local, untracked plan.md). Prettier's table
+# padding would rewrite every row of a table whenever one cell changes.
+*.md
