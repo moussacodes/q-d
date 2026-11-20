@@ -1,3 +1,4 @@
+import { defaultRoomRules } from '@/domain/room-rules';
 import { findRoom } from '@/providers/mock/data';
 
 import { createRoomStore, MOCK_START_MS, previewRoom, roomKey } from './roomStore';
@@ -163,6 +164,45 @@ describe('room store', () => {
         playing = store.get(room).nowPlaying;
       }
       expect(store.get(room).queue).toEqual([]);
+    });
+  });
+
+  describe('rules (update_room_rules)', () => {
+    const hostOnly = {
+      addSongs: { who: 'host' as const, chosen: [] },
+      control: { who: 'chosen' as const, chosen: ['maya'] },
+    };
+
+    it('starts a room with the default rules', () => {
+      expect(createRoomStore().get(room).rules).toEqual(defaultRoomRules);
+    });
+
+    it('changes the rules and tells subscribers', () => {
+      const store = createRoomStore();
+      const listener = jest.fn();
+      store.subscribe(listener);
+      store.setRules(room, hostOnly);
+      expect(store.get(room).rules).toEqual(hostOnly);
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the rules while songs are added and move on', () => {
+      const store = createRoomStore();
+      store.setRules(room, hostOnly);
+      store.advance(room, store.get(room).nowPlaying!.entryId, 'skipped');
+      expect(store.get(room).rules).toEqual(hostOnly);
+
+      const empty = { code: room.code, view: 'empty' as const };
+      store.setRules(empty, hostOnly);
+      store.enqueue(empty, findRoom(room.code).queue[0], 'Baron');
+      expect(store.get(empty).nowPlaying).not.toBeNull();
+      expect(store.get(empty).rules).toEqual(hostOnly);
+    });
+
+    it('shares the rules with the listener preview, which is the same room', () => {
+      const store = createRoomStore();
+      store.setRules(room, hostOnly);
+      expect(store.get({ code: room.code, view: 'listener' }).rules).toEqual(hostOnly);
     });
   });
 

@@ -17,7 +17,7 @@ q’d coordinates metadata, room state, the queue and playback commands. It neve
 | Role | Who | Needs a music service? |
 |---|---|---|
 | **Host** | Started the room. Their phone plays the music. | Yes. Apple Music or Spotify, connected before the room starts. |
-| **Listener** | Joined with a code or QR invite. Adds songs. | No. |
+| **Listener** | Joined with a code or QR invite. Adds songs and controls the music if the room's rules allow it ([§4](#who-can-do-what)). | No. |
 
 Everyone needs a q’d account, but only the device that plays needs a music service.
 
@@ -32,7 +32,7 @@ Everyone needs a q’d account, but only the device that plays needs a music ser
 |---|---|---|
 | **Demo** | Dec 4, 2026 | A 3–5 minute `aux` demonstration on iPhones. See [DEMO_RUNBOOK.md](DEMO_RUNBOOK.md). |
 | **Public beta** | After the demo | The demo feature set plus safety, privacy and account deletion. See [§11](#11-public-beta). |
-| **Post-demo** | After the demo | Playlist-link import (first), chosen people, join approval, guest skip, host transfer, `sync (beta)` research. |
+| **Post-demo** | After the demo | Playlist-link import (first), join approval, host transfer, `sync (beta)` research. |
 
 ### Demo must-haves
 
@@ -84,17 +84,25 @@ These are out of scope for the demo and the beta. Don't build them without a dec
 
 ### Who can do what
 
-| Action | Host | Listener |
-|---|---|---|
-| Add songs | ✓ | ✓ |
-| Play, pause, seek | ✓ | |
-| Skip | ✓ | |
-| Remove a song | ✓ | |
-| Reorder the queue | ✓ | |
-| End the room | ✓ | |
-| Remove a person (beta) | ✓ | |
+The host sets two **room rules** on Start a room and can change them at any time in Listeners. Each rule is **Everyone**, **Chosen people** or **Only the host** (the host sees it as "Only you").
 
-These rules are fixed for the demo. "Chosen people", "Ask before people join", per-person skip and automatic host transfer are post-demo.
+| Rule | Covers | Default |
+|---|---|---|
+| Add songs | Adding songs to the queue | Everyone |
+| Play, skip, reorder, remove | Play, pause, seek, skip, reorder the queue, remove a song | Only the host |
+
+- The host can always do everything.
+- **Chosen people** are members the host picks in Listeners, with a separate list for each rule. Nobody is chosen when a room starts, because nobody has joined yet. Picks are kept when the host switches a rule to another choice and back.
+- In `aux` only the host's phone plays, so play, pause and skip from someone else are carried out by the host's phone.
+- People the rules leave out see the controls disabled. Add a song says why it's unavailable.
+- The undo on the "added" toast takes back your own song whatever the rules (see [API_CONTRACTS.md](API_CONTRACTS.md), `remove_queue_entry`).
+
+Only the host can:
+
+- invite people, end the room and change the rules,
+- remove a person (beta).
+
+"Ask before people join" and automatic host transfer are post-demo.
 
 ### When the host disappears
 

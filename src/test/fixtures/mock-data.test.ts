@@ -1,6 +1,6 @@
 import { providerNames } from '@/domain/music-provider';
 
-import { findRoom, mockQueue, mockRooms, mockSearchResults } from './mock-data';
+import { findRoom, mockQueue, mockRooms, mockSearchResults, mockUser } from './mock-data';
 
 // The screen shells are reviewed against this data, so it has to follow the
 // product rules in plan.md §2 or the shells will show impossible states.
@@ -21,6 +21,15 @@ describe('mock data', () => {
       const hosts = room.people.filter((person) => person.isHost);
       expect(hosts).toHaveLength(1);
       expect(room.people.length).toBeLessThanOrEqual(15);
+    }
+  });
+
+  it('puts you in every room, as the host exactly where you host', () => {
+    for (const room of mockRooms) {
+      const you = room.people.find((person) => person.id === mockUser.id);
+      expect(you).toBeDefined();
+      expect(!!you?.isHost).toBe(room.youHost);
+      expect(room.people.find((person) => person.isHost)?.name).toBe(room.hostName);
     }
   });
 

@@ -216,7 +216,8 @@ Planned · Initial Supabase migrations card. Shapes are in [API_CONTRACTS.md](AP
 |---|---|
 | `profiles` | Display name, avatar color, 18+ confirmation. One row per auth user. |
 | `provider_connections` | Which services a user connected and when. Metadata only, no credentials. |
-| `rooms` | Room name, host, mode (`aux`/`sync`), state, the service the host plays through, the room code and its expiry. |
+| `rooms` | Room name, host, mode (`aux`/`sync`), state, the service the host plays through, the room code and its expiry, and the two room rules (who adds songs, who controls the music). |
+| `room_rule_members` | The people the host chose for each rule set to "Chosen people". |
 | `room_members` | Who is in which room, with their role. Enforces the 15-person cap. |
 | `room_invites` | High-entropy QR invite tokens, separate from room codes. |
 | `recordings` | Canonical recordings (title, artists, ISRC, duration, explicit flag). |

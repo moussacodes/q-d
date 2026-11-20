@@ -8,6 +8,18 @@ Product and technical decisions that are not obvious from the code. Newest first
 - **Who's in the room is in the Up next sheet.** The expanded layout has no people strip. The Up next bar opens the sheet that shows it.
 - **An empty room keeps the 3.1 layout.** With nothing playing there's no cover to expand, so the room shows the empty cover, the people strip and Add a song.
 
+## 2026-11-20 · Room rules the host chooses
+
+- **The room rules are choices now.** This replaces "Demo room rules are fixed" (2026-11-19 · Screen shells). Baron asked for it. Start a room offers **Everyone**, **Chosen** or **Only you** for two rules: Add songs, and Play, skip, reorder, remove. The defaults are the old fixed rules, so a host who changes nothing gets the same room.
+- **One rule covers play, pause, skip, reorder and remove.** Baron asked to keep them together rather than split them.
+- **Chosen people are picked in Listeners.** Nobody has joined when the room starts, so Start a room only says where to pick them. In Listeners the host changes the rules and, for each rule set to Chosen, taps an **Adds songs** or **Controls** chip next to a person. Each rule has its own list. Switching a rule away from Chosen keeps the list, so switching back restores it.
+- **Everyone else sees the rules as text** in Listeners ("Host only", "Chosen people (incl. you)"). Controls they can't use are disabled, and a disabled Add a song says why.
+- **The mini player follows the control rule** too, so a chosen listener can pause from Home.
+- **Contracts.** `create_room` takes the two rules, and `update_room_rules` is added. The queue and playback operations check the rules and fail with `not_allowed`. `request_playback` is added, because only the host's phone plays in aux, so a listener's play or pause has to reach it. All of these are proposals for the RPC contracts card to confirm.
+- **Mock mode.** The room store holds the rules with the queue, and `src/domain/room-rules.ts` decides who's allowed. The listener preview (`?view=listener`) looks at the room as its first listener, Maya, so choosing Maya in Listeners shows what a chosen listener gets.
+- **Sample data fix.** "Late Drive Home" and "Study Hall" marked you as their host, although Priya and Theo host them, so you'd have had full control there. Their named hosts are the hosts now, and a test checks it.
+- **Still post-demo:** "Ask before people join" and automatic host transfer. plan.md §2 still lists chosen people and guest skip as post-demo; the plan stays outside git, so the team updates it.
+
 ## 2026-11-19 · Search / add-song overlay
 
 - **Adding a song puts it in the queue.** Tapping + calls the mock `enqueue_recording`. The song goes to the end of the queue, labeled "by" the person who added it, and the toast says where it landed ("Rain Down added · 5th in line"). Everyone can add, with or without a music service.
@@ -120,7 +132,7 @@ The Figma page `20 · Mobile` is an initial direction. Where it conflicts with p
   - **4.3 "Not on your service"** is shown from the host's side. The song isn't on the service the host's phone plays through, so the host can skip it or switch services for the next song (plan.md §2). A listener no longer "sits it out".
   - Settings no longer has "When a song isn't on your service" (Play via YouTube Music / Sit it out).
 - **Room codes have six characters** (QD-7K4F9X), not four. The Join screen has six code boxes.
-- **Demo room rules are fixed.**
+- **Demo room rules are fixed.** *Replaced on 2026-11-20 by "Room rules the host chooses".*
   - Everyone can add songs. Only the host can play, skip, reorder or remove.
   - Start a room and Listeners show these rules as text. "Chosen people", "Ask before people join" and per-person skip chips are post-demo, so they're absent.
   - Start a room gained a "Plays on this phone · Through Spotify" row, because hosting needs a connected service.

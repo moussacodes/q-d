@@ -20,6 +20,7 @@ import { providerNames } from '@/domain/music-provider';
 import { formatDuration, formatMinutes, parseDuration } from '@/domain/time';
 import type { MockRoom, MockTrack } from '@/providers/mock/data';
 
+import { cantAddNote } from './RoomRules';
 import { roomParams, type LiveRoom, type RoomHandle } from './useRoom';
 
 /** "1 song", "7 songs". */
@@ -84,14 +85,15 @@ export function Timeline({ positionMs, durationMs }: { positionMs: number; durat
 }
 
 /**
- * Host playback controls. Aux mode: only the host's phone plays, so there is
- * no "Resync". Listeners see the controls disabled.
+ * Playback controls, for whoever the room's control rule lets in. Aux mode:
+ * only the host's phone plays, so there is no "Resync". Everyone else sees
+ * the controls disabled.
  *
  * Five equal slots keep Play on the screen's center line: the empty first
  * slot balances Repeat in the last one.
  */
 export function Controls({
-  isHost,
+  canControl,
   playing,
   repeat,
   onTogglePlay,
@@ -99,7 +101,7 @@ export function Controls({
   onPrevious,
   onToggleRepeat,
 }: {
-  isHost: boolean;
+  canControl: boolean;
   playing: boolean;
   /** Repeat the current song when it ends. */
   repeat: boolean;
@@ -109,23 +111,23 @@ export function Controls({
   onToggleRepeat?: () => void;
 }) {
   return (
-    <View style={[styles.controls, !isHost && styles.disabled]}>
+    <View style={[styles.controls, !canControl && styles.disabled]}>
       <View style={styles.control} />
-      <ControlButton icon="previous" label="Previous" disabled={!isHost} onPress={onPrevious} />
+      <ControlButton icon="previous" label="Previous" disabled={!canControl} onPress={onPrevious} />
       <ControlButton
         icon={playing ? 'pause' : 'play'}
         label={playing ? 'Pause' : 'Play'}
         big
-        disabled={!isHost}
+        disabled={!canControl}
         onPress={onTogglePlay}
       />
-      <ControlButton icon="skip" label="Skip" disabled={!isHost} onPress={onSkip} />
+      <ControlButton icon="skip" label="Skip" disabled={!canControl} onPress={onSkip} />
       <ControlButton
         icon="repeat"
         label="Repeat"
         accessibilityLabel="Repeat this song"
         active={repeat}
-        disabled={!isHost}
+        disabled={!canControl}
         onPress={onToggleRepeat}
       />
     </View>
@@ -182,16 +184,14 @@ function ControlButton({
 }
 
 /** Who's in the room, plus host chip or invite chip. */
-export function RoomStrip({ room, isHost }: { room: MockRoom; isHost: boolean }) {
+export function RoomStrip({ room, isHost }: { room: LiveRoom; isHost: boolean }) {
   const host = room.people.find((p) => p.isHost);
   const alone = room.people.length <= 1 || room.nowPlaying === null;
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel="People in this room"
-      onPress={() =>
-        router.push({ pathname: '/room/[code]/listeners', params: { code: room.code } })
-      }
+      onPress={() => router.push({ pathname: '/room/[code]/listeners', params: roomParams(room) })}
     >
       <Panel style={styles.strip}>
         {alone ? (
@@ -218,12 +218,12 @@ export function RoomStrip({ room, isHost }: { room: MockRoom; isHost: boolean })
   );
 }
 
-/** The host's queue actions. Listeners get none. */
+/** Queue actions, for whoever the room's control rule lets in. */
 export type QueueControls = Pick<RoomHandle, 'moveUp' | 'moveDown' | 'remove'>;
 
 /**
- * "Up next" list (default layout and the queue sheet). The host taps a song
- * to move it up or down, or remove it. Buttons stand in for dragging the
+ * "Up next" list (default layout and the queue sheet). With `controls`, a tap
+ * on a song moves it up or down, or removes it. Buttons stand in for dragging the
  * grip until a gesture library is chosen (ARCHITECTURE.md, open decision 4).
  */
 export function QueueList({ room, controls }: { room: LiveRoom; controls?: QueueControls }) {
@@ -297,8 +297,33 @@ export function QueueList({ room, controls }: { room: LiveRoom; controls?: Queue
   );
 }
 
+/**
+ * The Add a song button at the foot of the room and Up next. Disabled, with
+ * the reason under it, when the room's add-songs rule leaves you out.
+ */
+export function AddSongFooter({
+  room,
+  canAdd,
+  onPress,
+}: {
+  room: LiveRoom;
+  canAdd: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <>
+      <Button block icon="plus" label="Add a song" disabled={!canAdd} onPress={onPress} />
+      {canAdd ? null : (
+        <Text variant="caption" color="text3">
+          {cantAddNote(room.rules.addSongs)}
+        </Text>
+      )}
+    </>
+  );
+}
+
 /** Expanded layout: bar that opens the queue sheet, plus the add button. */
-export function UpNextPeek({ room }: { room: LiveRoom }) {
+export function UpNextPeek({ room, canAdd }: { room: LiveRoom; canAdd: boolean }) {
   const { colors } = useTheme();
   const next = room.queue[0];
   return (
@@ -329,6 +354,8 @@ export function UpNextPeek({ room }: { room: LiveRoom }) {
         icon="plus"
         kind="accent"
         accessibilityLabel="Add a song"
+        accessibilityHint={canAdd ? undefined : cantAddNote(room.rules.addSongs)}
+        disabled={!canAdd}
         onPress={() => router.push({ pathname: '/room/[code]/add-song', params: roomParams(room) })}
       />
     </View>

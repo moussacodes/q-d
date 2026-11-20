@@ -16,15 +16,18 @@ import {
 } from '@/components';
 import { useTheme } from '@/design';
 import { providerNames } from '@/domain/music-provider';
+import { defaultRoomRules } from '@/domain/room-rules';
 import { useProviderConnections } from '@/features/connections/ProviderConnections';
-import { useMockSession } from '@/features/session/MockSession';
+import { RoomRulesEditor } from '@/features/room/RoomRules';
+import { useStartRoom } from '@/features/room/useRoom';
 import { ServicesSection } from '@/features/settings/ServicesSection';
 import { mockRooms } from '@/test/fixtures/mock-data';
 
 /**
- * 2.4 Start a room. Demo rules are fixed (plan.md §2): everyone adds songs,
- * only the host controls playback and the queue. "Chosen people" and
- * ask-before-join are post-demo and intentionally absent.
+ * 2.4 Start a room. The host sets who adds songs and who plays, skips,
+ * reorders and removes: Everyone, Chosen people or Only you
+ * (PRODUCT_SPEC.md §4). Nobody has joined yet, so chosen people are picked
+ * later in Listeners. Ask-before-join is post-demo and intentionally absent.
  *
  * Hosting is the one place a music service is required, because the host's
  * phone plays the queue. Without one connected, this screen asks for it.
@@ -32,15 +35,16 @@ import { mockRooms } from '@/test/fixtures/mock-data';
 export default function CreateRoom() {
   useScreenPalette();
   const { colors } = useTheme();
-  const { startRoom } = useMockSession();
+  const startRoom = useStartRoom();
   const { connected, playsThrough, choose } = useProviderConnections();
   const [name, setName] = useState('Sunday Slow Burn');
+  const [rules, setRules] = useState(defaultRoomRules);
   const room = mockRooms[0];
   const other = connected.find((provider) => provider !== playsThrough);
 
   const start = () => {
     if (!playsThrough) return;
-    startRoom(room.code, { name: name.trim(), playsThrough });
+    startRoom(room.code, { name: name.trim(), playsThrough, rules });
     router.replace({ pathname: '/room/[code]', params: { code: room.code } });
   };
 
@@ -67,11 +71,11 @@ export default function CreateRoom() {
 
       <View style={styles.group}>
         <SectionLabel>Room rules</SectionLabel>
-        <Panel>
-          <Rule label="Add songs" value="Everyone" />
-          <View style={[styles.divider, { backgroundColor: colors.stroke }]} />
-          <Rule label="Play, skip, reorder, remove" value="Only you" />
-        </Panel>
+        <RoomRulesEditor
+          rules={rules}
+          onChange={setRules}
+          chosenHint="Pick who in Listeners once people join. You can change these rules there too."
+        />
       </View>
 
       <View style={styles.group}>
@@ -115,23 +119,9 @@ export default function CreateRoom() {
   );
 }
 
-function Rule({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.row}>
-      <Text variant="label" style={styles.flex}>
-        {label}
-      </Text>
-      <Text variant="label" color="text2">
-        {value}
-      </Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   flex: { flex: 1, gap: 2 },
   group: { gap: 10 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   notice: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
-  divider: { height: 1 },
 });
