@@ -1,23 +1,26 @@
+import { defaultRoomRules, type RoomRules } from '@/domain/room-rules';
 import { findRoom, mockQueue, type MockRoom, type MockTrack } from '@/providers/mock/data';
 
 /**
- * Mock mode's stand-in for the room's rows in Postgres: what's playing and
- * what's next. Its actions follow the queue RPCs in docs/API_CONTRACTS.md
- * (`enqueue_recording`, `reorder_queue`, `remove_queue_entry`, `advance_queue`),
- * so the screens call the same operations the real backend will offer. The
- * Supabase cards replace it; the server, not this store, will check who may
- * do what.
+ * Mock mode's stand-in for the room's rows in Postgres: what's playing,
+ * what's next, and the room's rules. Its actions follow the RPCs in
+ * docs/API_CONTRACTS.md (`enqueue_recording`, `reorder_queue`,
+ * `remove_queue_entry`, `advance_queue`, `update_room_rules`), so the screens
+ * call the same operations the real backend will offer. The Supabase cards
+ * replace it; the server, not this store, will check who may do what.
  */
 
 /** A song in a room's queue. Entries have their own id, so one song can be queued twice. */
 export type RoomEntry = MockTrack & { entryId: string };
 
 /** The parts of a room that change while it plays. */
-export type RoomQueue = {
+export type RoomState = {
   nowPlaying: RoomEntry | null;
   queue: RoomEntry[];
   /** Where the host's player starts the now-playing song. */
   startAtMs: number;
+  /** Who adds songs and who controls the music. */
+  rules: RoomRules;
 };
 
 /**
@@ -59,7 +62,7 @@ export function previewRoom(room: MockRoom, view?: RoomView): MockRoom {
   }
 }
 
-function seed(ref: RoomRef): RoomQueue {
+function seed(ref: RoomRef): RoomState {
   const room = previewRoom(findRoom(ref.code), ref.view);
   const key = roomKey(ref);
   const entry = (track: MockTrack): RoomEntry => ({ ...track, entryId: `${key}/${track.id}` });
@@ -67,13 +70,14 @@ function seed(ref: RoomRef): RoomQueue {
     nowPlaying: room.nowPlaying ? entry(room.nowPlaying) : null,
     queue: room.queue.map(entry),
     startAtMs: room.nowPlaying ? MOCK_START_MS : 0,
+    rules: defaultRoomRules,
   };
 }
 
 export type RoomStore = ReturnType<typeof createRoomStore>;
 
 export function createRoomStore() {
-  const rooms = new Map<string, RoomQueue>();
+  const rooms = new Map<string, RoomState>();
   const listeners = new Set<() => void>();
   let added = 0;
 
@@ -81,7 +85,7 @@ export function createRoomStore() {
    * The room's current state. A room nobody has touched yet starts from the
    * sample data; that's deterministic, so filling it in on first read is safe.
    */
-  const get = (ref: RoomRef): RoomQueue => {
+  const get = (ref: RoomRef): RoomState => {
     const key = roomKey(ref);
     let room = rooms.get(key);
     if (!room) {
@@ -91,7 +95,7 @@ export function createRoomStore() {
     return room;
   };
 
-  const update = (ref: RoomRef, next: RoomQueue) => {
+  const update = (ref: RoomRef, next: RoomState) => {
     rooms.set(roomKey(ref), next);
     listeners.forEach((listener) => listener());
   };
@@ -124,7 +128,7 @@ export function createRoomStore() {
       added += 1;
       const entry: RoomEntry = { ...track, addedBy, entryId: `${roomKey(ref)}/added-${added}` };
       if (!room.nowPlaying) {
-        update(ref, { nowPlaying: entry, queue: room.queue, startAtMs: 0 });
+        update(ref, { ...room, nowPlaying: entry, startAtMs: 0 });
         return {
           ok: true,
           entryId: entry.entryId,
@@ -169,8 +173,16 @@ export function createRoomStore() {
       const room = get(ref);
       if (room.nowPlaying?.entryId !== fromEntryId) return false;
       const [next = null, ...rest] = room.queue;
-      update(ref, { nowPlaying: next, queue: rest, startAtMs: 0 });
+      update(ref, { ...room, nowPlaying: next, queue: rest, startAtMs: 0 });
       return true;
+    },
+
+    /**
+     * `update_room_rules`: the host changes who adds songs and who controls
+     * the music. `create_room` sets them too, from Start a room.
+     */
+    setRules(ref: RoomRef, rules: RoomRules) {
+      update(ref, { ...get(ref), rules });
     },
   };
 }

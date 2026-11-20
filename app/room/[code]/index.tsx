@@ -18,6 +18,7 @@ import { useTheme } from '@/design';
 import { otherProvider, providerNames } from '@/domain/music-provider';
 import { roomPalette } from '@/features/playback/palette';
 import {
+  AddSongFooter,
   Controls,
   QueueList,
   RoomStrip,
@@ -34,7 +35,7 @@ import { roomParams, useRoom, type RoomView } from '@/features/room/useRoom';
  */
 export default function Room() {
   const params = useLocalSearchParams<{ code: string; view?: RoomView }>();
-  const { room, playback, isHost, skip, moveUp, moveDown, remove } = useRoom(
+  const { room, playback, isHost, canAdd, canControl, skip, moveUp, moveDown, remove } = useRoom(
     params.code,
     params.view,
   );
@@ -71,9 +72,9 @@ export default function Room() {
   );
 
   const footer = expanded ? (
-    <UpNextPeek room={room} />
+    <UpNextPeek room={room} canAdd={canAdd} />
   ) : (
-    <Button block icon="plus" label="Add a song" onPress={() => openSheet('add-song')} />
+    <AddSongFooter room={room} canAdd={canAdd} onPress={() => openSheet('add-song')} />
   );
 
   return (
@@ -109,7 +110,9 @@ export default function Room() {
         <View style={styles.gap6}>
           <Text variant="display">Nothing playing yet</Text>
           <Text variant="footnote" color="text2">
-            Add a song to get the room going. It plays on the host’s phone.
+            {canAdd
+              ? 'Add a song to get the room going. It plays on the host’s phone.'
+              : 'Waiting for the first song. It plays on the host’s phone.'}
           </Text>
         </View>
       )}
@@ -137,7 +140,7 @@ export default function Room() {
         <>
           <Timeline positionMs={playback.positionMs} durationMs={playback.durationMs} />
           <Controls
-            isHost={isHost}
+            canControl={canControl}
             playing={playback.playing}
             onTogglePlay={playback.togglePlay}
             onSkip={skip}
@@ -151,12 +154,15 @@ export default function Room() {
           <View style={styles.gap6}>
             <SectionLabel right={songCount(room.queue.length)}>Up next</SectionLabel>
             {room.queue.length ? (
-              <QueueList room={room} controls={isHost ? { moveUp, moveDown, remove } : undefined} />
+              <QueueList
+                room={room}
+                controls={canControl ? { moveUp, moveDown, remove } : undefined}
+              />
             ) : (
               <View style={[styles.emptyQueue, { borderColor: colors.strokeStrong }]}>
                 <Text variant="bodyStrong">The queue is empty</Text>
                 <Text variant="caption" color="text2">
-                  Songs anyone adds show up here, in order.
+                  Songs people add show up here, in order.
                 </Text>
               </View>
             )}

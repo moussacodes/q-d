@@ -93,7 +93,6 @@ const mockDataImporters = [
   'app/join.tsx',
   'app/onboarding/name.tsx',
   'app/room/[[]code]/invite.tsx',
-  'app/room/[[]code]/listeners.tsx',
 ];
 
 const testFiles = ['**/*.test.ts', '**/*.test.tsx', '__tests__/**', 'src/test/**'];

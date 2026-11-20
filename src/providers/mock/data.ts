@@ -50,6 +50,8 @@ export type MockRoom = {
 };
 
 export const mockUser = {
+  /** Your entry in each room's `people`. */
+  id: 'baron',
   name: 'Baron',
   email: 'baron@example.com',
   color: '#f2a27c',
@@ -66,6 +68,16 @@ const people: MockPerson[] = [
   { id: 'theo', name: 'Theo', color: '#e88fb4' },
   { id: 'sam', name: 'Sam', color: '#8fe0b8' },
 ];
+
+/** Some of the sample people, in a room `hostId` hosts through `provider`. */
+const hostedBy = (hostId: string, provider: MusicProvider, ids: string[]): MockPerson[] =>
+  people
+    .filter((p) => ids.includes(p.id))
+    .map((p) => ({
+      ...p,
+      isHost: p.id === hostId,
+      provider: p.id === hostId ? provider : undefined,
+    }));
 
 const track = (t: Omit<MockTrack, 'artworkColor'> & { artworkColor?: string }): MockTrack => ({
   artworkColor: '#c41e2a', // Figma "Son of Spergy" hue
@@ -169,11 +181,11 @@ export const mockRooms: MockRoom[] = [
     name: 'Kitchen Disco',
     hostName: 'Jules',
     youHost: false,
-    people: people.map((p) => ({
-      ...p,
-      isHost: p.id === 'jules',
-      provider: p.id === 'jules' ? 'spotify' : undefined,
-    })),
+    people: hostedBy(
+      'jules',
+      'spotify',
+      people.map((p) => p.id),
+    ),
     nowPlaying: track({
       id: 'kd',
       title: '175 Months',
@@ -192,7 +204,7 @@ export const mockRooms: MockRoom[] = [
     name: 'Late Drive Home',
     hostName: 'Priya',
     youHost: false,
-    people: people.slice(0, 3),
+    people: hostedBy('priya', 'apple_music', ['baron', 'maya', 'priya']),
     nowPlaying: null,
     queue: [],
     lastActive: 'Last week',
@@ -203,7 +215,7 @@ export const mockRooms: MockRoom[] = [
     name: 'Study Hall',
     hostName: 'Theo',
     youHost: false,
-    people: people.slice(0, 4),
+    people: hostedBy('theo', 'apple_music', ['baron', 'maya', 'jules', 'theo']),
     nowPlaying: null,
     queue: [],
     lastActive: 'Oct 12',

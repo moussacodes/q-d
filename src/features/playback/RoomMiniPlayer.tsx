@@ -7,10 +7,18 @@ import type { MockRoom } from '@/providers/mock/data';
 import type { Playback } from './usePlayback';
 
 /**
- * The mini player for the room you're in (Home and Settings). Only the host
- * can pause, because only the host's phone plays in aux mode.
+ * The mini player for the room you're in (Home and Settings). Its pause
+ * button follows the room's control rule, like the room screen's controls.
  */
-export function RoomMiniPlayer({ room, playback }: { room: MockRoom; playback: Playback }) {
+export function RoomMiniPlayer({
+  room,
+  playback,
+  canControl,
+}: {
+  room: MockRoom;
+  playback: Playback;
+  canControl: boolean;
+}) {
   const track = room.nowPlaying;
   if (!track) {
     return null;
@@ -23,7 +31,7 @@ export function RoomMiniPlayer({ room, playback }: { room: MockRoom; playback: P
         playing={playback.playing}
         progress={playback.progress}
         onPress={() => router.push({ pathname: '/room/[code]', params: { code: room.code } })}
-        onTogglePlay={room.youHost ? playback.togglePlay : undefined}
+        onTogglePlay={canControl ? playback.togglePlay : undefined}
       />
     </View>
   );

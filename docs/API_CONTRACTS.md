@@ -37,6 +37,7 @@ Why it's shaped this way: [ARCHITECTURE.md § 4.10](ARCHITECTURE.md#410-client-v
 | `room_ended` | The room has ended |
 | `not_member` | The caller isn't in the room |
 | `not_host` | Only the host can do this |
+| `not_allowed` | The room's rules don't let the caller do this ([PRODUCT_SPEC.md §4](PRODUCT_SPEC.md#who-can-do-what)) |
 | `room_full` | 15 signed-in participants already |
 | `code_invalid` | Wrong or expired room code. Both cases return the same error, so codes can't be probed. |
 | `invite_invalid` | Wrong, expired or revoked QR invite token |
@@ -57,8 +58,8 @@ Why it's shaped this way: [ARCHITECTURE.md § 4.10](ARCHITECTURE.md#410-client-v
 #### `create_room`
 
 - **Caller:** any signed-in user with a finished profile and a connected service (checked against `provider_connections`).
-- **Input:** `name text`, `playback_provider 'apple_music' | 'spotify'`, `idempotency_key uuid`
-- **Effect:** creates a room in `aux` mode with the default "everyone adds" rule. The caller becomes host and the first member. Generates a unique six-character code with an expiry.
+- **Input:** `name text`, `playback_provider 'apple_music' | 'spotify'`, `add_songs room_audience = 'everyone'`, `control room_audience = 'host'`, `idempotency_key uuid`. `room_audience` is `'everyone' | 'chosen' | 'host'`.
+- **Effect:** creates a room in `aux` mode with the rules chosen on Start a room. Nobody is chosen yet. The caller becomes host and the first member. Generates a unique six-character code with an expiry.
 - **Returns:** `{ room_id, code, code_expires_at }`
 - **Errors:** `profile_incomplete`, `provider_required`
 - **Note:** `mode` is always `aux`. A `sync` room needs the `sync` flag and fails with `feature_disabled`.
@@ -71,6 +72,13 @@ Why it's shaped this way: [ARCHITECTURE.md § 4.10](ARCHITECTURE.md#410-client-v
 - **Effect:** adds the caller as a member. If they're already a member, it succeeds without a change.
 - **Returns:** `{ room_id }`
 - **Errors:** `code_invalid`, `rate_limited`, `room_full`, `room_ended`, `profile_incomplete`
+
+#### `update_room_rules` (Added)
+
+- **Caller:** host. The host changes the room rules in Listeners.
+- **Input:** `room_id uuid`, `add_songs room_audience`, `control room_audience`, `add_songs_chosen uuid[]`, `control_chosen uuid[]`, `idempotency_key uuid`. The chosen lists are user ids and are kept even while their rule isn't `chosen`.
+- **Effect:** replaces the room's rules. Realtime tells the other phones to refetch, so their controls follow the new rules straight away.
+- **Errors:** `not_host`, `not_member` (a chosen id isn't in the room)
 
 #### `create_room_invite` (Added)
 
@@ -101,7 +109,7 @@ Why it's shaped this way: [ARCHITECTURE.md § 4.10](ARCHITECTURE.md#410-client-v
 
 #### `enqueue_recording`
 
-- **Caller:** any member (the demo rule is "everyone adds").
+- **Caller:** any member the room's add-songs rule allows (`not_allowed` otherwise). The default is everyone.
 - **Input:** `room_id uuid`, `recording_id uuid`, `allow_duplicate boolean = false`, `idempotency_key uuid`
 - **Effect:** inserts a queue entry at the end, with a position the server assigns while holding a lock on the room's queue.
 - **Returns:** `{ entry_id, position, queue_length }`. The app uses `queue_length` for "Rain Down added · 8th in line".
@@ -111,7 +119,7 @@ Why it's shaped this way: [ARCHITECTURE.md § 4.10](ARCHITECTURE.md#410-client-v
 
 #### `enqueue_batch` (post-demo, `playlist import` flag)
 
-- **Caller:** anyone allowed to add songs.
+- **Caller:** any member the room's add-songs rule allows.
 - **Input:** `room_id uuid`, `batch_id uuid`, `recording_ids uuid[]` (at most 50, in playlist order), `idempotency_key uuid`
 - **Effect:** adds the entries in order under one `batch_id`. Only one import runs per room at a time.
 - **Returns:** `{ batch_id, added, skipped }`
@@ -125,15 +133,15 @@ Why it's shaped this way: [ARCHITECTURE.md § 4.10](ARCHITECTURE.md#410-client-v
 
 #### `reorder_queue`
 
-- **Caller:** host.
+- **Caller:** any member the room's control rule allows. The default is the host only.
 - **Input:** `room_id uuid`, `entry_id uuid`, `after_entry_id uuid | null` (`null` moves it to the top), `idempotency_key uuid`
-- **Errors:** `entry_not_found`, `not_host`
+- **Errors:** `entry_not_found`, `not_allowed`
 
 #### `remove_queue_entry`
 
-- **Caller:** host. **Proposed (Add a song card):** also the member who added the entry, for the Undo on the "added" toast, while the entry is still queued. The RPC contracts card confirms or drops it.
+- **Caller:** any member the room's control rule allows. **Proposed (Add a song card):** also the member who added the entry, for the Undo on the "added" toast, while the entry is still queued. The RPC contracts card confirms or drops it.
 - **Input:** `room_id uuid`, `entry_id uuid`, `idempotency_key uuid`
-- **Errors:** `entry_not_found`, `not_host`
+- **Errors:** `entry_not_found`, `not_allowed`
 
 ### Playback
 
@@ -146,11 +154,20 @@ The host's device owns the player, so it reports what the player is doing.
 - **Effect:** updates `playback_states` and stamps `reported_at` with the server time. Listeners estimate progress as `position_ms + (now − reported_at)` while the status is `playing`.
 - **Note:** `autoplay` covers the case where the queue ended and the provider keeps playing on its own. The app labels it "Autoplay by Apple Music/Spotify".
 
+#### `request_playback` (Added)
+
+Play and pause from a phone that isn't the host's. Only the host's phone plays in `aux`, so it carries the request out.
+
+- **Caller:** any member the room's control rule allows.
+- **Input:** `room_id uuid`, `action 'play' | 'pause'`, `idempotency_key uuid`
+- **Effect:** records the request. The host's phone gets it over Realtime, plays or pauses, and reports the result with `report_playback_state`.
+- **Errors:** `not_allowed`, `room_ended`
+
 #### `advance_queue` (Added)
 
 Moves the room to the next song when the current one ends, is skipped, or isn't available.
 
-- **Caller:** host.
+- **Caller:** the host's phone for `ended` and `unavailable`. For `skipped`, any member the room's control rule allows.
 - **Input:** `room_id uuid`, `from_entry_id uuid`, `reason 'ended' | 'skipped' | 'unavailable'`, `idempotency_key uuid`
 - **Effect:** marks `from_entry_id` played and returns the next entry. If `from_entry_id` isn't the current entry anymore, it fails with `stale_state`, so a double tap can't skip two songs.
 - **Returns:** `{ next_entry_id | null }`
