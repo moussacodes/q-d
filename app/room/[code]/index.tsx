@@ -46,6 +46,7 @@ export default function Room() {
   const { colors } = useTheme();
   const { width } = useWindowDimensions();
   const [expanded, setExpanded] = useState(false);
+  const [repeat, setRepeat] = useState(false);
   const coverSize = expanded ? width - 40 : Math.min(200, width * 0.52);
 
   const openSheet = (sheet: 'add-song' | 'invite' | 'listeners' | 'queue') =>
@@ -139,8 +140,11 @@ export default function Room() {
           <Controls
             isHost={isHost}
             playing={playback.playing}
+            repeat={repeat}
             onTogglePlay={playback.togglePlay}
             onSkip={skip}
+            onPrevious={() => playback.seek(0)}
+            onToggleRepeat={() => setRepeat((on) => !on)}
           />
         </>
       ) : null}

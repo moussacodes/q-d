@@ -86,21 +86,32 @@ export function Timeline({ positionMs, durationMs }: { positionMs: number; durat
 /**
  * Host playback controls. Aux mode: only the host's phone plays, so there is
  * no "Resync". Listeners see the controls disabled.
+ *
+ * Five equal slots keep Play on the screen's center line: the empty first
+ * slot balances Repeat in the last one.
  */
 export function Controls({
   isHost,
   playing,
+  repeat,
   onTogglePlay,
   onSkip,
+  onPrevious,
+  onToggleRepeat,
 }: {
   isHost: boolean;
   playing: boolean;
+  /** Repeat the current song when it ends. */
+  repeat: boolean;
   onTogglePlay: () => void;
   onSkip: () => void;
+  onPrevious?: () => void;
+  onToggleRepeat?: () => void;
 }) {
-  const { colors } = useTheme();
   return (
     <View style={[styles.controls, !isHost && styles.disabled]}>
+      <View style={styles.control} />
+      <ControlButton icon="previous" label="Previous" disabled={!isHost} onPress={onPrevious} />
       <ControlButton
         icon={playing ? 'pause' : 'play'}
         label={playing ? 'Pause' : 'Play'}
@@ -108,12 +119,14 @@ export function Controls({
         disabled={!isHost}
         onPress={onTogglePlay}
       />
+      <ControlButton icon="skip" label="Skip" disabled={!isHost} onPress={onSkip} />
       <ControlButton
-        icon="skip"
-        label="Skip"
+        icon="repeat"
+        label="Repeat"
+        accessibilityLabel="Repeat this song"
+        active={repeat}
         disabled={!isHost}
-        color={colors.text}
-        onPress={onSkip}
+        onPress={onToggleRepeat}
       />
     </View>
   );
@@ -122,36 +135,46 @@ export function Controls({
 function ControlButton({
   icon,
   label,
+  accessibilityLabel,
   big,
+  active,
   disabled,
-  color,
   onPress,
 }: {
   icon: IconName;
   label: string;
+  accessibilityLabel?: string;
   big?: boolean;
+  /** Toggle buttons: filled with the accent while on. */
+  active?: boolean;
   disabled?: boolean;
-  color?: string;
   onPress?: () => void;
 }) {
   const { colors } = useTheme();
+  const filled = big || active;
+  const size = big ? 64 : 44;
   return (
     <View style={styles.control}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={label}
-        disabled={disabled}
-        onPress={onPress}
-        style={[
-          styles.controlButton,
-          big
-            ? { width: 64, height: 64, backgroundColor: colors.accent }
-            : { width: 44, height: 44, backgroundColor: colors.surfaceRaised },
-        ]}
-      >
-        <Icon name={icon} size={big ? 26 : 20} color={big ? colors.onAccent : color} />
-      </Pressable>
-      <Text variant="caption" color="text3">
+      <View style={styles.controlSlot}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={accessibilityLabel ?? label}
+          accessibilityState={active === undefined ? undefined : { selected: active }}
+          disabled={disabled}
+          onPress={onPress}
+          style={[
+            styles.controlButton,
+            {
+              width: size,
+              height: size,
+              backgroundColor: filled ? colors.accent : colors.surfaceRaised,
+            },
+          ]}
+        >
+          <Icon name={icon} size={big ? 26 : 20} color={filled ? colors.onAccent : colors.text} />
+        </Pressable>
+      </View>
+      <Text variant="caption" color={active ? 'text' : 'text3'}>
         {label}
       </Text>
     </View>
@@ -321,9 +344,11 @@ const styles = StyleSheet.create({
   fill: { height: 4, borderRadius: 2 },
   knob: { position: 'absolute', width: 12, height: 12, borderRadius: 6, marginLeft: -6 },
   times: { flexDirection: 'row', justifyContent: 'space-between' },
-  controls: { flexDirection: 'row', justifyContent: 'center', alignItems: 'flex-start', gap: 40 },
+  controls: { flexDirection: 'row', alignSelf: 'center', width: '100%', maxWidth: 360 },
   disabled: { opacity: 0.45 },
-  control: { alignItems: 'center', gap: 6 },
+  control: { flex: 1, alignItems: 'center', gap: 6 },
+  /** As tall as the Play button, so every button shares its center line. */
+  controlSlot: { height: 64, justifyContent: 'center' },
   controlButton: { borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
   rowActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingLeft: 54 },
   strip: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10 },

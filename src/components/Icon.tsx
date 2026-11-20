@@ -17,6 +17,8 @@ const icons = {
   pause: require('../../assets/icons/pause.svg'),
   play: require('../../assets/icons/play.svg'),
   skip: require('../../assets/icons/skip.svg'),
+  previous: require('../../assets/icons/previous.svg'),
+  repeat: require('../../assets/icons/repeat.svg'),
   maximize: require('../../assets/icons/maximize.svg'),
   minimize: require('../../assets/icons/minimize.svg'),
   settings: require('../../assets/icons/settings.svg'),
