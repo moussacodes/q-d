@@ -337,7 +337,8 @@ export function UpNextPeek({ room }: { room: LiveRoom }) {
 
 const styles = StyleSheet.create({
   flex: { flex: 1, gap: 2 },
-  track: { gap: 6 },
+  // Tight lines, so the expanded cover can be as big as possible.
+  track: { gap: 2 },
   addedBy: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
   timeline: { gap: 6 },
   track2: { height: 4, borderRadius: 2, justifyContent: 'center' },

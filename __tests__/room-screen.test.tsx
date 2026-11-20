@@ -106,6 +106,36 @@ describe('the host', () => {
   });
 });
 
+describe('the expanded cover', () => {
+  it('is the only layout while a song plays, with the whole queue a scroll away', async () => {
+    await signIn();
+    await openRoom({ code: 'QD-7K4F9X' });
+    expect(await screen.findByText('Up next · 7 songs')).toBeVisible();
+    // No resize button: the cover can't be made smaller.
+    expect(screen.queryByLabelText('Smaller cover')).toBeNull();
+    expect(screen.queryByLabelText('Bigger cover')).toBeNull();
+    expect(screen.getByLabelText('Skip')).toBeVisible();
+    // Below the controls: every queued song.
+    expect(screen.getByText('7 songs')).toBeVisible();
+    expect(queueOrder()).toHaveLength(7);
+    // Who's in the room is in the Up next sheet.
+    expect(screen.queryByLabelText('People in this room')).toBeNull();
+
+    // The host still reorders from here.
+    await press('Reorder or remove Always');
+    await press('Move Always up');
+    expect(queueOrder().slice(0, 2)).toEqual(['Always', 'Lovers Rock']);
+  });
+
+  it('isn’t shown when nothing is playing', async () => {
+    await signIn();
+    await openRoom({ code: 'QD-7K4F9X', view: 'empty' });
+    expect(await screen.findByText('Nothing playing yet')).toBeVisible();
+    expect(screen.getByLabelText('People in this room')).toBeVisible();
+    expect(screen.queryByText(/^Up next · /)).toBeNull();
+  });
+});
+
 describe('listeners', () => {
   it('can’t skip, reorder or remove', async () => {
     await signIn();

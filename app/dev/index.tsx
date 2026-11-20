@@ -31,7 +31,7 @@ const sections: { title: string; links: { label: string; href: Href; enter?: boo
   {
     title: '3 · Room',
     links: [
-      { label: '3.1 Room · host', href: { pathname: '/room/[code]', params: { code: room } } },
+      { label: '3.2 Room · host', href: { pathname: '/room/[code]', params: { code: room } } },
       { label: '3.3 Up next', href: { pathname: '/room/[code]/queue', params: { code: room } } },
       {
         label: '3.4 Add a song',
@@ -51,7 +51,7 @@ const sections: { title: string; links: { label: string; href: Href; enter?: boo
     title: '4 · Room states',
     links: [
       {
-        label: '3.1 Room · plays through Apple Music (artwork colors)',
+        label: '3.2 Room · plays through Apple Music (artwork colors)',
         href: { pathname: '/room/[code]', params: { code: room, view: 'apple' } },
       },
       {
@@ -101,8 +101,7 @@ export default function ScreenIndex() {
     <Screen header={<ScreenHeader title="Screens" />}>
       <Text variant="footnote" color="text2">
         Every screen shell, numbered like the Figma page. Mock data only. Opening a screen switches
-        the mock sign-in state to the one it needs. Tip: 3.2 Expanded is the resize button on the
-        room cover.
+        the mock sign-in state to the one it needs.
       </Text>
       {sections.map((section) => (
         <View key={section.title} style={styles.section}>

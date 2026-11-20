@@ -8,8 +8,13 @@ import { idlePalette, neutral, useTheme, type NowPlayingPalette } from '@/design
 import { Backdrop } from './Backdrop';
 import { IconButton } from './controls';
 import { Text } from './Text';
+import type { HeightProbe } from './useMeasuredHeight';
 
 export const SCREEN_PADDING = 20;
+/** Space above a Screen's first child, under the header. */
+export const SCREEN_TOP_PADDING = 16;
+/** Space between a Screen's children. */
+export const SCREEN_GAP = 24;
 
 /** Applies a Now playing palette while the screen is focused. */
 export function useScreenPalette(palette: NowPlayingPalette = idlePalette) {
@@ -28,10 +33,19 @@ type ScreenProps = {
   header?: ReactNode;
   scroll?: boolean;
   contentStyle?: ViewStyle;
+  /** Measures the area between header and footer (from `useMeasuredHeight`). */
+  viewport?: HeightProbe;
 };
 
 /** Full-screen page: backdrop glow, safe areas, header, scrolling content, footer. */
-export function Screen({ children, footer, header, scroll = true, contentStyle }: ScreenProps) {
+export function Screen({
+  children,
+  footer,
+  header,
+  scroll = true,
+  contentStyle,
+  viewport,
+}: ScreenProps) {
   const insets = useSafeAreaInsets();
   const body = [styles.content, contentStyle];
   return (
@@ -39,15 +53,20 @@ export function Screen({ children, footer, header, scroll = true, contentStyle }
       <Backdrop />
       <View style={{ paddingTop: insets.top }}>{header}</View>
       {scroll ? (
-        <ScrollView
-          style={styles.flex}
-          contentContainerStyle={[body, { paddingBottom: footer ? 24 : insets.bottom + 24 }]}
-          keyboardShouldPersistTaps="handled"
-        >
-          {children}
-        </ScrollView>
+        // Measured on a plain View: on native a ScrollView ref isn't a host view.
+        <View style={styles.flex} ref={viewport?.target} onLayout={viewport?.onLayout}>
+          <ScrollView
+            style={styles.flex}
+            contentContainerStyle={[body, { paddingBottom: footer ? 24 : insets.bottom + 24 }]}
+            keyboardShouldPersistTaps="handled"
+          >
+            {children}
+          </ScrollView>
+        </View>
       ) : (
-        <View style={[styles.flex, body]}>{children}</View>
+        <View style={[styles.flex, body]} ref={viewport?.target} onLayout={viewport?.onLayout}>
+          {children}
+        </View>
       )}
       {footer ? (
         <View style={[styles.footer, { paddingBottom: insets.bottom + 12 }]}>{footer}</View>
@@ -217,7 +236,7 @@ export function SheetScreen({ children, footer }: { children: ReactNode; footer?
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   screen: { flex: 1 },
-  content: { paddingHorizontal: SCREEN_PADDING, paddingTop: 16, gap: 24 },
+  content: { paddingHorizontal: SCREEN_PADDING, paddingTop: SCREEN_TOP_PADDING, gap: SCREEN_GAP },
   footer: { paddingHorizontal: SCREEN_PADDING, paddingTop: 12, gap: 12, alignItems: 'center' },
   header: {
     height: 56,

@@ -10,13 +10,20 @@ import {
   Logo,
   Panel,
   Screen,
+  SCREEN_GAP,
   SectionLabel,
   Text,
+  useMeasuredHeight,
   useScreenPalette,
 } from '@/components';
 import { useTheme } from '@/design';
 import { otherProvider, providerNames } from '@/domain/music-provider';
 import { roomPalette } from '@/features/playback/palette';
+import {
+  EXPANDED_COVER_GAP,
+  EXPANDED_DECK_GAP,
+  expandedLayout,
+} from '@/features/room/expandedLayout';
 import {
   Controls,
   QueueList,
@@ -29,8 +36,14 @@ import {
 import { roomParams, useRoom, type RoomView } from '@/features/room/useRoom';
 
 /**
- * 3.1 Room (default) and 3.2 (expanded), plus the 4.x states via `?view=`:
- * listener (4.1), empty (4.2) and unavailable (4.3, host side in aux mode).
+ * 3.2 Room (expanded), plus the 4.x states via `?view=`: listener (4.1),
+ * empty (4.2) and unavailable (4.3, host side in aux mode).
+ *
+ * A playing song always gets the expanded cover; there's no smaller-cover
+ * layout. The first page is sized to the screen: the cover shrinks until the
+ * song info and playback controls fit above the Up next bar. Scrolling down
+ * shows the whole queue. With nothing playing there's no cover to expand, so
+ * the room keeps the 3.1 layout: empty cover, people strip and Add a song.
  */
 export default function Room() {
   const params = useLocalSearchParams<{ code: string; view?: RoomView }>();
@@ -45,9 +58,14 @@ export default function Room() {
 
   const { colors } = useTheme();
   const { width } = useWindowDimensions();
-  const [expanded, setExpanded] = useState(false);
+  // Only a playing song has a cover to expand.
+  const expanded = track !== null;
   const [repeat, setRepeat] = useState(false);
-  const coverSize = expanded ? width - 40 : Math.min(200, width * 0.52);
+  // Read before the first paint, so the cover opens at its final size.
+  const viewport = useMeasuredHeight();
+  const { height: below, target: belowTarget, onLayout: onBelowLayout } = useMeasuredHeight(track);
+  const layout = expandedLayout({ width, viewport: viewport.height, below });
+  const coverSize = expanded ? layout.cover : Math.min(200, width * 0.52);
 
   const openSheet = (sheet: 'add-song' | 'invite' | 'listeners' | 'queue') =>
     router.push({ pathname: `/room/[code]/${sheet}`, params: roomParams(room) });
@@ -77,96 +95,100 @@ export default function Room() {
     <Button block icon="plus" label="Add a song" onPress={() => openSheet('add-song')} />
   );
 
-  return (
-    <Screen header={header} footer={footer}>
-      <View style={styles.hero}>
-        {track ? (
-          <View>
-            <Cover size={coverSize} radius={expanded ? 22 : 18} />
-            <View style={styles.resize}>
-              <IconButton
-                kind="glass"
-                icon={expanded ? 'minimize' : 'maximize'}
-                accessibilityLabel={expanded ? 'Smaller cover' : 'Bigger cover'}
-                onPress={() => setExpanded((v) => !v)}
-              />
-            </View>
-          </View>
-        ) : (
-          <View
-            style={[
-              styles.emptyCover,
-              { width: coverSize, height: coverSize, borderColor: colors.strokeStrong },
-            ]}
-          >
-            <Icon name="music" size={32} color={colors.text3} />
-          </View>
-        )}
-      </View>
-
-      {track ? (
-        <TrackInfo track={track} room={room} />
+  const queue = (
+    <View style={styles.gap6}>
+      <SectionLabel right={songCount(room.queue.length)}>Up next</SectionLabel>
+      {room.queue.length ? (
+        <QueueList room={room} controls={isHost ? { moveUp, moveDown, remove } : undefined} />
       ) : (
-        <View style={styles.gap6}>
-          <Text variant="display">Nothing playing yet</Text>
-          <Text variant="footnote" color="text2">
-            Add a song to get the room going. It plays on the host’s phone.
+        <View style={[styles.emptyQueue, { borderColor: colors.strokeStrong }]}>
+          <Text variant="bodyStrong">The queue is empty</Text>
+          <Text variant="caption" color="text2">
+            Songs anyone adds show up here, in order.
           </Text>
         </View>
       )}
+    </View>
+  );
 
-      {missing && isHost ? (
-        <Panel style={[styles.notice, { borderColor: colors.statusWarn }]}>
-          <View style={styles.noticeRow}>
-            <Icon name="alert" size={18} color={colors.statusWarn} />
-            <View style={styles.flex}>
-              <Text variant="bodyStrong">Not on {providerNames[room.playsThrough]}</Text>
-              <Text variant="caption" color="text2">
-                This song isn’t on the service your phone plays through. Skip it, or switch to{' '}
-                {providerNames[otherProvider(room.playsThrough)]} for the next song.
+  return (
+    <Screen header={header} footer={footer} viewport={viewport}>
+      <View style={[styles.page, expanded && { minHeight: layout.page, gap: EXPANDED_COVER_GAP }]}>
+        <View style={[styles.hero, expanded && styles.heroExpanded]}>
+          {track ? (
+            <Cover size={coverSize} radius={22} />
+          ) : (
+            <View
+              style={[
+                styles.emptyCover,
+                { width: coverSize, height: coverSize, borderColor: colors.strokeStrong },
+              ]}
+            >
+              <Icon name="music" size={32} color={colors.text3} />
+            </View>
+          )}
+        </View>
+
+        {/* Measured so the cover leaves room for everything under it. */}
+        <View
+          style={[styles.page, expanded && { gap: EXPANDED_DECK_GAP }]}
+          ref={belowTarget}
+          onLayout={onBelowLayout}
+        >
+          {track ? (
+            <TrackInfo track={track} room={room} />
+          ) : (
+            <View style={styles.gap6}>
+              <Text variant="display">Nothing playing yet</Text>
+              <Text variant="footnote" color="text2">
+                Add a song to get the room going. It plays on the host’s phone.
               </Text>
             </View>
-          </View>
-          <View style={styles.noticeActions}>
-            <Button size="small" label="Skip" accessibilityLabel="Skip this song" onPress={skip} />
-            <Button size="small" kind="secondary" label="Switch for next song" />
-          </View>
-        </Panel>
-      ) : null}
+          )}
 
-      {track ? (
-        <>
-          <Timeline positionMs={playback.positionMs} durationMs={playback.durationMs} />
-          <Controls
-            isHost={isHost}
-            playing={playback.playing}
-            repeat={repeat}
-            onTogglePlay={playback.togglePlay}
-            onSkip={skip}
-            onPrevious={() => playback.seek(0)}
-            onToggleRepeat={() => setRepeat((on) => !on)}
-          />
-        </>
-      ) : null}
-
-      {expanded ? null : (
-        <>
-          <RoomStrip room={room} isHost={isHost} />
-          <View style={styles.gap6}>
-            <SectionLabel right={songCount(room.queue.length)}>Up next</SectionLabel>
-            {room.queue.length ? (
-              <QueueList room={room} controls={isHost ? { moveUp, moveDown, remove } : undefined} />
-            ) : (
-              <View style={[styles.emptyQueue, { borderColor: colors.strokeStrong }]}>
-                <Text variant="bodyStrong">The queue is empty</Text>
-                <Text variant="caption" color="text2">
-                  Songs anyone adds show up here, in order.
-                </Text>
+          {missing && isHost ? (
+            <Panel style={[styles.notice, { borderColor: colors.statusWarn }]}>
+              <View style={styles.noticeRow}>
+                <Icon name="alert" size={18} color={colors.statusWarn} />
+                <View style={styles.flex}>
+                  <Text variant="bodyStrong">Not on {providerNames[room.playsThrough]}</Text>
+                  <Text variant="caption" color="text2">
+                    This song isn’t on the service your phone plays through. Skip it, or switch to{' '}
+                    {providerNames[otherProvider(room.playsThrough)]} for the next song.
+                  </Text>
+                </View>
               </View>
-            )}
-          </View>
-        </>
-      )}
+              <View style={styles.noticeActions}>
+                <Button
+                  size="small"
+                  label="Skip"
+                  accessibilityLabel="Skip this song"
+                  onPress={skip}
+                />
+                <Button size="small" kind="secondary" label="Switch for next song" />
+              </View>
+            </Panel>
+          ) : null}
+
+          {track ? (
+            <>
+              <Timeline positionMs={playback.positionMs} durationMs={playback.durationMs} />
+              <Controls
+                isHost={isHost}
+                playing={playback.playing}
+                repeat={repeat}
+                onTogglePlay={playback.togglePlay}
+                onSkip={skip}
+                onPrevious={() => playback.seek(0)}
+                onToggleRepeat={() => setRepeat((on) => !on)}
+              />
+            </>
+          ) : null}
+        </View>
+      </View>
+
+      {expanded ? null : <RoomStrip room={room} isHost={isHost} />}
+      {queue}
     </Screen>
   );
 }
@@ -174,6 +196,8 @@ export default function Room() {
 const styles = StyleSheet.create({
   flex: { flex: 1, gap: 2 },
   gap6: { gap: 6 },
+  // Same gap as Screen's, so wrapping content in a page doesn't move it.
+  page: { gap: SCREEN_GAP },
   header: {
     height: 56,
     paddingHorizontal: 20,
@@ -183,7 +207,8 @@ const styles = StyleSheet.create({
   },
   headerCenter: { alignItems: 'center', gap: 2 },
   hero: { alignItems: 'center' },
-  resize: { position: 'absolute', right: 10, bottom: 10 },
+  // Any height left on a tall screen goes around the cover.
+  heroExpanded: { flexGrow: 1, justifyContent: 'center' },
   emptyCover: {
     borderRadius: 18,
     borderWidth: 1.5,
