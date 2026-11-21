@@ -1,4 +1,4 @@
-import { router, type Href } from 'expo-router';
+import { type Href } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import {
@@ -14,20 +14,17 @@ import {
   type IconName,
 } from '@/components';
 import { useTheme } from '@/design';
+import { useMockSession } from '@/features/session/MockSession';
 
 /** 1.5 Onboarding step 3: start or join. */
 export default function OnboardingStart() {
   useScreenPalette();
+  const { finishOnboarding } = useMockSession();
   return (
     <Screen
       header={<ScreenHeader center={<Stepper step={3} />} />}
       footer={
-        <Button
-          block
-          kind="ghost"
-          label="I’ll do this later"
-          onPress={() => router.replace('/home')}
-        />
+        <Button block kind="ghost" label="I’ll do this later" onPress={() => finishOnboarding()} />
       }
     >
       <Intro
@@ -65,8 +62,9 @@ function Option({
   href: Href;
 }) {
   const { colors } = useTheme();
+  const { finishOnboarding } = useMockSession();
   return (
-    <Pressable accessibilityRole="button" onPress={() => router.push(href)}>
+    <Pressable accessibilityRole="button" onPress={() => finishOnboarding(href)}>
       <Panel style={styles.option}>
         <View style={[styles.iconCircle, { backgroundColor: colors.surfaceRaised }]}>
           <Icon name={icon} size={20} />

@@ -7,7 +7,7 @@ export default function CreateAccount() {
       title="Create your account."
       body="You’ll pick a name and color next."
       submitLabel="Create account"
-      next="/onboarding/name"
+      mode="create-account"
       switchPrompt="Already have an account?"
       switchLabel="Sign in"
       switchTo="/sign-in"

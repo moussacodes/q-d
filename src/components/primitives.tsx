@@ -5,13 +5,13 @@ import { providerNames, type MusicProvider } from '@/domain/music-provider';
 
 import { Text } from './Text';
 
-/** The q’d wordmark with its accent dot (Figma "Logo"). */
-export function Logo() {
+/** The q’d wordmark with its accent dot (Figma "Logo"). Pass `dot={false}` for the bare wordmark. */
+export function Logo({ dot = true }: { dot?: boolean }) {
   const { colors } = useTheme();
   return (
     <View style={styles.logo} accessibilityRole="header" accessibilityLabel="q’d">
       <Text variant="logo">{"q'd"}</Text>
-      <View style={[styles.logoDot, { backgroundColor: colors.accent }]} />
+      {dot ? <View style={[styles.logoDot, { backgroundColor: colors.accent }]} /> : null}
     </View>
   );
 }

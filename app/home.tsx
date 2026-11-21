@@ -9,14 +9,16 @@ import {
   Icon,
   IconButton,
   Logo,
-  MiniPlayer,
   Panel,
   Screen,
   SectionLabel,
   Text,
   useScreenPalette,
 } from '@/components';
-import { idlePalette, typography, useTheme } from '@/design';
+import { typography, useTheme } from '@/design';
+import { RoomMiniPlayer } from '@/features/playback/RoomMiniPlayer';
+import { roomPalette } from '@/features/playback/palette';
+import { useActiveRoom } from '@/features/room/useRoom';
 import { useMockSession } from '@/features/session/MockSession';
 import { mockRooms, type MockRoom } from '@/test/fixtures/mock-data';
 
@@ -29,8 +31,9 @@ function greeting(date = new Date()) {
 
 /** 2.1 Home (nothing playing) and 2.2 Home (mini player while a room plays). */
 export default function Home() {
-  const { user, activeRoom } = useMockSession();
-  useScreenPalette(activeRoom?.nowPlaying?.palette ?? idlePalette);
+  const { user } = useMockSession();
+  const { room: activeRoom, playback, canControl } = useActiveRoom();
+  useScreenPalette(roomPalette(activeRoom));
   const { colors } = useTheme();
   const [code, setCode] = useState('');
 
@@ -60,15 +63,7 @@ export default function Home() {
       }
       footer={
         activeRoom?.nowPlaying ? (
-          <View style={styles.mini}>
-            <MiniPlayer
-              title={activeRoom.nowPlaying.title}
-              subtitle={`${activeRoom.nowPlaying.artist} · ${activeRoom.name}`}
-              playing
-              progress={0.45}
-              onPress={() => openRoom(activeRoom)}
-            />
-          </View>
+          <RoomMiniPlayer room={activeRoom} playback={playback} canControl={canControl} />
         ) : undefined
       }
     >
@@ -216,5 +211,4 @@ const styles = StyleSheet.create({
   roomRow: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 8 },
   stack: { width: 48, height: 44, justifyContent: 'center' },
   stackBack: { position: 'absolute', right: 0, bottom: 0, opacity: 0.7 },
-  mini: { alignSelf: 'stretch' },
 });

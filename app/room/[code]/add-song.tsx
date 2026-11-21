@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import {
+  Button,
   Chip,
   Cover,
   Icon,
@@ -15,21 +16,88 @@ import {
   TextField,
 } from '@/components';
 import { useTheme } from '@/design';
-import { providerNames } from '@/domain/music-provider';
-import { findRoom, mockSearchResults } from '@/test/fixtures/mock-data';
+import { providerNames, type MusicProvider } from '@/domain/music-provider';
+import { formatDuration } from '@/domain/time';
+import { useRoom, type RoomView } from '@/features/room/useRoom';
+import { useCatalogSearch, type SearchResult } from '@/features/search/useCatalogSearch';
+
+type Filter = 'all' | MusicProvider;
+
+/** 1 → "1st", 2 → "2nd", 11 → "11th". */
+function ordinal(n: number) {
+  const tens = n % 100;
+  if (tens >= 11 && tens <= 13) return `${n}th`;
+  return `${n}${['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'}`;
+}
+
+/** The last song added from this sheet, for the toast. */
+type Added = {
+  entryId: string;
+  trackId: string;
+  title: string;
+  playingNow: boolean;
+  queueLength: number;
+};
 
 /**
  * 3.4 Add a song. Search uses the canonical catalog (plan.md §2); each result
- * says whether it's on the service the host's phone plays through.
+ * says whether it's on the service the host's phone plays through. Anyone
+ * in the room can add, with or without a music service.
  */
 export default function AddSongSheet() {
-  const { code } = useLocalSearchParams<{ code: string }>();
-  const room = findRoom(code);
+  const params = useLocalSearchParams<{ code: string; view?: RoomView }>();
+  const { room, add, undoAdd } = useRoom(params.code, params.view);
   const { colors } = useTheme();
   const [query, setQuery] = useState('daniel caesar');
-  const [filter, setFilter] = useState<'all' | 'spotify' | 'apple_music'>('all');
-  const [added, setAdded] = useState<string | null>(null);
+  const [filter, setFilter] = useState<Filter>('all');
+  const [added, setAdded] = useState<Added | null>(null);
+  /** Songs added from this sheet, for their "Added" chip. */
+  const [addedIds, setAddedIds] = useState<string[]>([]);
+  /** The song waiting for "Add it again?". */
+  const [confirming, setConfirming] = useState<string | null>(null);
   const service = providerNames[room.playsThrough];
+
+  const results = useCatalogSearch(query);
+
+  const shown = filter === 'all' ? results : results.filter((r) => r.availableOn.includes(filter));
+
+  const statusOf = (id: string) => {
+    if (room.nowPlaying?.id === id) return 'playing';
+    if (room.queue.some((entry) => entry.id === id)) {
+      return addedIds.includes(id) ? 'added' : 'queued';
+    }
+    return null;
+  };
+
+  const addSong = (result: SearchResult, allowDuplicate = false) => {
+    const outcome = add(result, allowDuplicate);
+    if (!outcome.ok) {
+      // PRODUCT_SPEC.md §5: ask before adding a song that's already there.
+      setConfirming(result.track.providerTrackId);
+      return;
+    }
+    setConfirming(null);
+    setAdded({
+      entryId: outcome.entryId,
+      trackId: result.track.providerTrackId,
+      title: result.track.title,
+      playingNow: outcome.playingNow,
+      queueLength: outcome.queueLength,
+    });
+    setAddedIds((ids) => [...ids, result.track.providerTrackId]);
+  };
+
+  // Undo only while the song is still waiting in the queue.
+  const canUndo = !!added && room.queue.some((entry) => entry.entryId === added.entryId);
+  const undo = () => {
+    if (!added) return;
+    undoAdd(added.entryId);
+    setAddedIds((ids) => {
+      const at = ids.indexOf(added.trackId);
+      return at < 0 ? ids : [...ids.slice(0, at), ...ids.slice(at + 1)];
+    });
+    setAdded(null);
+  };
 
   return (
     <SheetScreen
@@ -38,13 +106,21 @@ export default function AddSongSheet() {
           <View style={[styles.toast, { backgroundColor: colors.text }]}>
             <Icon name="check" size={16} color={colors.bg} />
             <Text variant="label" color={colors.bg} style={styles.flex}>
-              {added} added · {room.queue.length + 1}th in line
+              {added.title} added ·{' '}
+              {added.playingNow ? 'playing now' : `${ordinal(added.queueLength)} in line`}
             </Text>
-            <Pressable accessibilityRole="button" onPress={() => setAdded(null)} hitSlop={8}>
-              <Text variant="label" color={colors.bg}>
-                Undo
-              </Text>
-            </Pressable>
+            {canUndo ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Undo adding ${added.title}`}
+                onPress={undo}
+                hitSlop={8}
+              >
+                <Text variant="label" color={colors.bg}>
+                  Undo
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
         ) : undefined
       }
@@ -61,46 +137,74 @@ export default function AddSongSheet() {
         onChange={setFilter}
       />
       <Text variant="caption" color="text3">
-        Songs play on {room.hostName === 'Baron' ? 'your' : `${room.hostName}’s`} phone through{' '}
-        {service}.
+        Songs play on {room.youHost ? 'your' : `${room.hostName}’s`} phone through {service}.
       </Text>
       <View style={styles.results}>
         <SectionLabel>Songs</SectionLabel>
-        {mockSearchResults.map((song) => {
-          const status = 'status' in song ? song.status : added === song.title ? 'added' : null;
-          const missing = song.unavailableOn === room.playsThrough;
+        {query.trim() === '' ? (
+          <Text variant="footnote" color="text2">
+            Search by song, artist or album.
+          </Text>
+        ) : shown.length === 0 ? (
+          <Text variant="footnote" color="text2">
+            No songs match “{query.trim()}”.
+          </Text>
+        ) : null}
+        {shown.map((result) => {
+          const { track } = result;
+          const id = track.providerTrackId;
+          const status = statusOf(id);
+          const missing = !result.availableOn.includes(room.playsThrough);
           return (
-            <View key={song.id} style={styles.result}>
-              <Cover size={44} />
-              <View style={styles.flex}>
-                <Text variant="bodyStrong" numberOfLines={1}>
-                  {song.title}
-                </Text>
-                <Text variant="caption" color="text2" numberOfLines={1}>
-                  {song.artist} · {song.album} · {song.duration}
-                </Text>
-                <View style={styles.availability}>
-                  <View
-                    style={[
-                      styles.dot,
-                      { backgroundColor: missing ? colors.statusWarn : colors.statusOk },
-                    ]}
-                  />
-                  <Text variant="caption" color={missing ? 'statusWarn' : 'text3'}>
-                    {missing ? `Not on ${service}` : `On ${service}`}
+            <View key={id}>
+              <View style={styles.result}>
+                <Cover source={track.artworkUrl} size={44} />
+                <View style={styles.flex}>
+                  <Text variant="bodyStrong" numberOfLines={1}>
+                    {track.title}
                   </Text>
+                  <Text variant="caption" color="text2" numberOfLines={1}>
+                    {track.artist} · {track.album} · {formatDuration(track.durationMs)}
+                  </Text>
+                  <View style={styles.availability}>
+                    <View
+                      style={[
+                        styles.dot,
+                        { backgroundColor: missing ? colors.statusWarn : colors.statusOk },
+                      ]}
+                    />
+                    <Text variant="caption" color={missing ? 'statusWarn' : 'text3'}>
+                      {missing ? `Not on ${service}` : `On ${service}`}
+                    </Text>
+                  </View>
                 </View>
-              </View>
-              {status === 'playing' ? <Chip label="Playing" tone="accent" /> : null}
-              {status === 'queued' ? <Chip label="In queue" /> : null}
-              {status === 'added' ? <Chip label="Added" tone="ok" icon="check" /> : null}
-              {status === null ? (
+                {status === 'playing' ? <Chip label="Playing" tone="accent" /> : null}
+                {status === 'queued' ? <Chip label="In queue" /> : null}
+                {status === 'added' ? <Chip label="Added" tone="ok" icon="check" /> : null}
                 <IconButton
                   icon="plus"
-                  accessibilityLabel={`Add ${song.title}`}
-                  disabled={missing}
-                  onPress={() => setAdded(song.title)}
+                  accessibilityLabel={`Add ${track.title}`}
+                  onPress={() => addSong(result)}
                 />
+              </View>
+              {confirming === id ? (
+                <View style={styles.confirm}>
+                  <Text variant="caption" color="text2" style={styles.flex}>
+                    {status === 'playing' ? 'Playing now.' : 'Already in queue.'} Add it again?
+                  </Text>
+                  <Button
+                    size="small"
+                    label="Add again"
+                    accessibilityLabel={`Add ${track.title} again`}
+                    onPress={() => addSong(result, true)}
+                  />
+                  <Button
+                    size="small"
+                    kind="ghost"
+                    label="Cancel"
+                    onPress={() => setConfirming(null)}
+                  />
+                </View>
               ) : null}
             </View>
           );
@@ -116,6 +220,13 @@ const styles = StyleSheet.create({
   result: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8 },
   availability: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   dot: { width: 6, height: 6, borderRadius: 3 },
+  confirm: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingLeft: 56,
+    paddingBottom: 8,
+  },
   toast: {
     alignSelf: 'stretch',
     flexDirection: 'row',

@@ -1,4 +1,4 @@
-import { router, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
@@ -6,7 +6,6 @@ import {
   Avatar,
   Button,
   Icon,
-  MiniPlayer,
   Panel,
   Screen,
   ScreenHeader,
@@ -15,17 +14,32 @@ import {
   Text,
   TextField,
   useScreenPalette,
+  type IconName,
 } from '@/components';
-import { idlePalette } from '@/design';
-import { useMockSession } from '@/features/session/MockSession';
+import { RoomMiniPlayer } from '@/features/playback/RoomMiniPlayer';
+import { roomPalette } from '@/features/playback/palette';
+import { useActiveRoom } from '@/features/room/useRoom';
+import {
+  MAX_NAME_LENGTH,
+  signInMethodNames,
+  useMockSession,
+  type SignInMethod,
+} from '@/features/session/MockSession';
 import { ServicesSection } from '@/features/settings/ServicesSection';
 
 type Tab = 'services' | 'account';
 
+const methodIcons: Record<SignInMethod, IconName> = {
+  apple: 'apple',
+  google: 'google',
+  email: 'mail',
+};
+
 /** 5.1 Settings · Music services and 5.2 Settings · Account. */
 export default function Settings() {
-  const { user, activeRoom, leaveRoom } = useMockSession();
-  useScreenPalette(activeRoom?.nowPlaying?.palette ?? idlePalette);
+  const { user, signOut, saveProfile } = useMockSession();
+  const { room: activeRoom, playback, canControl } = useActiveRoom();
+  useScreenPalette(roomPalette(activeRoom));
   const params = useLocalSearchParams<{ tab?: Tab }>();
   const [tab, setTab] = useState<Tab>(params.tab === 'account' ? 'account' : 'services');
   const [name, setName] = useState(user.name);
@@ -35,17 +49,7 @@ export default function Settings() {
       header={<ScreenHeader title="Settings" />}
       footer={
         activeRoom?.nowPlaying ? (
-          <View style={styles.stretch}>
-            <MiniPlayer
-              title={activeRoom.nowPlaying.title}
-              subtitle={`${activeRoom.nowPlaying.artist} · ${activeRoom.name}`}
-              playing
-              progress={0.45}
-              onPress={() =>
-                router.push({ pathname: '/room/[code]', params: { code: activeRoom.code } })
-              }
-            />
-          </View>
+          <RoomMiniPlayer room={activeRoom} playback={playback} canControl={canControl} />
         ) : undefined
       }
     >
@@ -78,25 +82,25 @@ export default function Settings() {
               </Text>
             </View>
           </View>
-          <TextField label="Display name" value={name} onChangeText={setName} />
+          <TextField
+            label="Display name"
+            value={name}
+            maxLength={MAX_NAME_LENGTH}
+            onChangeText={(text) => {
+              setName(text);
+              // An empty name isn't saved; the last one stays until a new one is typed.
+              if (text.trim()) saveProfile({ name: text.trim(), color: user.color });
+            }}
+          />
           <TextField label="Email" value={user.email} editable={false} />
           <View style={styles.group}>
             <SectionLabel>Signed in with</SectionLabel>
             <Panel style={styles.row}>
-              <Icon name="apple" size={18} />
-              <Text variant="bodyStrong">{user.signedInWith}</Text>
+              <Icon name={methodIcons[user.signedInWith]} size={18} />
+              <Text variant="bodyStrong">{signInMethodNames[user.signedInWith]}</Text>
             </Panel>
           </View>
-          <Button
-            block
-            kind="secondary"
-            icon="log-out"
-            label="Sign out"
-            onPress={() => {
-              leaveRoom();
-              router.dismissTo('/');
-            }}
-          />
+          <Button block kind="secondary" icon="log-out" label="Sign out" onPress={signOut} />
           <Text variant="caption" color="danger" style={styles.center}>
             Delete account
           </Text>
@@ -107,7 +111,6 @@ export default function Settings() {
 }
 
 const styles = StyleSheet.create({
-  stretch: { alignSelf: 'stretch' },
   profile: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   group: { gap: 10 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 14 },

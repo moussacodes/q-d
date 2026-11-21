@@ -1,18 +1,32 @@
 import { router } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import { Button, Cover, Logo, ProviderBadge, Screen, Text, useScreenPalette } from '@/components';
+import {
+  Button,
+  Cover,
+  Logo,
+  ProviderBadge,
+  Screen,
+  SCREEN_PADDING,
+  Text,
+  useScreenPalette,
+} from '@/components';
+import { useMockSession } from '@/features/session/MockSession';
 
-/** 1.1 Welcome. Sign-in buttons are mock until the auth cards land. */
+/**
+ * 1.1 Welcome. Sign-in is mock until the auth cards land: Apple and Google
+ * here start a new account (onboarding); Sign in is for returning users.
+ */
 export default function Welcome() {
   useScreenPalette();
+  const { createAccount } = useMockSession();
   return (
     <Screen
-      scroll={false}
       contentStyle={styles.content}
       header={
-        __DEV__ ? (
-          <View style={styles.devRow}>
+        <View style={styles.topBar}>
+          <Logo dot={false} />
+          {__DEV__ ? (
             <Button
               kind="ghost"
               size="small"
@@ -20,36 +34,7 @@ export default function Welcome() {
               label="Screens"
               onPress={() => router.push('/dev')}
             />
-          </View>
-        ) : undefined
-      }
-      footer={
-        <View style={styles.actions}>
-          <Button
-            block
-            icon="apple"
-            label="Continue with Apple"
-            onPress={() => router.push('/onboarding/name')}
-          />
-          <Button
-            block
-            kind="secondary"
-            icon="google"
-            label="Continue with Google"
-            onPress={() => router.push('/onboarding/name')}
-          />
-          <Button
-            block
-            kind="secondary"
-            icon="mail"
-            label="Continue with email"
-            onPress={() => router.push('/create-account')}
-          />
-          <Pressable accessibilityRole="link" onPress={() => router.push('/sign-in')} hitSlop={8}>
-            <Text variant="caption" color="text2">
-              Already have an account? <Text variant="caption">Sign in</Text>
-            </Text>
-          </Pressable>
+          ) : null}
         </View>
       }
     >
@@ -71,20 +56,54 @@ export default function Welcome() {
         </View>
       </View>
       <View style={styles.intro}>
-        <Logo />
         <Text variant="display">Different apps. One aux.</Text>
         <Text variant="footnote" color="text2">
           Friends on Apple Music, Spotify or no service at all add songs to one shared queue. The
           host’s phone plays it.
         </Text>
       </View>
+      <View style={styles.actions}>
+        <Button
+          block
+          icon="apple"
+          label="Continue with Apple"
+          onPress={() => createAccount('apple')}
+        />
+        <Button
+          block
+          kind="secondary"
+          icon="google"
+          label="Continue with Google"
+          onPress={() => createAccount('google')}
+        />
+        <Button
+          block
+          kind="secondary"
+          icon="mail"
+          label="Continue with email"
+          onPress={() => router.push('/create-account')}
+        />
+        <Pressable accessibilityRole="link" onPress={() => router.push('/sign-in')} hitSlop={8}>
+          <Text variant="caption" color="text2">
+            Already have an account? <Text variant="caption">Sign in</Text>
+          </Text>
+        </Pressable>
+      </View>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  content: { justifyContent: 'flex-end', gap: 28 },
-  devRow: { alignItems: 'flex-end', paddingHorizontal: 12 },
+  // The covers, hook and sign-in options sit together, centred under the top
+  // bar. The screen scrolls so short phones can still reach every option.
+  content: { flexGrow: 1, justifyContent: 'center', gap: 28 },
+  topBar: {
+    height: 56,
+    paddingHorizontal: SCREEN_PADDING,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   hero: { height: 230, alignItems: 'center', justifyContent: 'center' },
   center: { position: 'absolute' },
   fanned: { position: 'absolute', opacity: 0.85 },

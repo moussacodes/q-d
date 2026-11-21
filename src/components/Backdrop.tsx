@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Svg, { Circle, Defs, RadialGradient, Rect, Stop } from 'react-native-svg';
 
@@ -41,6 +42,9 @@ function blurStops(r: number) {
 
 export function Backdrop() {
   const { colors } = useTheme();
+  // Gradient ids are document-wide on web. Stacked screens each draw a
+  // backdrop, so every instance needs its own ids.
+  const uid = useId().replace(/[^a-zA-Z0-9_-]/g, '');
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
       <Svg
@@ -55,7 +59,7 @@ export function Backdrop() {
             return (
               <RadialGradient
                 key={key}
-                id={key}
+                id={`${uid}-${key}`}
                 cx={cx}
                 cy={cy}
                 r={outer}
@@ -80,7 +84,7 @@ export function Backdrop() {
             cx={cx}
             cy={cy}
             r={blurStops(r).outer}
-            fill={`url(#${key})`}
+            fill={`url(#${uid}-${key})`}
             opacity={opacity}
           />
         ))}

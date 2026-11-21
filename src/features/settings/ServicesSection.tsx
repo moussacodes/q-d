@@ -1,44 +1,68 @@
-import { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import { Icon, Panel, ServiceCard, Text } from '@/components';
 import { providerColors, useTheme } from '@/design';
 import { providerNames, type MusicProvider } from '@/domain/music-provider';
+import {
+  supportedProviders,
+  useProviderConnections,
+} from '@/features/connections/ProviderConnections';
+import type { ConnectionState } from '@/providers';
+
+const hints: Record<MusicProvider, string> = {
+  spotify: 'Premium needed to play rooms',
+  apple_music: 'Subscription needed for full tracks',
+};
+
+/** A mock connection says so, so it's never mistaken for a real account. */
+function describe(provider: MusicProvider, connection: ConnectionState | undefined) {
+  if (!connection) return hints[provider];
+  if (connection.isMock) return `Mock connection · no ${providerNames[provider]} account used`;
+  return connection.accountLabel ?? 'Connected';
+}
 
 /**
  * Music-service cards plus the "Play rooms through" choice. Shared by
- * onboarding step 2 and Settings → Music services. Connecting is mocked.
+ * onboarding step 2, Start a room and Settings → Music services.
  */
-export function ServicesSection() {
-  const { colors } = useTheme();
-  const [connected, setConnected] = useState<Record<MusicProvider, boolean>>({
-    spotify: true,
-    apple_music: false,
-  });
-  const playsThrough: MusicProvider = connected.spotify ? 'spotify' : 'apple_music';
-
+export function ServicesSection({ showPicker = true }: { showPicker?: boolean }) {
+  const { connections, connect } = useProviderConnections();
   return (
     <View style={styles.group}>
-      <ServiceCard
-        provider="spotify"
-        name="Spotify"
-        description={
-          connected.spotify ? 'Connected as baron.li · Premium' : 'Premium needed to play rooms'
-        }
-        state={connected.spotify ? 'connected' : 'connect'}
-        onConnect={() => setConnected((c) => ({ ...c, spotify: true }))}
-      />
-      <ServiceCard
-        provider="apple_music"
-        name="Apple Music"
-        description={
-          connected.apple_music
-            ? 'Connected · Apple Music subscription'
-            : 'Subscription needed for full tracks'
-        }
-        state={connected.apple_music ? 'connected' : 'connect'}
-        onConnect={() => setConnected((c) => ({ ...c, apple_music: true }))}
-      />
+      {supportedProviders.map((provider) => (
+        <ServiceCard
+          key={provider}
+          provider={provider}
+          name={providerNames[provider]}
+          description={describe(provider, connections[provider])}
+          state={connections[provider] ? 'connected' : 'connect'}
+          onConnect={() => connect(provider)}
+        />
+      ))}
+      {showPicker ? <PlaysThroughPicker /> : null}
+    </View>
+  );
+}
+
+/**
+ * Which connected service rooms play through. Hidden with nothing connected;
+ * with both connected, tapping switches to the other one.
+ */
+export function PlaysThroughPicker() {
+  const { colors } = useTheme();
+  const { connected, playsThrough, choose } = useProviderConnections();
+  if (!playsThrough) {
+    return null;
+  }
+  const other = connected.find((provider) => provider !== playsThrough);
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Play rooms through ${providerNames[playsThrough]}`}
+      accessibilityHint={other ? `Switches to ${providerNames[other]}` : undefined}
+      disabled={!other}
+      onPress={() => other && choose(other)}
+    >
       <Panel style={styles.picker}>
         <View style={styles.flex}>
           <Text variant="eyebrow" color="text3">
@@ -49,9 +73,9 @@ export function ServicesSection() {
             <Text variant="bodyStrong">{providerNames[playsThrough]}</Text>
           </View>
         </View>
-        <Icon name="chevron-down" size={18} color={colors.text2} />
+        {other ? <Icon name="chevron-down" size={18} color={colors.text2} /> : null}
       </Panel>
-    </View>
+    </Pressable>
   );
 }
 
