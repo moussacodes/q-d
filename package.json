@@ -10,6 +10,7 @@
     "start": "expo start",
     "ios": "expo start --ios",
     "web": "expo start --web",
+    "preview": "node scripts/preview.js",
     "typecheck": "tsc --noEmit",
     "lint": "expo lint --max-warnings 0",
     "format": "prettier --write .",

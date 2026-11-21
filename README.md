@@ -62,6 +62,7 @@ npm start
 - **On a phone:** scan the QR code from `npm start`. On iPhone, use the Camera app. On Android, use the scanner in Expo Go. The phone and the computer must be on the same Wi‑Fi. If they can't reach each other, run `npx expo start --tunnel`.
 - **In a browser:** `npm run web`.
 - **Every screen at once:** in development, the Welcome screen has a **Screens** button. It opens `/dev`, which lists every screen and state with its Figma number. `/dev/components` is the component gallery.
+- **Edits from several worktrees in one app:** `npm run preview` merges the files from all your worktrees into a `<repo folder>-preview` worktree, including edits you haven't committed. It runs one `expo start` there, so a single QR code and a single localhost show everything. Saving in any of those worktrees updates the preview. To use only some worktrees, name them: `npm run preview -- q-d-ui q-d-logos`. If two worktrees change the same lines, the preview shows the version from the one you saved in last, and the log says which. Don't edit files inside the preview worktree, because every sync overwrites them.
 - **Checks before every push:** `npm run check` runs the typecheck, lint, format check and tests. `npm ci` installs a Git pre-push hook that runs the whole CI job (`npm run check` plus Expo Doctor) before every push. CI runs the same job on every pull request. `npm run format` fixes formatting.
 
 ### Windows (Baron)
