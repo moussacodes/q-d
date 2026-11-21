@@ -3,9 +3,9 @@ import { findRoom, mockQueue, type MockRoom, type MockTrack } from '@/providers/
 
 /**
  * Mock mode's stand-in for the room's rows in Postgres: what's playing,
- * what's next, and the room's rules. Its actions follow the RPCs in
+ * what's next, and the room's name and rules. Its actions follow the RPCs in
  * docs/API_CONTRACTS.md (`enqueue_recording`, `reorder_queue`,
- * `remove_queue_entry`, `advance_queue`, `update_room_rules`), so the screens
+ * `remove_queue_entry`, `advance_queue`, `update_room_rules`, `rename_room`), so the screens
  * call the same operations the real backend will offer. The Supabase cards
  * replace it; the server, not this store, will check who may do what.
  */
@@ -21,6 +21,8 @@ export type RoomState = {
   startAtMs: number;
   /** Who adds songs and who controls the music. */
   rules: RoomRules;
+  /** The name the host gave the room, or null to keep the one it started with. */
+  name: string | null;
 };
 
 /**
@@ -71,6 +73,7 @@ function seed(ref: RoomRef): RoomState {
     queue: room.queue.map(entry),
     startAtMs: room.nowPlaying ? MOCK_START_MS : 0,
     rules: defaultRoomRules,
+    name: null,
   };
 }
 
@@ -183,6 +186,18 @@ export function createRoomStore() {
      */
     setRules(ref: RoomRef, rules: RoomRules) {
       update(ref, { ...get(ref), rules });
+    },
+
+    /**
+     * `rename_room`: the host renames the room. `create_room` names it too,
+     * from Start a room. Returns false, changing nothing, for a blank name.
+     */
+    rename(ref: RoomRef, name: string): boolean {
+      const trimmed = name.trim();
+      if (!trimmed) return false;
+      const room = get(ref);
+      if (room.name !== trimmed) update(ref, { ...room, name: trimmed });
+      return true;
     },
   };
 }

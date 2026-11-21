@@ -80,6 +80,13 @@ Why it's shaped this way: [ARCHITECTURE.md § 4.10](ARCHITECTURE.md#410-client-v
 - **Effect:** replaces the room's rules. Realtime tells the other phones to refetch, so their controls follow the new rules straight away.
 - **Errors:** `not_host`, `not_member` (a chosen id isn't in the room)
 
+#### `rename_room` (Added)
+
+- **Caller:** host. The host renames the room in room settings.
+- **Input:** `room_id uuid`, `name text` (trimmed, not blank), `idempotency_key uuid`
+- **Effect:** changes the room's name. Realtime tells the other phones to refetch.
+- **Errors:** `not_host`, `name_invalid`
+
 #### `create_room_invite` (Added)
 
 - **Caller:** host. QR invites need a token separate from the room code, and something has to create it.

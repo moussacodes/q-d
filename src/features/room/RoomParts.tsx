@@ -87,32 +87,48 @@ export function Timeline({ positionMs, durationMs }: { positionMs: number; durat
 /**
  * Playback controls, for whoever the room's control rule lets in. Aux mode:
  * only the host's phone plays, so there is no "Resync". Everyone else sees
- * the controls disabled.
+ * the playback buttons disabled.
  *
- * Five equal slots keep Play on the screen's center line: the empty first
- * slot balances Repeat in the last one.
+ * Five equal slots keep Play on the screen's center line: Room, left of
+ * Previous, balances Repeat. Room is open to everyone: it shows the room's
+ * name, service, rules and people, and the host changes them there.
  */
 export function Controls({
   canControl,
   playing,
   repeat,
+  roomLabel = 'Room settings',
   onTogglePlay,
   onSkip,
   onPrevious,
   onToggleRepeat,
+  onOpenRoom,
 }: {
   canControl: boolean;
   playing: boolean;
   /** Repeat the current song when it ends. */
   repeat: boolean;
+  /** What the Room button says to a screen reader. */
+  roomLabel?: string;
   onTogglePlay: () => void;
   onSkip: () => void;
   onPrevious?: () => void;
   onToggleRepeat?: () => void;
+  /** Opens room settings. Without it, the first slot stays empty. */
+  onOpenRoom?: () => void;
 }) {
   return (
-    <View style={[styles.controls, !canControl && styles.disabled]}>
-      <View style={styles.control} />
+    <View style={styles.controls}>
+      {onOpenRoom ? (
+        <ControlButton
+          icon="sliders"
+          label="Room"
+          accessibilityLabel={roomLabel}
+          onPress={onOpenRoom}
+        />
+      ) : (
+        <View style={styles.control} />
+      )}
       <ControlButton icon="previous" label="Previous" disabled={!canControl} onPress={onPrevious} />
       <ControlButton
         icon={playing ? 'pause' : 'play'}
@@ -156,7 +172,7 @@ function ControlButton({
   const filled = big || active;
   const size = big ? 64 : 44;
   return (
-    <View style={styles.control}>
+    <View style={[styles.control, disabled && styles.disabled]}>
       <View style={styles.controlSlot}>
         <Pressable
           accessibilityRole="button"

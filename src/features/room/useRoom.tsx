@@ -137,6 +137,7 @@ function useLiveRoom(base: MockRoom | null, view?: RoomView) {
     if (!base || !state) return null;
     return {
       ...previewRoom(base, view),
+      name: state.name ?? base.name,
       nowPlaying: state.nowPlaying,
       queue: state.queue,
       rules: state.rules,
@@ -193,6 +194,8 @@ export function useRoom(code: string | undefined, view?: RoomView) {
     canControl,
     /** `update_room_rules`. Only the host sees the controls for it. */
     setRules: (rules: RoomRules) => store.setRules(at, rules),
+    /** `rename_room`, from room settings. False, changing nothing, for a blank name. */
+    rename: (name: string) => store.rename(at, name),
     skip: () => {
       if (live.nowPlaying) store.advance(at, live.nowPlaying.entryId, 'skipped');
     },
@@ -245,6 +248,8 @@ export function useStartRoom() {
       { rules, ...room }: { name: string; playsThrough: MusicProvider; rules: RoomRules },
     ) => {
       store.setRules({ code }, rules);
+      // Mock rooms reuse their code, so this also replaces an earlier rename.
+      store.rename({ code }, room.name);
       startRoom(code, room);
     },
     [store, startRoom],

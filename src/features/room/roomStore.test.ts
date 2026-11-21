@@ -206,6 +206,40 @@ describe('room store', () => {
     });
   });
 
+  describe('name (rename_room)', () => {
+    it('keeps the name the room started with until the host renames it', () => {
+      expect(createRoomStore().get(room).name).toBeNull();
+    });
+
+    it('renames the room, trimmed, and tells subscribers', () => {
+      const store = createRoomStore();
+      const listener = jest.fn();
+      store.subscribe(listener);
+      expect(store.rename(room, '  Friday Night ')).toBe(true);
+      expect(store.get(room).name).toBe('Friday Night');
+      expect(listener).toHaveBeenCalledTimes(1);
+
+      // The same name again changes nothing.
+      expect(store.rename(room, 'Friday Night')).toBe(true);
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+
+    it('refuses a blank name', () => {
+      const store = createRoomStore();
+      store.rename(room, 'Friday Night');
+      expect(store.rename(room, '   ')).toBe(false);
+      expect(store.get(room).name).toBe('Friday Night');
+    });
+
+    it('keeps the name while songs move on, and shares it with the listener preview', () => {
+      const store = createRoomStore();
+      store.rename(room, 'Friday Night');
+      store.advance(room, store.get(room).nowPlaying!.entryId, 'skipped');
+      expect(store.get(room).name).toBe('Friday Night');
+      expect(store.get({ code: room.code, view: 'listener' }).name).toBe('Friday Night');
+    });
+  });
+
   describe('development previews', () => {
     it('keep queue-changing previews apart from the real room', () => {
       expect(roomKey({ code: room.code, view: 'empty' })).not.toBe(roomKey(room));

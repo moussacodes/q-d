@@ -147,6 +147,50 @@ describe('listeners', () => {
   });
 });
 
+describe('room settings', () => {
+  it('open from the Room button, where the host renames the room and changes the rules', async () => {
+    await signIn();
+    await openRoom({ code: 'QD-7K4F9X' });
+    await press('Room settings');
+    expect(await screen.findByText('Plays through Spotify')).toBeVisible();
+    expect(screen.getByText('Baron (you)')).toBeVisible();
+    // A new room: everyone adds songs, and only the host controls the music.
+    expect(screen.getAllByText('Adds songs')).toHaveLength(5);
+    expect(screen.queryByText('Controls')).toBeNull();
+
+    // Control set to Chosen: each guest gets a chip to pick them with.
+    await act(async () => {
+      fireEvent.press(screen.getAllByText('Chosen')[1]);
+    });
+    const maya = screen.getByLabelText('Maya can play, skip, reorder and remove');
+    expect(maya).not.toBeChecked();
+    await press('Maya can play, skip, reorder and remove');
+    expect(screen.getByLabelText('Maya can play, skip, reorder and remove')).toBeChecked();
+
+    await act(async () => {
+      fireEvent.changeText(screen.getByDisplayValue('Sunday Slow Burn'), 'Friday Night');
+    });
+    await press('Close');
+    expect(await screen.findByText('Friday Night')).toBeVisible();
+  });
+
+  it('show a listener the room, its rules and what each person may do, read-only', async () => {
+    await signIn();
+    await openRoom({ code: 'QD-9M2XR4' }); // Kitchen Disco, hosted by Jules
+    expect(await screen.findByLabelText('Skip')).toBeDisabled();
+    // Controls are the host's, but anyone can look at the room.
+    expect(screen.getByLabelText('About this room')).toBeEnabled();
+
+    await press('About this room');
+    expect(await screen.findByText('Hosted by Jules · QD-9M2XR4')).toBeVisible();
+    expect(screen.getByText(/Connected on Jules’s phone/)).toBeVisible();
+    expect(screen.queryByLabelText('Room name')).toBeNull();
+    expect(screen.getByText('Baron (you)')).toBeVisible();
+    expect(screen.getAllByText('Adds songs')).toHaveLength(5);
+    expect(screen.queryAllByRole('checkbox')).toEqual([]);
+  });
+});
+
 describe('when a song ends', () => {
   it('the next one plays, without anyone tapping', async () => {
     await signIn();

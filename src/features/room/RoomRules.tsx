@@ -41,7 +41,7 @@ export function cantAddNote(rule: RoomRule) {
 }
 
 /**
- * The host's room rules (Start a room, Listeners): each rule offers Everyone,
+ * The host's room rules (Start a room, Listeners, room settings): each rule offers Everyone,
  * Chosen people or Only you. `chosenHint` says where the chosen people are
  * picked, and shows once any rule is set to Chosen.
  */
@@ -120,6 +120,38 @@ const chipActions: Record<RuleName, string> = {
   control: 'play, skip, reorder and remove',
 };
 
+type ChipPerson = { id: string; name: string };
+
+/** The host's pick for one Chosen rule: on (accent, check) or off (plus). */
+function ChosenToggle({
+  name,
+  rule,
+  person,
+  onToggle,
+}: {
+  name: RuleName;
+  rule: RoomRule;
+  person: ChipPerson;
+  onToggle: (name: RuleName) => void;
+}) {
+  const on = rule.chosen.includes(person.id);
+  return (
+    <Pressable
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked: on }}
+      accessibilityLabel={`${person.name} can ${chipActions[name]}`}
+      hitSlop={6}
+      onPress={() => onToggle(name)}
+    >
+      <Chip
+        label={chipLabels[name]}
+        tone={on ? 'accent' : 'neutral'}
+        icon={on ? 'check' : 'plus'}
+      />
+    </Pressable>
+  );
+}
+
 /**
  * In Listeners, the host's picks for each rule set to Chosen: one chip per
  * rule, on for the people chosen.
@@ -130,33 +162,49 @@ export function ChosenChips({
   onToggle,
 }: {
   rules: RoomRules;
-  person: { id: string; name: string };
+  person: ChipPerson;
   onToggle: (name: RuleName) => void;
 }) {
   const chosenRules = ruleNames.filter((name) => rules[name].who === 'chosen');
   return (
     <View style={styles.chips}>
-      {chosenRules.map((name) => {
-        const on = rules[name].chosen.includes(person.id);
-        return (
-          <Pressable
-            key={name}
-            accessibilityRole="checkbox"
-            accessibilityState={{ checked: on }}
-            accessibilityLabel={`${person.name} can ${chipActions[name]}`}
-            hitSlop={6}
-            onPress={() => onToggle(name)}
-          >
-            <Chip
-              label={chipLabels[name]}
-              tone={on ? 'accent' : 'neutral'}
-              icon={on ? 'check' : 'plus'}
-            />
-          </Pressable>
-        );
-      })}
+      {chosenRules.map((name) => (
+        <ChosenToggle
+          key={name}
+          name={name}
+          rule={rules[name]}
+          person={person}
+          onToggle={onToggle}
+        />
+      ))}
     </View>
   );
+}
+
+/**
+ * In room settings, what a guest may do: a chip per rule that lets them in,
+ * or "Listens" when neither does. With `onToggle` (the host), each rule set
+ * to Chosen shows a chip to pick them with instead.
+ */
+export function PermissionChips({
+  rules,
+  person,
+  onToggle,
+}: {
+  rules: RoomRules;
+  person: ChipPerson & RuleMember;
+  onToggle?: (name: RuleName) => void;
+}) {
+  const chips = ruleNames.flatMap((name) => {
+    const rule = rules[name];
+    if (onToggle && rule.who === 'chosen') {
+      return [
+        <ChosenToggle key={name} name={name} rule={rule} person={person} onToggle={onToggle} />,
+      ];
+    }
+    return allows(rule, person) ? [<Chip key={name} label={chipLabels[name]} icon="check" />] : [];
+  });
+  return <View style={styles.chips}>{chips.length ? chips : <Chip label="Listens" />}</View>;
 }
 
 const styles = StyleSheet.create({

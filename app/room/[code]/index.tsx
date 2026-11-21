@@ -68,7 +68,7 @@ export default function Room() {
   const layout = expandedLayout({ width, viewport: viewport.height, below });
   const coverSize = expanded ? layout.cover : Math.min(200, width * 0.52);
 
-  const openSheet = (sheet: 'add-song' | 'invite' | 'listeners' | 'queue') =>
+  const openSheet = (sheet: 'add-song' | 'invite' | 'listeners' | 'queue' | 'settings') =>
     router.push({ pathname: `/room/[code]/${sheet}`, params: roomParams(room) });
 
   const header = (
@@ -184,6 +184,8 @@ export default function Room() {
                 onSkip={skip}
                 onPrevious={() => playback.seek(0)}
                 onToggleRepeat={() => setRepeat((on) => !on)}
+                roomLabel={isHost ? 'Room settings' : 'About this room'}
+                onOpenRoom={() => openSheet('settings')}
               />
             </>
           ) : null}
