@@ -28,6 +28,7 @@ import {
   AddSongFooter,
   Controls,
   QueueList,
+  ROOM_QUEUE_LIMIT,
   RoomStrip,
   songCount,
   Timeline,
@@ -43,8 +44,10 @@ import { roomParams, useRoom, type RoomView } from '@/features/room/useRoom';
  * A playing song always gets the expanded cover; there's no smaller-cover
  * layout. The first page is sized to the screen: the cover shrinks until the
  * song info and playback controls fit above the Up next bar. Scrolling down
- * shows the whole queue. With nothing playing there's no cover to expand, so
- * the room keeps the 3.1 layout: empty cover, people strip and Add a song.
+ * shows the next 10 songs; the Up next bar opens the whole queue. With nothing
+ * playing there's no cover to expand, so the room keeps the 3.1 layout: empty
+ * cover, people strip and Add a song. (The queue is empty then: the first song
+ * added starts playing.)
  */
 export default function Room() {
   const params = useLocalSearchParams<{ code: string; view?: RoomView }>();
@@ -100,7 +103,11 @@ export default function Room() {
     <View style={styles.gap6}>
       <SectionLabel right={songCount(room.queue.length)}>Up next</SectionLabel>
       {room.queue.length ? (
-        <QueueList room={room} controls={canControl ? { moveUp, moveDown, remove } : undefined} />
+        <QueueList
+          room={room}
+          limit={ROOM_QUEUE_LIMIT}
+          controls={canControl ? { moveUp, moveDown, remove } : undefined}
+        />
       ) : (
         <View style={[styles.emptyQueue, { borderColor: colors.strokeStrong }]}>
           <Text variant="bodyStrong">The queue is empty</Text>

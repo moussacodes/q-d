@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import {
@@ -12,6 +12,7 @@ import {
   Panel,
   ProviderBadge,
   QueueRow,
+  SwipeToDelete,
   Text,
   type IconName,
 } from '@/components';
@@ -22,6 +23,9 @@ import type { MockRoom, MockTrack } from '@/providers/mock/data';
 
 import { cantAddNote } from './RoomRules';
 import { roomParams, type LiveRoom, type RoomHandle } from './useRoom';
+
+/** The room lists this many songs. The Up next bar opens the whole queue. */
+export const ROOM_QUEUE_LIMIT = 10;
 
 /** "1 song", "7 songs". */
 export function songCount(count: number) {
@@ -222,19 +226,36 @@ export function RoomStrip({ room, isHost }: { room: LiveRoom; isHost: boolean })
 export type QueueControls = Pick<RoomHandle, 'moveUp' | 'moveDown' | 'remove'>;
 
 /**
- * "Up next" list (default layout and the queue sheet). With `controls`, a tap
- * on a song moves it up or down, or removes it. Buttons stand in for dragging the
- * grip until a gesture library is chosen (ARCHITECTURE.md, open decision 4).
+ * "Up next" list (the room and the queue sheet). With `limit`, only the first
+ * songs. With `controls`, a swipe left on a song shows Delete, and a tap
+ * opens Up, Down and Remove. The buttons stand in for dragging the grip until
+ * a gesture library is chosen (ARCHITECTURE.md, open decision 4).
  */
-export function QueueList({ room, controls }: { room: LiveRoom; controls?: QueueControls }) {
+export function QueueList({
+  room,
+  controls,
+  limit,
+}: {
+  room: LiveRoom;
+  controls?: QueueControls;
+  limit?: number;
+}) {
   const [open, setOpen] = useState<string | null>(null);
+  /** The song swiped open to show Delete. One at a time. */
+  const [swiped, setSwiped] = useState<string | null>(null);
+  const onSwipe = useCallback((entryId: string, next: boolean) => {
+    if (next) setOpen(null);
+    setSwiped((current) => (next ? entryId : current === entryId ? null : current));
+  }, []);
+  const shown = limit === undefined ? room.queue : room.queue.slice(0, limit);
+  const swipedOpen = shown.some((entry) => entry.entryId === swiped);
   const last = room.queue.length - 1;
   return (
     <View>
-      {room.queue.map((entry, index) => {
+      {shown.map((entry, index) => {
         const { entryId, title } = entry;
         const editing = controls && open === entryId;
-        return (
+        const row = (
           <QueueRow
             key={entryId}
             title={title}
@@ -250,7 +271,14 @@ export function QueueList({ room, controls }: { room: LiveRoom; controls?: Queue
             }
             onPress={
               controls
-                ? () => setOpen((current) => (current === entryId ? null : entryId))
+                ? () => {
+                    // With a Delete showing, a tap only closes it, like iOS lists.
+                    if (swipedOpen) {
+                      setSwiped(null);
+                      return;
+                    }
+                    setOpen((current) => (current === entryId ? null : entryId));
+                  }
                 : undefined
             }
             accessibilityLabel={controls ? `Reorder or remove ${title}` : undefined}
@@ -291,6 +319,23 @@ export function QueueList({ room, controls }: { room: LiveRoom; controls?: Queue
               ) : undefined
             }
           />
+        );
+        if (!controls) return row;
+        return (
+          <SwipeToDelete
+            key={entryId}
+            id={entryId}
+            testID={`Swipe ${title}`}
+            open={swiped === entryId}
+            onOpenChange={onSwipe}
+            deleteLabel={`Delete ${title}`}
+            onDelete={() => {
+              setSwiped(null);
+              controls.remove(entryId);
+            }}
+          >
+            {row}
+          </SwipeToDelete>
         );
       })}
     </View>

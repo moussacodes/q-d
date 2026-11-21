@@ -2,6 +2,14 @@
 
 Product and technical decisions that are not obvious from the code. Newest first.
 
+## 2026-11-20 · Room queue: 10 songs, swipe to delete
+
+- **The room lists the next 10 songs.** Baron asked for it. The Up next bar opens the sheet with the whole queue. This replaces "The full queue is below them" in "Room screen: expanded cover only". The cap never hides songs out of reach: whenever the queue has songs, a song is playing, so the Up next bar is there.
+- **Swipe a song left to delete it.** Whoever the room's control rule lets in (Play, skip, reorder, remove) can swipe a queued song left in the room or in Up next. A Delete button shows, and tapping it calls `remove_queue_entry`. One song shows Delete at a time, and tapping a song closes it. Tapping a song still opens Up, Down and Remove, which also gives screen readers a way to remove songs.
+- **No gesture library yet.** The swipe uses React Native's PanResponder and Animated. Gesture Handler and Reanimated are in `node_modules` only because other packages pulled them in, at versions that don't match Expo SDK 58 (Gesture Handler 3.5.0 vs ~3.3.0), and every worktree shares one `node_modules`. ARCHITECTURE.md open decision 4 stays open; dragging the grip to reorder will need it.
+- **The screen stops scrolling while a song is dragged** (`useScrollLock`), so the swipe and the scroll don't fight. Checked in Jest and in Chrome (web). **Still needs a check on a phone.**
+- **The trash icon isn't from Figma.** It's drawn to match the icon set; Figma needs one.
+
 ## 2026-11-20 · Room screen: expanded cover only
 
 - **A playing song always shows the expanded cover (Figma 3.2).** The resize button is gone, so the smaller-cover layout (3.1) no longer appears while a song plays. The cover is as big as it can be while the song info and playback controls still fit above the Up next bar. The full queue is below them.

@@ -1,5 +1,5 @@
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useState, type ReactNode } from 'react';
 import { ScrollView, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -26,6 +26,16 @@ export function useScreenPalette(palette: NowPlayingPalette = idlePalette) {
   );
 }
 
+const ScrollLockContext = createContext<(locked: boolean) => void>(() => {});
+
+/**
+ * Stops the surrounding Screen or SheetScreen from scrolling, e.g. while a
+ * row is swiped sideways, so the swipe and the scroll don't fight.
+ */
+export function useScrollLock() {
+  return useContext(ScrollLockContext);
+}
+
 type ScreenProps = {
   children: ReactNode;
   /** Fixed content under the scroll area, e.g. a primary button. */
@@ -47,6 +57,7 @@ export function Screen({
   viewport,
 }: ScreenProps) {
   const insets = useSafeAreaInsets();
+  const [locked, setLocked] = useState(false);
   const body = [styles.content, contentStyle];
   return (
     <View style={styles.screen}>
@@ -55,13 +66,16 @@ export function Screen({
       {scroll ? (
         // Measured on a plain View: on native a ScrollView ref isn't a host view.
         <View style={styles.flex} ref={viewport?.target} onLayout={viewport?.onLayout}>
-          <ScrollView
-            style={styles.flex}
-            contentContainerStyle={[body, { paddingBottom: footer ? 24 : insets.bottom + 24 }]}
-            keyboardShouldPersistTaps="handled"
-          >
-            {children}
-          </ScrollView>
+          <ScrollLockContext.Provider value={setLocked}>
+            <ScrollView
+              style={styles.flex}
+              contentContainerStyle={[body, { paddingBottom: footer ? 24 : insets.bottom + 24 }]}
+              keyboardShouldPersistTaps="handled"
+              scrollEnabled={!locked}
+            >
+              {children}
+            </ScrollView>
+          </ScrollLockContext.Provider>
         </View>
       ) : (
         <View style={[styles.flex, body]} ref={viewport?.target} onLayout={viewport?.onLayout}>
@@ -216,16 +230,20 @@ export function SheetHeader({
 export function SheetScreen({ children, footer }: { children: ReactNode; footer?: ReactNode }) {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
+  const [locked, setLocked] = useState(false);
   return (
     <View style={[styles.sheet, { backgroundColor: neutral.bg }]}>
       <View style={[styles.sheetGlow, { backgroundColor: colors.glow1 }]} />
-      <ScrollView
-        style={styles.flex}
-        contentContainerStyle={[styles.sheetContent, { paddingBottom: insets.bottom + 24 }]}
-        keyboardShouldPersistTaps="handled"
-      >
-        {children}
-      </ScrollView>
+      <ScrollLockContext.Provider value={setLocked}>
+        <ScrollView
+          style={styles.flex}
+          contentContainerStyle={[styles.sheetContent, { paddingBottom: insets.bottom + 24 }]}
+          keyboardShouldPersistTaps="handled"
+          scrollEnabled={!locked}
+        >
+          {children}
+        </ScrollView>
+      </ScrollLockContext.Provider>
       {footer ? (
         <View style={[styles.footer, { paddingBottom: insets.bottom + 12 }]}>{footer}</View>
       ) : null}

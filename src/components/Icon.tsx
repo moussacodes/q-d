@@ -10,6 +10,8 @@ const icons = {
   'chevron-up': require('../../assets/icons/chevron-up.svg'),
   plus: require('../../assets/icons/plus.svg'),
   x: require('../../assets/icons/x.svg'),
+  // Not in Figma yet: drawn to match the set, for swipe-to-delete on queue rows.
+  trash: require('../../assets/icons/trash.svg'),
   check: require('../../assets/icons/check.svg'),
   search: require('../../assets/icons/search.svg'),
   link: require('../../assets/icons/link.svg'),

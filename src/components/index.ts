@@ -15,8 +15,10 @@ export {
   SheetScreen,
   Stepper,
   useScreenPalette,
+  useScrollLock,
 } from './layout';
 export { Avatar, Logo, ProviderBadge, SegmentedControl, Toggle } from './primitives';
 export { ListenerRow, MiniPlayer, QueueRow, ServiceCard } from './rows';
+export { SwipeToDelete } from './SwipeToDelete';
 export { Text, type TextProps } from './Text';
 export { useMeasuredHeight, type HeightProbe } from './useMeasuredHeight';

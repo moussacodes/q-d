@@ -31,6 +31,54 @@ const queueOrder = () =>
     .getAllByLabelText(/^Reorder or remove /)
     .map((row) => String(row.props.accessibilityLabel).replace('Reorder or remove ', ''));
 
+/** One finger moving from `from` to `to`, as React Native's responder system reports it. */
+const touch = (from: [number, number], to: [number, number], time: number) => ({
+  nativeEvent: { touches: [{ pageX: to[0], pageY: to[1] }] },
+  touchHistory: {
+    numberActiveTouches: 1,
+    indexOfSingleActiveTouch: 0,
+    mostRecentTimeStamp: time,
+    touchBank: [
+      {
+        touchActive: true,
+        startPageX: from[0],
+        startPageY: from[1],
+        startTimeStamp: 0,
+        currentPageX: to[0],
+        currentPageY: to[1],
+        currentTimeStamp: time,
+        previousPageX: from[0],
+        previousPageY: from[1],
+        previousTimeStamp: time - 1,
+      },
+    ],
+  },
+});
+
+/** Drags a queue song sideways (negative is left) over 100 ms and lets go. */
+const swipe = async (title: string, dx: number) => {
+  const row = screen.getByTestId(`Swipe ${title}`);
+  const start: [number, number] = [300, 400];
+  const end: [number, number] = [300 + dx, 400];
+  await act(async () => {
+    row.props.onResponderGrant(touch(start, start, 1));
+    row.props.onResponderMove(touch(start, end, 100));
+    row.props.onResponderRelease(touch(end, end, 101));
+  });
+};
+
+/** Adds songs from Add a song's opening results ("daniel caesar"), then closes it. */
+const addSongs = async (titles: string[]) => {
+  await press('Add a song');
+  await screen.findByText('Rain Down');
+  for (const title of titles) {
+    await press(`Add ${title}`);
+  }
+  await act(async () => {
+    router.back();
+  });
+};
+
 describe('the host', () => {
   it('skips to the next song', async () => {
     await signIn();
@@ -134,6 +182,85 @@ describe('the expanded cover', () => {
     expect(screen.getByLabelText('People in this room')).toBeVisible();
     expect(screen.queryByText(/^Up next · /)).toBeNull();
   });
+
+  it('lists the next 10 songs, and the Up next bar opens the rest', async () => {
+    await signIn();
+    await openRoom({ code: 'QD-7K4F9X' });
+    expect(await screen.findByText('7 songs')).toBeVisible();
+    await addSongs(['Rain Down', 'Valentina', 'Ocho Rios', 'Moon']);
+
+    expect(await screen.findByText('11 songs')).toBeVisible();
+    expect(screen.getByText('Up next · 11 songs')).toBeVisible();
+    expect(queueOrder()).toHaveLength(10);
+    expect(queueOrder()[9]).toBe('Ocho Rios');
+    expect(queueOrder()).not.toContain('Moon');
+
+    await press('Open up next');
+    expect(await screen.findByText(/^11 songs · /)).toBeVisible();
+    expect(screen.getByText('Moon')).toBeVisible();
+  });
+});
+
+describe('swipe to delete', () => {
+  it('shows Delete when the host swipes a song left, and Delete removes it', async () => {
+    await signIn();
+    await openRoom({ code: 'QD-7K4F9X' });
+    expect(await screen.findByText('7 songs')).toBeVisible();
+    expect(screen.queryByLabelText('Delete Always')).toBeNull();
+
+    await swipe('Always', -150);
+    await press('Delete Always');
+    expect(queueOrder()).not.toContain('Always');
+    expect(screen.getByText('6 songs')).toBeVisible();
+    expect(screen.getByText('Up next · 6 songs')).toBeVisible();
+  });
+
+  it('springs back from a short drag', async () => {
+    await signIn();
+    await openRoom({ code: 'QD-7K4F9X' });
+    await screen.findByText('7 songs');
+
+    await swipe('Always', -20);
+    expect(screen.queryByLabelText('Delete Always')).toBeNull();
+  });
+
+  it('shows one Delete at a time, and a tap closes it', async () => {
+    await signIn();
+    await openRoom({ code: 'QD-7K4F9X' });
+    await screen.findByText('7 songs');
+
+    await swipe('Always', -150);
+    await swipe('Phantom', -150);
+    expect(screen.queryByLabelText('Delete Always')).toBeNull();
+    expect(screen.getByLabelText('Delete Phantom')).toBeVisible();
+
+    // The tap closes Delete instead of opening the song's actions.
+    await press('Reorder or remove Phantom');
+    expect(screen.queryByLabelText('Delete Phantom')).toBeNull();
+    expect(screen.queryByLabelText('Move Phantom up')).toBeNull();
+    expect(queueOrder()).toContain('Phantom');
+  });
+
+  it('closes when the song is swiped back right', async () => {
+    await signIn();
+    await openRoom({ code: 'QD-7K4F9X' });
+    await screen.findByText('7 songs');
+
+    await swipe('Always', -150);
+    await swipe('Always', 150);
+    expect(screen.queryByLabelText('Delete Always')).toBeNull();
+  });
+
+  it('works in the Up next sheet too', async () => {
+    await signIn();
+    await openRoom({ code: 'QD-7K4F9X' });
+    await press('Open up next');
+    expect(await screen.findByText(/^7 songs · /)).toBeVisible();
+
+    await swipe('Lovers Rock', -150);
+    await press('Delete Lovers Rock');
+    expect(await screen.findByText(/^6 songs · /)).toBeVisible();
+  });
 });
 
 describe('listeners', () => {
@@ -144,6 +271,8 @@ describe('listeners', () => {
     expect(screen.getByLabelText('Skip')).toBeDisabled();
     expect(screen.queryAllByLabelText(/^Reorder or remove /)).toEqual([]);
     expect(screen.queryByLabelText(/^Move /)).toBeNull();
+    // No swipe to delete either.
+    expect(screen.queryAllByTestId(/^Swipe /)).toEqual([]);
   });
 });
 
