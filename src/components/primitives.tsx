@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { defaultAvatarColor, neutral, providerColors, radii, useTheme } from '@/design';
 import { providerNames, type MusicProvider } from '@/domain/music-provider';
 
+import { Icon, type IconName } from './Icon';
 import { Text } from './Text';
 
 /** The q’d wordmark with its accent dot (Figma "Logo"). */
@@ -126,12 +127,22 @@ export function SegmentedControl<T extends string>({
   );
 }
 
-/** Provider dot + name (Figma "Provider Badge"). */
+const providerIcons: Record<MusicProvider, IconName> = {
+  spotify: 'spotify',
+  apple_music: 'apple-music',
+};
+
+/** A music service's logo in its brand color. */
+export function ProviderLogo({ provider, size = 16 }: { provider: MusicProvider; size?: number }) {
+  return <Icon name={providerIcons[provider]} size={size} color={providerColors[provider].solid} />;
+}
+
+/** Provider logo + name (Figma "Provider Badge", which uses a dot). */
 export function ProviderBadge({ provider }: { provider: MusicProvider }) {
   const { colors } = useTheme();
   return (
     <View style={[styles.badge, { backgroundColor: colors.surface }]}>
-      <View style={[styles.badgeDot, { backgroundColor: providerColors[provider].solid }]} />
+      <ProviderLogo provider={provider} size={12} />
       <Text variant="labelSmall" color="text2">
         {providerNames[provider]}
       </Text>
@@ -166,5 +177,4 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: radii.badge,
   },
-  badgeDot: { width: 7, height: 7, borderRadius: 3.5 },
 });

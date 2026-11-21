@@ -14,6 +14,6 @@ export {
   Stepper,
   useScreenPalette,
 } from './layout';
-export { Avatar, Logo, ProviderBadge, SegmentedControl, Toggle } from './primitives';
+export { Avatar, Logo, ProviderBadge, ProviderLogo, SegmentedControl, Toggle } from './primitives';
 export { ListenerRow, MiniPlayer, QueueRow, ServiceCard } from './rows';
 export { Text, type TextProps } from './Text';

@@ -9,7 +9,7 @@ import type { MusicProvider } from '@/domain/music-provider';
 import { Button, Chip } from './controls';
 import { Cover } from './Cover';
 import { Icon } from './Icon';
-import { Avatar, ProviderBadge } from './primitives';
+import { Avatar, ProviderBadge, ProviderLogo } from './primitives';
 import { Text } from './Text';
 
 type QueueRowProps = {
@@ -213,7 +213,7 @@ export function ServiceCard({ provider, name, description, state, onConnect }: S
       ]}
     >
       <View style={[styles.tile, { backgroundColor: providerColors[provider].tint }]}>
-        <View style={[styles.tileDot, { backgroundColor: providerColors[provider].solid }]} />
+        <ProviderLogo provider={provider} size={22} />
       </View>
       <View style={styles.info}>
         <Text variant="bodyStrong">{name}</Text>
@@ -292,5 +292,4 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  tileDot: { width: 14, height: 14, borderRadius: 7 },
 });

@@ -38,6 +38,9 @@ const icons = {
   hash: require('../../assets/icons/hash.svg'),
   apple: require('../../assets/icons/apple.svg'),
   google: require('../../assets/icons/google.svg'),
+  // Brand marks from Simple Icons (CC0), not the Figma icon set.
+  spotify: require('../../assets/icons/spotify.svg'),
+  'apple-music': require('../../assets/icons/apple-music.svg'),
 } as const;
 
 export type IconName = keyof typeof icons;

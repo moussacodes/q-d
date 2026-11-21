@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import { Icon, Panel, ServiceCard, Text } from '@/components';
-import { providerColors, useTheme } from '@/design';
+import { Icon, Panel, ProviderLogo, ServiceCard, Text } from '@/components';
+import { useTheme } from '@/design';
 import { providerNames, type MusicProvider } from '@/domain/music-provider';
 import {
   supportedProviders,
@@ -69,7 +69,7 @@ export function PlaysThroughPicker() {
             Play rooms through
           </Text>
           <View style={styles.choice}>
-            <View style={[styles.dot, { backgroundColor: providerColors[playsThrough].solid }]} />
+            <ProviderLogo provider={playsThrough} size={16} />
             <Text variant="bodyStrong">{providerNames[playsThrough]}</Text>
           </View>
         </View>
@@ -84,5 +84,4 @@ const styles = StyleSheet.create({
   group: { gap: 10 },
   picker: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12 },
   choice: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  dot: { width: 7, height: 7, borderRadius: 3.5 },
 });
