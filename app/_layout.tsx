@@ -63,7 +63,6 @@ function RootStack() {
       <Stack.Protected guard={auth === 'onboarding'} redirectTo={redirectTo}>
         <Stack.Screen name="onboarding/name" />
         <Stack.Screen name="onboarding/services" />
-        <Stack.Screen name="onboarding/start" />
       </Stack.Protected>
 
       <Stack.Protected guard={auth === 'ready'} redirectTo={redirectTo}>

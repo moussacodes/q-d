@@ -61,10 +61,10 @@ These are out of scope for the demo and the beta. Don't build them without a dec
 - A q’d account is required for everyone.
 - Apple, Google and email/password sign-in all work by demo day.
 - q’d sign-in is separate from music-service authorization. Signing in with Apple doesn't connect Apple Music.
-- Onboarding has three steps:
+- Onboarding has two steps:
   1. **Your name.** Display name, avatar color and an 18+ confirmation.
   2. **Music services.** Connecting Apple Music or Spotify is optional here and can be skipped.
-  3. **Start or join.** Start a room or join one.
+- Finishing onboarding lands on Home, which offers starting a room or joining one with a code.
 - A music service becomes required only when this device is about to play:
   - when starting an `aux` room (the host plays), and
   - when claiming a `sync (beta)` playback slot (post-demo).
@@ -223,7 +223,6 @@ Numbers match the Figma page and the in-app screen index at `/dev`.
 | — | Create account | `/create-account` |
 | 1.3 | Onboarding 1 · Your name | `/onboarding/name` |
 | 1.4 | Onboarding 2 · Music services | `/onboarding/services` |
-| 1.5 | Onboarding 3 · Start or join | `/onboarding/start` |
 | 2.1 / 2.2 | Home · nothing playing / room playing | `/home` |
 | 2.3 | Join with a code | `/join` |
 | 2.4 | Start a room | `/create-room` |

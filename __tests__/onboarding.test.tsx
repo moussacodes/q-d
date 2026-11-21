@@ -1,7 +1,7 @@
 import { act, fireEvent, renderRouter, screen } from 'expo-router/testing-library';
 
-// Three-step onboarding (Forge card): name, color and 18+ on step 1, an
-// optional music-service step, then start or join.
+// Two-step onboarding (Forge card): name, color and 18+ on step 1, then an
+// optional music-service step that finishes on Home.
 jest.setTimeout(60_000);
 
 const press = async (label: string) => {
@@ -76,13 +76,8 @@ describe('the whole flow', () => {
     await act(async () => {
       fireEvent.press(screen.getByText('Skip'));
     });
-    expect(await screen.findByText('You’re all set.')).toBeVisible();
-    expect(screen).toHavePathname('/onboarding/start');
-
-    await act(async () => {
-      fireEvent.press(screen.getByText('I’ll do this later'));
-    });
     expect(await screen.findByText(/, Maya\.$/)).toBeVisible();
+    expect(screen).toHavePathname('/home');
 
     await press('Account');
     expect(await screen.findByLabelText('Display name')).toHaveDisplayValue('Maya');

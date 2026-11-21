@@ -62,23 +62,12 @@ describe('signed in and onboarded', () => {
     await press('Continue');
     await screen.findByText('Bring your own music.');
     await press('Continue');
-    await screen.findByText('You’re all set.');
   };
 
   it('lands on Home when onboarding is done', async () => {
     await finishOnboarding();
-    await press('I’ll do this later');
     expect(await screen.findByText('Start a room or jump into one.')).toBeVisible();
     expect(screen).toHavePathname('/home');
-  });
-
-  it('can go straight to Start a room from the last onboarding step', async () => {
-    await finishOnboarding();
-    await act(async () => {
-      fireEvent.press(await screen.findByText('Start a room'));
-    });
-    expect(await screen.findByText('Room rules')).toBeVisible();
-    expect(screen).toHavePathname('/create-room');
   });
 
   it('skips Welcome, and returns to it after signing out', async () => {

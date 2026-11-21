@@ -16,7 +16,6 @@ const sections: { title: string; links: { label: string; href: Href; enter?: boo
       { label: 'Create account', href: '/create-account' },
       { label: '1.3 Step 1 · Your name', href: '/onboarding/name' },
       { label: '1.4 Step 2 · Music services', href: '/onboarding/services' },
-      { label: '1.5 Step 3 · Start or join', href: '/onboarding/start' },
     ],
   },
   {

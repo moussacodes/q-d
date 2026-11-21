@@ -143,7 +143,7 @@ export function Panel({ children, style }: { children: ReactNode; style?: StyleP
 }
 
 /** Onboarding progress: one dash per step (Figma "Stepper"). */
-export function Stepper({ step, total = 3 }: { step: number; total?: number }) {
+export function Stepper({ step, total = 2 }: { step: number; total?: number }) {
   const { colors } = useTheme();
   return (
     <View

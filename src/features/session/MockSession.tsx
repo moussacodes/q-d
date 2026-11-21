@@ -62,8 +62,8 @@ type MockSessionValue = {
   signIn: (method: SignInMethod) => void;
   /** New account (email sign-up, or Apple/Google for the first time): onboarding. */
   createAccount: (method: SignInMethod) => void;
-  /** Ends onboarding on Home, or on `next` with Home underneath it. */
-  finishOnboarding: (next?: Href) => void;
+  /** Ends onboarding on Home. */
+  finishOnboarding: () => void;
   signOut: () => void;
   /** Development screen index: open a screen in the state it needs. */
   previewAs: (auth: AuthStatus, href: Href) => void;
@@ -140,7 +140,7 @@ export function MockSessionProvider({ children }: { children: ReactNode }) {
         switchAccount({ returning: false, method, profile: null });
         go('onboarding');
       },
-      finishOnboarding: (next) => go('ready', next ? [landingFor.ready, next] : undefined),
+      finishOnboarding: () => go('ready'),
       signOut: () => {
         setActiveCode(null);
         setHosted(null);

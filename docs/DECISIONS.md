@@ -2,6 +2,11 @@
 
 Product and technical decisions that are not obvious from the code. Newest first.
 
+## 2026-11-20 · Two-step onboarding
+
+- **Step 3 (1.5 Start or join) is gone.** It repeated Home, which already offers Start a room and Join with a code. Continue and Skip on step 2 (music services) now finish onboarding and land on Home. The steppers read "Step 1 of 2" and "Step 2 of 2". This replaces step 3 in "Three-step onboarding" and "Step 3 finishes onboarding" in "Auth and onboarding navigation" below.
+- **The Figma page still has frame 1.5.** It needs removing there too.
+
 ## 2026-11-19 · Search / add-song overlay
 
 - **Adding a song puts it in the queue.** Tapping + calls the mock `enqueue_recording`. The song goes to the end of the queue, labeled "by" the person who added it, and the toast says where it landed ("Rain Down added · 5th in line"). Everyone can add, with or without a music service.

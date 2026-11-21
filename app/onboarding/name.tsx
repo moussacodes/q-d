@@ -46,7 +46,7 @@ export default function OnboardingName() {
       footer={<Button block label="Continue" disabled={!trimmed || !adult} onPress={next} />}
     >
       <Intro
-        eyebrow="Step 1 of 3 · You"
+        eyebrow="Step 1 of 2 · You"
         title="What should we call you?"
         body="Your name shows up next to the songs you add."
       />

@@ -77,7 +77,7 @@ A broadcast that never arrives costs freshness but never correctness, because th
 ```text
 app/                      Expo Router screens and layouts (routes only)
   dev/                    Screen index and component gallery (development only)
-  onboarding/             Three onboarding steps
+  onboarding/             Two onboarding steps
   room/[code]/            Room screen plus its modal sheets
 src/
   components/             q’d design-system primitives

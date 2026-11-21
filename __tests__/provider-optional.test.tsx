@@ -29,7 +29,6 @@ describe('guests', () => {
   it('join a room and add a song without connecting a service', async () => {
     await newAccountAtServicesStep();
     await pressText('Skip');
-    await pressText('I’ll do this later');
     await screen.findByText('Start a room or jump into one.');
 
     await act(async () => {
