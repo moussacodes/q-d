@@ -90,7 +90,6 @@ const layers = [
 const mockDataImporters = [
   'app/create-room.tsx',
   'app/home.tsx',
-  'app/join.tsx',
   'app/onboarding/name.tsx',
   'app/room/[[]code]/invite.tsx',
 ];
