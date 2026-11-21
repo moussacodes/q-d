@@ -24,7 +24,7 @@ Requirements live in `docs/`. This file points to them instead of repeating them
 3. The Figma page [`20 · Mobile`](https://www.figma.com/design/HzChKn1M0FH1ueyOY7zIUQ/q-d-%E2%80%94-Design-Directions?node-id=68-1420&p=f), for visuals only. Its copy is illustrative.
 4. The pitch deck (`docs/pitch/`), which is historical.
 
-The team's original `plan.md` stays outside git. `docs/` carries its rules. If two sources conflict and no decision covers it, stop and ask a teammate. Don't pick one yourself.
+The team's original plan is `docs/PLAN.md`. The other `docs/` files carry its rules. If two sources conflict and no decision covers it, stop and ask a teammate. Don't pick one yourself.
 
 ## Product guardrails
 
@@ -50,7 +50,7 @@ The full list is in [PRODUCT_SPEC.md § 2 and § 9](docs/PRODUCT_SPEC.md#9-words
 - **Assets:** never bundle third-party album art. Artwork comes from the provider at runtime.
 - **Naming:** user-facing text says **q’d** (curly apostrophe). Code, URLs and identifiers use `qd` or `q-d`.
 - **Don't add:** a license file, microservices, monorepo tooling, Redux, GraphQL or abstractions nothing needs yet.
-- **Stay in scope:** don't change unrelated files, and don't commit the untracked `plan.md`.
+- **Stay in scope:** don't change unrelated files.
 
 ## Commands
 
