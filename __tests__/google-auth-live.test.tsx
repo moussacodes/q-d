@@ -155,3 +155,34 @@ it('explains a link that can’t be used', async () => {
   ).toBeVisible();
   expect(screen).toHavePathname('/sign-in');
 });
+
+it('clears an earlier failure when the person tries again', async () => {
+  mockSupabase.auth.signInWithOAuth.mockRejectedValueOnce(new TypeError('Network request failed'));
+  await renderRouter('./app', { initialUrl: '/' });
+  await press('Continue with Google');
+  const network = 'Couldn’t reach q’d. Check your connection and try again.';
+  expect(await screen.findByText(network)).toBeVisible();
+
+  openSheet.mockResolvedValueOnce({ type: 'cancel' });
+  await press('Continue with Google');
+  expect(screen.queryByText(network)).toBeNull();
+  expect(screen).toHavePathname('/');
+});
+
+it('never logs the code Google returned', async () => {
+  const logged: unknown[] = [];
+  for (const level of ['info', 'warn', 'debug', 'error'] as const) {
+    jest.spyOn(console, level).mockImplementation((...args) => void logged.push(args));
+  }
+  mockSupabase.auth.exchangeCodeForSession.mockResolvedValueOnce({
+    data: { user: null, session: null },
+    error: new AuthApiError('Expired', 400, 'flow_state_expired'),
+  } as never);
+  await renderRouter('./app', { initialUrl: '/' });
+  await press('Continue with Google');
+  expect(
+    await screen.findByText('That link has expired. Sign in again to get a new one.'),
+  ).toBeVisible();
+  expect(JSON.stringify(logged)).not.toContain(`google-code-${attempt}`);
+  expect(JSON.stringify(logged)).toContain('link_expired');
+});

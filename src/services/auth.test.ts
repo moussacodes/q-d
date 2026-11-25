@@ -14,6 +14,7 @@ import {
 } from '@/test/fakeSupabase';
 
 import {
+  clearProviderCredentials,
   fetchSavedProfile,
   mapAuthError,
   onAuthChange,
@@ -308,6 +309,31 @@ describe('signOut', () => {
 
   it('has nothing to do without a client', async () => {
     await expect(signOut(null)).resolves.toEqual({ ok: true, data: undefined });
+  });
+});
+
+describe('clearProviderCredentials', () => {
+  it('removes every music-service credential on this device', async () => {
+    const store = { clearAll: jest.fn().mockResolvedValue(undefined) };
+    await expect(clearProviderCredentials(store)).resolves.toBeUndefined();
+    expect(store.clearAll).toHaveBeenCalledTimes(1);
+    expect(entries).toEqual([]);
+  });
+
+  it('never throws, and logs a failure without its message', async () => {
+    const store = {
+      clearAll: jest
+        .fn()
+        .mockRejectedValue(new Error('Keychain refused token-abc for someone@example.com')),
+    };
+    await expect(clearProviderCredentials(store)).resolves.toBeUndefined();
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      level: 'warn',
+      message: 'Could not clear provider credentials',
+    });
+    expect(JSON.stringify(entries)).not.toContain('token-abc');
+    expectNothingSensitiveLogged();
   });
 });
 

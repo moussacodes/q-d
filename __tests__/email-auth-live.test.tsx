@@ -9,6 +9,7 @@ import {
   flushAuthEvents,
   type FakeSupabase,
 } from '@/test/fakeSupabase';
+import { providerCredentials } from '@/services/providerCredentials';
 
 // Email/password sign-in and account creation through Supabase Auth (Forge
 // card "Email/password sign-in and account creation"). Supabase is faked at
@@ -290,6 +291,23 @@ describe('once signed in', () => {
     await act(async () => {
       fireEvent.press(await screen.findByText('Account'));
     });
+    const clearAll = jest.spyOn(providerCredentials, 'clearAll');
+    await press('Sign out');
+    expect(await screen.findByText('Different apps. One aux.')).toBeVisible();
+    expect(mockSupabase.auth.signOut).toHaveBeenCalledWith({ scope: 'local' });
+    // The next person to sign in on this phone never inherits music-service tokens.
+    expect(clearAll).toHaveBeenCalledTimes(1);
+  });
+
+  it('still signs out when the music-service tokens can’t be removed', async () => {
+    await signInToHome();
+    jest
+      .spyOn(providerCredentials, 'clearAll')
+      .mockRejectedValueOnce(new Error('Keychain unavailable'));
+    await press('Settings');
+    await act(async () => {
+      fireEvent.press(await screen.findByText('Account'));
+    });
     await press('Sign out');
     expect(await screen.findByText('Different apps. One aux.')).toBeVisible();
     expect(mockSupabase.auth.signOut).toHaveBeenCalledWith({ scope: 'local' });
@@ -297,11 +315,13 @@ describe('once signed in', () => {
 
   it('returns to Welcome when Supabase ends the session', async () => {
     await signInToHome();
+    const clearAll = jest.spyOn(providerCredentials, 'clearAll');
     await act(async () => {
       mockSupabase.emit('SIGNED_OUT', null);
     });
     expect(await screen.findByText('Different apps. One aux.')).toBeVisible();
     expect(screen).toHavePathname('/');
+    expect(clearAll).toHaveBeenCalledTimes(1);
   });
 
   it('a token refresh changes nothing', async () => {
