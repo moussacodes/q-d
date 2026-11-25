@@ -145,13 +145,40 @@ describe('search results', () => {
     await signIn();
     await openAddSong('QD-7K4F9X', 'empty');
     await press('Add Valentina');
-    expect(await screen.findByText('Valentina added · playing now')).toBeVisible();
+    // The toast never claims a song plays when the host's phone can't play it.
+    expect(await screen.findByText('Valentina added · up now · not on Spotify')).toBeVisible();
+    expect(screen.queryByText(/playing now/)).toBeNull();
 
     await openRoom('QD-7K4F9X', 'empty');
     expect(await screen.findByText('Not on Spotify')).toBeVisible();
     expect(screen.getByLabelText('Play')).toBeDisabled();
     expect(screen.getByLabelText('0:00 of 2:34')).toBeVisible();
     expect(screen.getByLabelText('Skip')).toBeEnabled();
+  });
+});
+
+describe('a song the room’s service doesn’t have', () => {
+  it('holds the room until the host skips it, then the next song plays', async () => {
+    await signIn();
+    await openRoom('QD-7K4F9X', 'unavailable');
+    expect(await screen.findByText('Not on Spotify')).toBeVisible();
+    expect(screen.getByLabelText('Play')).toBeDisabled();
+
+    await press('Skip this song');
+    expect(screen.queryByText('Not on Spotify')).toBeNull();
+    // The next song plays through Spotify, with every control back on.
+    await waitFor(() => expect(screen.getByLabelText('Pause')).toBeEnabled());
+    expect(screen.getByLabelText('Previous')).toBeEnabled();
+    expect(screen.getByLabelText('Repeat this song')).toBeEnabled();
+  });
+
+  it('plays in a room that plays through a service that has it', async () => {
+    await signIn();
+    await openRoom('QD-7K4F9X', 'apple');
+    await skip(3);
+    expect(await screen.findByText('Phantom')).toBeVisible();
+    expect(screen.queryByText('Not on Apple Music')).toBeNull();
+    await waitFor(() => expect(screen.getByLabelText('Pause')).toBeEnabled());
   });
 });
 

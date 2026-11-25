@@ -20,6 +20,7 @@ Product and technical decisions that are not obvious from the code. Newest first
 - **A song with no stored match doesn't play either.** Mappings are resolved when playback needs them (PRODUCT_SPEC.md §6), so the host's phone waits rather than guess, and the room says "Not matched on Spotify yet". Mock mode always has a match, so this state appears only once real matching lands.
 - **Search results and queue rows warn ahead.** Add a song shows "Closest match on Spotify · may be another version" or "Explicit/clean version differs on Spotify" next to "On"/"Not on Spotify"; queue rows show "May be another version on Spotify". `CatalogResult.matches` is proposed in API_CONTRACTS.md for the canonical search card.
 - **"Wrong version?" is left to its own card.** `MatchNotice` takes an `onWrongVersion` prop and shows the button only when it's passed, so nothing offers a correction that doesn't work yet.
+- **Review fixes:** the "added" toast said "playing now" for a song the host's phone won't play; it now says "up now · not on Spotify". The `?view=apple` preview shared the room's Spotify player, so it decided what plays with Spotify's matches while the screen showed Apple Music's; each service now gets its own mock player.
 - **Preview:** `/room/QD-7K4F9X?view=uncertain` (listed in `/dev`). A person still compares the notice with Figma `20 · Mobile`, which has no frame for it; it reuses the 4.3 notice's look.
 
 ## 2026-11-24 · Settings: music services and account
