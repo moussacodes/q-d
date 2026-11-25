@@ -46,6 +46,7 @@ export function AuthSync({ live = isLiveAuth }: { live?: boolean }) {
         email: user.email,
         method: user.method,
         profile,
+        suggestedName: user.name ?? undefined,
       });
     };
 

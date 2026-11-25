@@ -53,6 +53,8 @@ export function AuthForm({
   const social = useSocialSignIn(mode);
   const [showPassword, setShowPassword] = useState(false);
   const formMessage = form.formError ?? social.error;
+  // One sign-in at a time: the email form or a provider, not both.
+  const busy = form.submitting || social.pending !== null;
 
   return (
     <Screen
@@ -122,8 +124,8 @@ export function AuthForm({
         <Button
           block
           label={form.submitting ? busyLabel : submitLabel}
-          disabled={form.submitting}
-          accessibilityState={{ busy: form.submitting, disabled: form.submitting }}
+          disabled={busy}
+          accessibilityState={{ busy: form.submitting, disabled: busy }}
           onPress={() => void form.submit()}
         />
       </View>
@@ -139,16 +141,16 @@ export function AuthForm({
           block
           icon="apple"
           label="Continue with Apple"
-          disabled={form.submitting}
-          onPress={() => social.continueWith('apple')}
+          disabled={busy}
+          onPress={() => void social.continueWith('apple')}
         />
         <Button
           block
           kind="secondary"
           icon="google"
-          label="Continue with Google"
-          disabled={form.submitting}
-          onPress={() => social.continueWith('google')}
+          label={social.pending === 'google' ? 'Opening Google…' : 'Continue with Google'}
+          disabled={busy}
+          onPress={() => void social.continueWith('google')}
         />
       </View>
     </Screen>

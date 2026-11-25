@@ -21,6 +21,10 @@ export const authErrorMessages: Record<AuthErrorCode, string> = {
   rate_limited: 'Too many tries. Wait a minute, then try again.',
   signups_disabled: 'New accounts can’t be created this way right now. Try again later.',
   method_unavailable: 'This sign-in option isn’t available yet. Use email instead.',
+  cancelled: 'Sign-in was cancelled.',
+  link_expired: 'That link has expired. Sign in again to get a new one.',
+  link_invalid:
+    'That link didn’t work. It may have been used already or opened on another device. Sign in again.',
   network: 'Couldn’t reach q’d. Check your connection and try again.',
   not_configured: 'Sign-in isn’t set up in this build of q’d.',
   unknown: 'Something went wrong. Try again.',

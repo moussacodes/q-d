@@ -2,6 +2,17 @@
 
 Product and technical decisions that are not obvious from the code. Newest first.
 
+## 2026-11-25 · Sign in with Google
+
+- **Supabase's Expo flow, nothing native.** `signInWithGoogle` (`src/services/auth.ts`) asks Supabase for Google's address with `skipBrowserRedirect` (PKCE, set on the client), opens it with `expo-web-browser`'s `openAuthSessionAsync`, and exchanges the `code` in the returned URL with `exchangeCodeForSession`. `expo-web-browser` ships in Expo Go and was added with `npx expo install`. No Google client ID lives in the app or `.env`: Google's client ID and secret are set on the Supabase project.
+- **Redirect URL.** `Linking.createURL('auth/callback')`: `qd://auth/callback` in development and store builds, `exp://<host>/--/auth/callback` in Expo Go. Both have to be on the Supabase project's redirect URL list.
+- **Built, not verified.** It can't be tested end to end without Google turned on in the Supabase dashboard and a Google Cloud OAuth client. It hasn't been run on a device, so it isn't claimed to work.
+- **Closing the sheet isn't an error.** Cancel, dismiss, or "access denied" on Google's page leaves the person where they were, with no message.
+- **A code is exchanged once.** If the redirect arrives twice (the sheet returns it and the deep link opens `/auth/callback`), the second call shares the first exchange.
+- **Supabase decides new or returning.** Welcome, Sign in and Create account all run the same Google flow; `AuthSync` routes to onboarding or Home from the profile row. Google's shared name (`full_name`) is suggested on onboarding step 1, as the mock did.
+- **Not on the web.** The web build is for mock mode and guests, and its popup flow isn't built, so live Google on the web says it isn't available yet.
+- **One sign-in at a time.** While the Google sheet is open, the email form and the other buttons are disabled, and the button reads "Opening Google…".
+
 ## 2026-11-25 · Email/password sign-in and account creation
 
 - **Sign-in has its own mode, separate from room data.** `authMode` (`src/services/dataMode.ts`) is `live` only when `EXPO_PUBLIC_DATA_MODE=live` and both Supabase variables validate. Rooms still fall back to mock in that case (`LIVE_DATA_AVAILABLE` is false), so the strip reads "Mock data · only sign-in is live". With no `.env`, or `mock`, nothing changes: the mock session signs in and nothing touches Supabase.

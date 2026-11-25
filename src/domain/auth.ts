@@ -36,6 +36,12 @@ export type AuthErrorCode =
   | 'signups_disabled'
   /** This sign-in method isn't turned on, or isn't built yet. */
   | 'method_unavailable'
+  /** The person closed the sign-in window or said no. Not shown as an error. */
+  | 'cancelled'
+  /** A sign-in or email link that's too old to use. */
+  | 'link_expired'
+  /** A sign-in or email link that can't be used: wrong device, used twice, or broken. */
+  | 'link_invalid'
   /** The device couldn't reach the server. */
   | 'network'
   /** This build has no Supabase settings. */
@@ -124,4 +130,68 @@ export function isProfileComplete(profile: ProfileFields | null | undefined): bo
 export function resolveAuthStatus(signedIn: boolean, profileComplete: boolean): AuthStatus {
   if (!signedIn) return 'signedOut';
   return profileComplete ? 'ready' : 'onboarding';
+}
+
+/**
+ * What a sign-in redirect (`…/auth/callback`) carries. Supabase's PKCE flow
+ * returns `?code=…`; a failure returns `error`, `error_code` and
+ * `error_description`, in the query or the fragment.
+ */
+export type AuthCallback =
+  | { kind: 'code'; code: string }
+  | { kind: 'error'; error: string; errorCode: string | null }
+  | { kind: 'missing' };
+
+function paramsOf(url: string): URLSearchParams {
+  const params = new URLSearchParams();
+  const hashIndex = url.indexOf('#');
+  const beforeHash = hashIndex === -1 ? url : url.slice(0, hashIndex);
+  const queryIndex = beforeHash.indexOf('?');
+  const parts = [
+    queryIndex === -1 ? '' : beforeHash.slice(queryIndex + 1),
+    hashIndex === -1 ? '' : url.slice(hashIndex + 1),
+  ];
+  for (const part of parts) {
+    new URLSearchParams(part).forEach((value, key) => {
+      if (!params.has(key)) params.set(key, value);
+    });
+  }
+  return params;
+}
+
+/** Reads a sign-in redirect URL. An error wins over a code. */
+export function parseAuthCallbackUrl(url: string): AuthCallback {
+  return parseAuthCallbackParams(Object.fromEntries(paramsOf(url)));
+}
+
+/** The same, from route params (Expo Router hands the query over as params). */
+export function parseAuthCallbackParams(
+  params: Record<string, string | string[] | undefined>,
+): AuthCallback {
+  const first = (key: string) => {
+    const value = params[key];
+    const text = Array.isArray(value) ? value[0] : value;
+    return text && text.trim() !== '' ? text.trim() : undefined;
+  };
+  const error = first('error') ?? first('error_code');
+  if (error) return { kind: 'error', error, errorCode: first('error_code') ?? null };
+  const code = first('code');
+  return code ? { kind: 'code', code } : { kind: 'missing' };
+}
+
+/** Maps a redirect's `error` / `error_code` to an `AuthErrorCode`. */
+export function callbackErrorCode(error: string, errorCode: string | null): AuthErrorCode {
+  const reason = errorCode ?? error;
+  if (error === 'access_denied' && (!errorCode || errorCode === 'access_denied')) {
+    return 'cancelled';
+  }
+  if (reason === 'otp_expired' || reason === 'flow_state_expired') return 'link_expired';
+  if (reason === 'provider_disabled' || reason === 'oauth_provider_not_supported') {
+    return 'method_unavailable';
+  }
+  if (reason === 'signup_disabled') return 'signups_disabled';
+  if (reason === 'over_request_rate_limit') return 'rate_limited';
+  if (errorCode) return 'link_invalid';
+  if (error === 'server_error' || error === 'temporarily_unavailable') return 'unknown';
+  return 'link_invalid';
 }

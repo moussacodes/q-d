@@ -146,7 +146,7 @@ describe('signInWithEmail', () => {
     });
     expect(result).toEqual({
       ok: true,
-      data: { id: 'user-1', email: 'someone@example.com', method: 'email' },
+      data: { id: 'user-1', email: 'someone@example.com', method: 'email', name: null },
     });
     expectNothingSensitiveLogged();
   });
@@ -228,6 +228,7 @@ describe('signUpWithEmail', () => {
         id: 'user-1',
         email: 'someone@example.com',
         method: 'email',
+        name: null,
         needsEmailConfirmation: false,
       },
     });
@@ -366,7 +367,7 @@ describe('onAuthChange', () => {
     expect(changes).toEqual([
       {
         event: 'INITIAL_SESSION',
-        user: { id: 'user-1', email: 'someone@example.com', method: 'google' },
+        user: { id: 'user-1', email: 'someone@example.com', method: 'google', name: null },
       },
       { event: 'SIGNED_OUT', user: null },
     ]);

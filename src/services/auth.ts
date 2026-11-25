@@ -1,7 +1,12 @@
 import { isAuthRetryableFetchError, type SupabaseClient, type User } from '@supabase/supabase-js';
+import * as Linking from 'expo-linking';
+import * as WebBrowser from 'expo-web-browser';
+import { Platform } from 'react-native';
 
 import {
+  callbackErrorCode,
   isProfileComplete,
+  parseAuthCallbackUrl,
   normalizeEmail,
   type AuthErrorCode,
   type EmailForm,
@@ -46,6 +51,12 @@ const CODE_MAP: Record<string, AuthErrorCode> = {
   provider_disabled: 'method_unavailable',
   oauth_provider_not_supported: 'method_unavailable',
   request_timeout: 'network',
+  flow_state_expired: 'link_expired',
+  otp_expired: 'link_expired',
+  flow_state_not_found: 'link_invalid',
+  bad_code_verifier: 'link_invalid',
+  bad_oauth_state: 'link_invalid',
+  bad_oauth_callback: 'link_invalid',
 };
 
 function readString(value: unknown, key: string): string | undefined {
@@ -109,10 +120,27 @@ export interface SignedInUser {
   id: string;
   email: string | null;
   method: SignInMethod;
+  /** The name Google (or Apple) shared, offered on onboarding step 1. */
+  name: string | null;
+}
+
+/** A name the sign-in provider shared, if any. Email accounts have none. */
+export function providerNameOf(user: Pick<User, 'user_metadata'>): string | null {
+  const metadata = user.user_metadata ?? {};
+  for (const key of ['full_name', 'name']) {
+    const value: unknown = metadata[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return null;
 }
 
 function summarize(user: User): SignedInUser {
-  return { id: user.id, email: user.email ?? null, method: signInMethodOf(user) };
+  return {
+    id: user.id,
+    email: user.email ?? null,
+    method: signInMethodOf(user),
+    name: providerNameOf(user),
+  };
 }
 
 export async function signInWithEmail(
@@ -169,6 +197,117 @@ export async function signUpWithEmail(
     };
   } catch (error) {
     return report('email_sign_up', error);
+  }
+}
+
+/**
+ * Codes already being exchanged, so a redirect that reaches the app twice
+ * (the browser hands it back and the deep link also opens the callback
+ * route) is exchanged once. A PKCE code works only once.
+ */
+const exchanges = new Map<string, Promise<AuthOutcome<SignedInUser>>>();
+
+/** Forgets earlier exchanges. Tests only. */
+export function resetCodeExchanges() {
+  exchanges.clear();
+}
+
+/**
+ * Finishes a PKCE sign-in: swaps the redirect's one-time `code` for a session.
+ * The code verifier was stored on this device when the sign-in started, so a
+ * link opened on another device (or after the app's storage was cleared)
+ * fails with `link_invalid`.
+ */
+export function exchangeAuthCode(
+  code: string,
+  client: SupabaseClient | null = getSupabase(),
+): Promise<AuthOutcome<SignedInUser>> {
+  const running = exchanges.get(code);
+  if (running) return running;
+  const exchange = (async (): Promise<AuthOutcome<SignedInUser>> => {
+    if (!client) return fail('not_configured');
+    try {
+      const { data, error } = await client.auth.exchangeCodeForSession(code);
+      if (error) return report('code_exchange', error);
+      if (!data.user) return report('code_exchange', null);
+      authLog.info('Signed in', { method: signInMethodOf(data.user) });
+      return { ok: true, data: summarize(data.user) };
+    } catch (error) {
+      return report('code_exchange', error);
+    }
+  })();
+  exchanges.set(code, exchange);
+  return exchange;
+}
+
+/** Turns a redirect URL into a session, or the reason it can't. */
+export async function completeAuthRedirect(
+  url: string,
+  client: SupabaseClient | null = getSupabase(),
+): Promise<AuthOutcome<SignedInUser>> {
+  const callback = parseAuthCallbackUrl(url);
+  if (callback.kind === 'code') return exchangeAuthCode(callback.code, client);
+  if (callback.kind === 'missing') {
+    authLog.warn('Auth step failed', { step: 'redirect', errorCode: 'link_invalid' });
+    return fail('link_invalid');
+  }
+  const errorCode = callbackErrorCode(callback.error, callback.errorCode);
+  authLog.warn('Auth step failed', {
+    step: 'redirect',
+    errorCode,
+    supabaseErrorCode: callback.errorCode ?? callback.error,
+  });
+  return fail(errorCode);
+}
+
+/**
+ * Where Supabase sends people back after Google or an email link: the
+ * `/auth/callback` route. `qd://auth/callback` in a development or store
+ * build, `exp://…/--/auth/callback` in Expo Go. Each must be on the Supabase
+ * project's list of redirect URLs.
+ */
+export function authRedirectUrl(): string {
+  return Linking.createURL('auth/callback');
+}
+
+/** The part of expo-web-browser the Google sign-in uses, so tests can stand in. */
+export interface AuthBrowser {
+  openAuthSessionAsync(url: string, redirectUrl: string): Promise<{ type: string; url?: string }>;
+}
+
+/**
+ * Sign in with Google through Supabase Auth (PKCE). Supabase gives the Google
+ * page's address without leaving the app (`skipBrowserRedirect`); the system
+ * sign-in sheet opens it and hands back the redirect to `redirectTo`, whose
+ * `code` is exchanged for a session. Uses only Expo Go modules.
+ *
+ * Built, not yet tested on a device: it needs Google enabled on the Supabase
+ * project and `redirectTo` on its list of redirect URLs.
+ */
+export async function signInWithGoogle(
+  redirectTo: string,
+  options: { client?: SupabaseClient | null; browser?: AuthBrowser; platform?: string } = {},
+): Promise<AuthOutcome<SignedInUser>> {
+  const { client = getSupabase(), browser = WebBrowser, platform = Platform.OS } = options;
+  if (!client) return fail('not_configured');
+  // The web build is for mock mode and guests; its popup flow isn't built.
+  if (platform === 'web') return fail('method_unavailable');
+  try {
+    const { data, error } = await client.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo, skipBrowserRedirect: true },
+    });
+    if (error) return report('google_start', error);
+    if (!data.url) return report('google_start', null);
+
+    const result = await browser.openAuthSessionAsync(data.url, redirectTo);
+    if (result.type !== 'success' || !result.url) {
+      authLog.info('Sign-in cancelled', { method: 'google', result: result.type });
+      return fail('cancelled');
+    }
+    return await completeAuthRedirect(result.url, client);
+  } catch (error) {
+    return report('google_start', error);
   }
 }
 

@@ -78,14 +78,16 @@ export default function Welcome() {
           block
           icon="apple"
           label="Continue with Apple"
-          onPress={() => social.continueWith('apple')}
+          disabled={social.pending !== null}
+          onPress={() => void social.continueWith('apple')}
         />
         <Button
           block
           kind="secondary"
           icon="google"
-          label="Continue with Google"
-          onPress={() => social.continueWith('google')}
+          label={social.pending === 'google' ? 'Opening Google…' : 'Continue with Google'}
+          disabled={social.pending !== null}
+          onPress={() => void social.continueWith('google')}
         />
         <Button
           block
