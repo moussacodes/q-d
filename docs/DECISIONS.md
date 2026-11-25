@@ -2,6 +2,12 @@
 
 Product and technical decisions that are not obvious from the code. Newest first.
 
+## 2026-11-25 · Queue concurrency and idempotency tests
+
+- **PGlite can't run two transactions at once,** so "several people add at once" is tested as bursts of requests fired together, which PGlite runs one whole transaction at a time in arrival order. The tests check what must hold in any order: one playing entry, queued positions `1..n`, each success applied once, replays returning the first result, and the same key with other arguments failing with `idempotency_conflict`.
+- **The lock itself is checked structurally.** A test reads each queue RPC's source and fails if it touches the queue before `private.lock_room()`, and another checks that `lock_room` holds the room row for the rest of the transaction. True parallel blocking needs the same suite on the Supabase local stack (Mac, `supabase start`).
+- **The random burst is seeded,** so a failure can be replayed exactly.
+
 ## 2026-11-25 · reorder_queue and remove_queue_entry
 
 - **The control rule decides, not "host only".** The Trello card says only the host may reorder or remove. The newer decisions win: the control rule (Everyone / Chosen / Only you, 2026-11-20) governs both, and its default is still the host only. The person who added an entry may remove it while it's queued (the Undo, 2026-11-24).
