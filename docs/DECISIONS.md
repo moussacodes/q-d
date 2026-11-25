@@ -2,6 +2,13 @@
 
 Product and technical decisions that are not obvious from the code. Newest first.
 
+## 2026-11-24 · Empty queue and unavailable song states
+
+- **"Switch for next song" appears only when the host has connected the other service** (PRODUCT_SPEC.md §6). Without it, the 4.3 notice asks the host to skip ("Skip it to keep the room going.") and no longer offers a switch the host can't make. The button still does nothing; switching is the provider-switching card.
+- **Listeners see the unavailable song too.** Their notice says the song isn't on the room's service, so the host's phone can't play it, and that the host can skip it. It has no buttons. Before, only the host saw anything.
+- **An empty queue behind a playing song says so.** The Up next bar reads "Nothing queued yet" under "Up next · 0 songs", and the queue shows "The queue is empty". No autoplay is promised: the mock doesn't autoplay, and the real "Autoplay by …" label comes with the provider cards.
+- The notice moved to `src/features/room/UnavailableNotice.tsx`. A person still compares 4.2 and 4.3 with Figma `20 · Mobile`.
+
 ## 2026-11-24 · Listeners: audit
 
 - **Listeners shows who's in the room** (Figma 3.6): everyone by name, you marked "(you)", the host first with "Host · plays the music" and a Host chip, and everyone else "In the room". The host edits the rules and picks chosen people there; listeners read the rules as text. A person still compares it with Figma `20 · Mobile`.

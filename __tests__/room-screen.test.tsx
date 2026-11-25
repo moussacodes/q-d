@@ -85,7 +85,8 @@ describe('the host', () => {
     await signIn();
     await openRoom({ code: 'QD-7K4F9X', view: 'unavailable' });
     expect(await screen.findByText('Not on Spotify')).toBeVisible();
-    expect(screen.getByText(/switch to Apple Music for the next song/)).toBeVisible();
+    // No Apple Music connected, so there's nothing to switch to (room-states.test.tsx).
+    expect(screen.getByText(/Skip it to keep the room going/)).toBeVisible();
 
     await press('Skip this song');
     expect(screen.queryByText('Not on Spotify')).toBeNull();
