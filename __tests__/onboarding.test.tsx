@@ -1,5 +1,7 @@
 import { act, fireEvent, renderRouter, screen } from 'expo-router/testing-library';
 
+import { fillEmailForm } from '@/test/emailForm';
+
 // Three-step onboarding (Forge card): name, color and 18+ on step 1, an
 // optional music-service step, then start or join.
 jest.setTimeout(60_000);
@@ -18,6 +20,7 @@ const type = async (label: string, text: string) => {
 
 const signUpWithEmail = async () => {
   await renderRouter('./app', { initialUrl: '/create-account' });
+  await fillEmailForm();
   await press('Create account');
   await screen.findByText('What should we call you?');
 };

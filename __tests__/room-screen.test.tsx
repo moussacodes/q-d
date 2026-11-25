@@ -1,6 +1,8 @@
 import { router } from 'expo-router';
 import { act, fireEvent, renderRouter, screen, waitFor } from 'expo-router/testing-library';
 
+import { fillEmailForm } from '@/test/emailForm';
+
 // Room screen: default, expanded and queue states (Forge card). The queue
 // changes now: the host skips, reorders and removes, and every screen that
 // shows the room agrees.
@@ -15,6 +17,7 @@ const press = async (label: string) => {
 /** A returning user on Home. */
 const signIn = async () => {
   await renderRouter('./app', { initialUrl: '/sign-in' });
+  await fillEmailForm();
   await press('Sign in');
   await screen.findByText('Start a room or jump into one.');
 };

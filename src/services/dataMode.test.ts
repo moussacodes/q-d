@@ -1,4 +1,12 @@
-import { dataMode, isMockMode, LIVE_DATA_AVAILABLE, resolveDataMode } from './dataMode';
+import {
+  authMode,
+  dataMode,
+  isLiveAuth,
+  isMockMode,
+  LIVE_DATA_AVAILABLE,
+  resolveAuthMode,
+  resolveDataMode,
+} from './dataMode';
 
 const supabase = { url: 'https://x.supabase.co', publishableKey: 'sb_publishable_x' };
 
@@ -90,5 +98,25 @@ describe('module start-up', () => {
       jest.requireActual('./flags');
     });
     expect(warn).not.toHaveBeenCalled();
+  });
+});
+
+describe('resolveAuthMode', () => {
+  it('signs in with the mock session unless live is asked for', () => {
+    expect(resolveAuthMode({ requestedDataMode: 'mock', supabase: null })).toBe('mock');
+    expect(resolveAuthMode({ requestedDataMode: 'mock', supabase })).toBe('mock');
+  });
+
+  it('stays mock when live has no Supabase settings', () => {
+    expect(resolveAuthMode({ requestedDataMode: 'live', supabase: null })).toBe('mock');
+  });
+
+  it('uses Supabase Auth when live is asked for and Supabase is configured', () => {
+    expect(resolveAuthMode({ requestedDataMode: 'live', supabase })).toBe('live');
+  });
+
+  it('is mock for this run, with no environment', () => {
+    expect(authMode).toBe('mock');
+    expect(isLiveAuth).toBe(false);
   });
 });

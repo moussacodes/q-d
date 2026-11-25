@@ -188,6 +188,15 @@ Moves the room to the next song when the current one ends, is skipped, or isn't 
 
 ### Account
 
+#### q’d sign-in (Supabase Auth, client side)
+
+Not an RPC: the app calls Supabase Auth through `src/services/auth.ts` only. Built for email/password.
+
+- `signInWithEmail({ email, password })`, `signUpWithEmail({ email, password }, { emailRedirectTo })`, `signOut()` (this device, `scope: 'local'`), `fetchSavedProfile(userId)` (reads the caller's own `profiles` row) and `onAuthChange(listener)`.
+- Each returns `{ ok: true, data } | { ok: false, code: AuthErrorCode }` and never throws. Sign-up's `data.needsEmailConfirmation` is true when the project makes new accounts confirm their email first.
+- `AuthErrorCode` (`src/domain/auth.ts`): `invalid_credentials`, `email_not_confirmed`, `email_taken`, `weak_password`, `invalid_email`, `rate_limited`, `signups_disabled`, `method_unavailable`, `network`, `not_configured`, `unknown`.
+- `onAuthChange` reports `{ event, user: { id, email, method } | null }`, never tokens, on the tick after Supabase's callback (a listener that calls Supabase inside the callback would wait on its auth lock).
+
 #### `delete_account` (Edge Function)
 
 Runs as an Edge Function, not a database function, because it needs the service role to delete the auth user and to revoke provider authorizations.

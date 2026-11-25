@@ -60,3 +60,23 @@ for (const message of [...envResult.problems, decision.fallbackReason]) {
 export const dataMode: DataMode = decision.mode;
 
 export const isMockMode = dataMode === 'mock';
+
+/**
+ * Where sign-in happens, decided separately from room data.
+ *
+ * - `mock`: the mock session. Any valid-looking email signs in, and nothing
+ *   leaves the device. The default, and the only mode without Supabase.
+ * - `live`: Supabase Auth. Used when `EXPO_PUBLIC_DATA_MODE=live` and both
+ *   Supabase variables validate, even while rooms still fall back to mock
+ *   data (the strip then says sign-in is live and the rest is mock).
+ */
+export type AuthMode = 'mock' | 'live';
+
+/** Decides the auth mode. Pure, so every path is testable. */
+export function resolveAuthMode(appEnv: Pick<AppEnv, 'requestedDataMode' | 'supabase'>): AuthMode {
+  return appEnv.requestedDataMode === 'live' && appEnv.supabase !== null ? 'live' : 'mock';
+}
+
+export const authMode: AuthMode = resolveAuthMode(env);
+
+export const isLiveAuth = authMode === 'live';

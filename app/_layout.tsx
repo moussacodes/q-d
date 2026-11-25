@@ -5,6 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 
 import { fontAssets, neutral, ThemeProvider } from '@/design';
+import { AuthSync } from '@/features/auth/AuthSync';
 import { ProviderConnectionsProvider } from '@/features/connections/ProviderConnections';
 import { MockModeFrame } from '@/features/dev/MockModeFrame';
 import { RoomsProvider } from '@/features/room/useRoom';
@@ -35,6 +36,7 @@ export default function RootLayout() {
         <MockSessionProvider>
           <ProviderConnectionsProvider>
             <RoomsProvider>
+              <AuthSync />
               <StatusBar style="light" />
               <MockModeFrame>
                 <RootStack />

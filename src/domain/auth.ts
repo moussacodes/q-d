@@ -1,0 +1,127 @@
+/**
+ * q’d sign-in rules that don't depend on Supabase or React: the error codes
+ * the auth service reports, email/password form validation, and which part
+ * of the app a person may see (docs/DECISIONS.md, "Auth and onboarding
+ * navigation").
+ */
+
+/**
+ * Where someone is in the sign-in flow.
+ * - `signedOut`: Welcome, Sign in, Create account.
+ * - `onboarding`: signed in, but name, color and 18+ aren't done yet.
+ * - `ready`: everything else.
+ */
+export type AuthStatus = 'signedOut' | 'onboarding' | 'ready';
+
+export type SignInMethod = 'apple' | 'google' | 'email';
+
+/**
+ * Why a sign-in step failed. The auth service maps every Supabase error to
+ * one of these, and each has its own copy (features/auth/messages.ts).
+ */
+export type AuthErrorCode =
+  /** Wrong email or password. Deliberately doesn't say which. */
+  | 'invalid_credentials'
+  /** The account exists but its email link hasn't been opened yet. */
+  | 'email_not_confirmed'
+  /** Creating an account with an email that already has one. */
+  | 'email_taken'
+  /** The server refused the password as too weak or too short. */
+  | 'weak_password'
+  /** The server refused the email address. */
+  | 'invalid_email'
+  /** Too many attempts or emails in a short time. */
+  | 'rate_limited'
+  /** New accounts or this sign-in method are switched off on the project. */
+  | 'signups_disabled'
+  /** This sign-in method isn't turned on, or isn't built yet. */
+  | 'method_unavailable'
+  /** The device couldn't reach the server. */
+  | 'network'
+  /** This build has no Supabase settings. */
+  | 'not_configured'
+  /** Anything else. Logged with its code, shown as a generic retry. */
+  | 'unknown';
+
+/** At least this many characters for a new password (Supabase's own minimum is 6). */
+export const MIN_PASSWORD_LENGTH = 8;
+
+/** Longest password the form accepts. Supabase hashes with bcrypt, which reads 72 bytes. */
+export const MAX_PASSWORD_LENGTH = 72;
+
+export type EmailFieldError = 'email_missing' | 'email_invalid';
+export type PasswordFieldError = 'password_missing' | 'password_short' | 'password_long';
+
+export interface EmailFormErrors {
+  email?: EmailFieldError;
+  password?: PasswordFieldError;
+}
+
+export interface EmailForm {
+  email: string;
+  password: string;
+}
+
+/**
+ * One `@`, something before it and a dot in the domain. Deliberately loose:
+ * the server has the final say, and a strict pattern turns away real addresses.
+ */
+const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Trims the email; the password is kept exactly as typed. */
+export function normalizeEmail(email: string): string {
+  return email.trim();
+}
+
+export function validateEmail(email: string): EmailFieldError | undefined {
+  const trimmed = normalizeEmail(email);
+  if (trimmed === '') return 'email_missing';
+  if (!EMAIL_SHAPE.test(trimmed)) return 'email_invalid';
+  return undefined;
+}
+
+/**
+ * Checks the email/password form before anything is sent. Signing in only
+ * needs a password; creating an account also checks its length.
+ */
+export function validateEmailForm(
+  form: EmailForm,
+  mode: 'sign-in' | 'create-account',
+): EmailFormErrors {
+  const errors: EmailFormErrors = {};
+  const email = validateEmail(form.email);
+  if (email) errors.email = email;
+  if (form.password === '') {
+    errors.password = 'password_missing';
+  } else if (mode === 'create-account') {
+    if (form.password.length < MIN_PASSWORD_LENGTH) errors.password = 'password_short';
+    else if (new TextEncoder().encode(form.password).length > MAX_PASSWORD_LENGTH) {
+      errors.password = 'password_long';
+    }
+  }
+  return errors;
+}
+
+export function hasFormErrors(errors: EmailFormErrors): boolean {
+  return errors.email !== undefined || errors.password !== undefined;
+}
+
+/** The onboarding fields of a `profiles` row (supabase/migrations, initial schema). */
+export interface ProfileFields {
+  display_name: string | null;
+  color: string | null;
+  adult_confirmed_at: string | null;
+}
+
+/** Onboarding step 1 is done when the name, color and 18+ confirmation are all saved. */
+export function isProfileComplete(profile: ProfileFields | null | undefined): boolean {
+  return Boolean(
+    profile && profile.display_name?.trim() && profile.color && profile.adult_confirmed_at,
+  );
+}
+
+/** Signed out → Welcome; signed in without a finished profile → onboarding; else Home. */
+export function resolveAuthStatus(signedIn: boolean, profileComplete: boolean): AuthStatus {
+  if (!signedIn) return 'signedOut';
+  return profileComplete ? 'ready' : 'onboarding';
+}

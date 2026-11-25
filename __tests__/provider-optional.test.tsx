@@ -1,6 +1,8 @@
 import { router } from 'expo-router';
 import { act, fireEvent, renderRouter, screen } from 'expo-router/testing-library';
 
+import { fillEmailForm } from '@/test/emailForm';
+
 // Provider-optional flow (Forge card): a music service is needed only on the
 // phone that plays, which in aux mode is the host's.
 jest.setTimeout(60_000);
@@ -73,6 +75,7 @@ describe('q’d sign-in and music services are separate', () => {
 
   it('a new account starts with no services, even after another account had one', async () => {
     await renderRouter('./app', { initialUrl: '/sign-in' });
+    await fillEmailForm();
     await pressLabel('Sign in');
     await pressLabel('Settings');
     expect(await screen.findByText('Mock connection · no Spotify account used')).toBeVisible();
@@ -82,6 +85,7 @@ describe('q’d sign-in and music services are separate', () => {
     await screen.findByText('Different apps. One aux.');
 
     await pressLabel('Continue with email');
+    await fillEmailForm();
     await pressLabel('Create account');
     await act(async () => {
       // Email sign-ups start without a name.

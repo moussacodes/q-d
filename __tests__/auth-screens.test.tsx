@@ -1,6 +1,8 @@
 import { router } from 'expo-router';
 import { act, fireEvent, renderRouter, screen } from 'expo-router/testing-library';
 
+import { fillEmailForm } from '@/test/emailForm';
+
 // Welcome, Sign in and Create account (Forge card "Welcome, sign-in and
 // account-creation screens"): every screen offers Apple, Google and email,
 // and each entry point lands where the mock session says it should.
@@ -108,6 +110,7 @@ describe('Sign in', () => {
   ])('“%s” is a returning user: Home, signed in with %s', async (button, method) => {
     await renderRouter('./app', { initialUrl: '/sign-in' });
     await type('Email', 'someone@example.com');
+    await type('Password', 'hunter22');
     await press(button);
     expect(await screen.findByText('Start a room or jump into one.')).toBeVisible();
     expect(screen).toHavePathname('/home');
@@ -171,6 +174,7 @@ describe('Create account', () => {
 describe('once signed in', () => {
   it('Welcome, Sign in and Create account are out of reach', async () => {
     await renderRouter('./app', { initialUrl: '/sign-in' });
+    await fillEmailForm();
     await press('Sign in');
     await screen.findByText('Start a room or jump into one.');
 

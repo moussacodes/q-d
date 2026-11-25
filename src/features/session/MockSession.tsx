@@ -1,17 +1,19 @@
 import { router, type Href } from 'expo-router';
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
+import type { AuthStatus, SignInMethod } from '@/domain/auth';
 import type { MusicProvider } from '@/domain/music-provider';
 import { findRoom, mockUser, type MockRoom } from '@/providers/mock/data';
+import { signOut as signOutOfSupabase } from '@/services/auth';
+import { isLiveAuth } from '@/services/dataMode';
 
 /**
- * Where someone is in the sign-in flow. Mock only; Supabase Auth and the
- * profile row decide this once the auth cards land.
- * - `signedOut`: Welcome, Sign in, Create account.
- * - `onboarding`: signed in, but name, color and 18+ aren't done yet.
- * - `ready`: everything else.
+ * Where someone is in the sign-in flow (see `AuthStatus` in domain/auth.ts).
+ * In mock auth mode the mock buttons decide it. In live auth mode Supabase
+ * Auth and the profile row decide it, through `applyAuth`
+ * (features/auth/AuthSync.tsx).
  */
-export type AuthStatus = 'signedOut' | 'onboarding' | 'ready';
+export type { AuthStatus, SignInMethod };
 
 /** The screen each state starts on. Guarded routes redirect here. */
 export const landingFor: Record<AuthStatus, Href> = {
@@ -19,8 +21,6 @@ export const landingFor: Record<AuthStatus, Href> = {
   onboarding: '/onboarding/name',
   ready: '/home',
 };
-
-export type SignInMethod = 'apple' | 'google' | 'email';
 
 export const signInMethodNames: Record<SignInMethod, string> = {
   apple: 'Apple',
@@ -42,6 +42,22 @@ type Account = {
   method: SignInMethod;
   /** Null until onboarding step 1 is done. */
   profile: Profile | null;
+  /** Live auth only: the Supabase user's id, email and provider name. */
+  userId?: string;
+  email?: string | null;
+  suggestedName?: string;
+};
+
+/** A signed-in Supabase user, as live auth reports it to the session. */
+export type LiveAccount = {
+  status: Exclude<AuthStatus, 'signedOut'>;
+  userId: string;
+  email: string | null;
+  method: SignInMethod;
+  /** The saved profile, when onboarding is done. */
+  profile: Profile | null;
+  /** A name from the sign-in provider, offered on onboarding step 1. */
+  suggestedName?: string;
 };
 
 type MockSessionValue = {
@@ -65,6 +81,13 @@ type MockSessionValue = {
   /** Ends onboarding on Home, or on `next` with Home underneath it. */
   finishOnboarding: (next?: Href) => void;
   signOut: () => void;
+  /**
+   * Live auth: moves the session to what Supabase reports. Null means signed
+   * out. Does nothing when the state and user haven't changed.
+   */
+  applyAuth: (next: LiveAccount | null) => void;
+  /** Live auth: the signed-in Supabase user's id, or null. */
+  liveUserId: string | null;
   /** Development screen index: open a screen in the state it needs. */
   previewAs: (auth: AuthStatus, href: Href) => void;
   enterRoom: (code: string) => void;
@@ -117,6 +140,12 @@ export function MockSessionProvider({ children }: { children: ReactNode }) {
     };
     const switchAccount = (next: Omit<Account, 'id'>) =>
       setAccount((current) => ({ id: current.id + 1, ...next }));
+    const resetToSignedOut = () => {
+      setActiveCode(null);
+      setHosted(null);
+      switchAccount({ returning: false, method: 'email', profile: null });
+      go('signedOut');
+    };
     // Dev previews can open Home without onboarding; they show the sample profile.
     const profile = account.profile ?? { name: mockUser.name, color: mockUser.color };
     const room = activeCode ? findRoom(activeCode) : null;
@@ -124,8 +153,16 @@ export function MockSessionProvider({ children }: { children: ReactNode }) {
       auth,
       accountId: account.id,
       returning: account.returning,
-      user: { ...profile, email: mockUser.email, signedInWith: account.method },
-      suggestedName: account.method === 'email' ? '' : mockUser.name,
+      user: {
+        ...profile,
+        email: account.userId ? (account.email ?? '') : mockUser.email,
+        signedInWith: account.method,
+      },
+      suggestedName: account.userId
+        ? (account.suggestedName ?? '')
+        : account.method === 'email'
+          ? ''
+          : mockUser.name,
       saveProfile: (next) => setAccount((current) => ({ ...current, profile: next })),
       activeRoom: room && hosted?.code === room.code ? { ...room, ...hosted } : room,
       signIn: (method) => {
@@ -142,11 +179,30 @@ export function MockSessionProvider({ children }: { children: ReactNode }) {
       },
       finishOnboarding: (next) => go('ready', next ? [landingFor.ready, next] : undefined),
       signOut: () => {
-        setActiveCode(null);
-        setHosted(null);
-        switchAccount({ returning: false, method: 'email', profile: null });
-        go('signedOut');
+        resetToSignedOut();
+        // The local session is removed before the network call, so this
+        // can't leave the device signed in (services/auth.ts).
+        if (isLiveAuth) void signOutOfSupabase();
       },
+      applyAuth: (next) => {
+        if (!next) {
+          if (auth !== 'signedOut' || account.userId) resetToSignedOut();
+          return;
+        }
+        if (next.userId === account.userId && next.status === auth) return;
+        if (next.userId !== account.userId) {
+          switchAccount({
+            returning: next.status === 'ready',
+            method: next.method,
+            profile: next.profile,
+            userId: next.userId,
+            email: next.email,
+            suggestedName: next.suggestedName,
+          });
+        }
+        go(next.status);
+      },
+      liveUserId: account.userId ?? null,
       previewAs: (next, href) => {
         setAuth(next);
         setTrip({ mode: 'push', hrefs: [href] });

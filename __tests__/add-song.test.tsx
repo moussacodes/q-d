@@ -1,6 +1,8 @@
 import { router } from 'expo-router';
 import { act, fireEvent, renderRouter, screen } from 'expo-router/testing-library';
 
+import { fillEmailForm } from '@/test/emailForm';
+
 // Search / add-song overlay (Forge card). Anyone in the room adds songs to
 // the shared queue (PRODUCT_SPEC.md §4–5); a song that's already there needs
 // a second tap to confirm.
@@ -15,6 +17,7 @@ const press = async (label: string) => {
 /** A returning user (Baron) in a room. */
 const openRoom = async (params: { code: string; view?: string }) => {
   await renderRouter('./app', { initialUrl: '/sign-in' });
+  await fillEmailForm();
   await press('Sign in');
   await screen.findByText('Start a room or jump into one.');
   await act(async () => {

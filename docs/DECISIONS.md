@@ -2,6 +2,20 @@
 
 Product and technical decisions that are not obvious from the code. Newest first.
 
+## 2026-11-25 · Email/password sign-in and account creation
+
+- **Sign-in has its own mode, separate from room data.** `authMode` (`src/services/dataMode.ts`) is `live` only when `EXPO_PUBLIC_DATA_MODE=live` and both Supabase variables validate. Rooms still fall back to mock in that case (`LIVE_DATA_AVAILABLE` is false), so the strip reads "Mock data · only sign-in is live". With no `.env`, or `mock`, nothing changes: the mock session signs in and nothing touches Supabase.
+- **One auth service.** `src/services/auth.ts` is the only code that calls `supabase.auth`. It returns outcomes instead of throwing and maps every Supabase error to an `AuthErrorCode` (`src/domain/auth.ts`). The screens show the copy for that code (`src/features/auth/messages.ts`), never Supabase's message.
+- **A wrong password doesn't say whether the email has an account** ("That email and password don’t match an account").
+- **An existing email on sign-up says so** ("There’s already an account with this email. Sign in instead."), including when email confirmation is on and Supabase hides it behind a user with no identities. It's what a person needs to hear, and sign-up already reveals it when confirmation is off.
+- **Form checks run in both modes.** An email needs an `@` and a dotted domain (deliberately loose; the server decides). A new password needs 8 to 72 bytes (Supabase's minimum is 6; bcrypt reads 72). Signing in only needs a password, so older accounts with shorter ones still work. This replaces "the email form accepts any input" from the auth-screens audit. Route tests now fill the form before pressing Sign in or Create account (`src/test/emailForm.ts`).
+- **React Hook Form isn't added.** Two fields and one rule set don't need it; `validateEmailForm` is pure and tested. Add it when a longer form arrives.
+- **Routing follows Supabase.** `AuthSync` (`src/features/auth`) listens for auth events. A sign-in reads the person's own `profiles` row: a finished profile (name, color and 18+) goes Home with that profile; anything else, including a failed read, goes to onboarding. Token refreshes and repeated events for the same person change nothing, so onboarding progress isn't undone. A `SIGNED_OUT` from anywhere returns to Welcome.
+- **Sign out is local first.** `signOut({ scope: 'local' })` removes the session on the device before telling the server, so it never depends on the network.
+- **Apple and Google say they aren't available yet** in live auth mode instead of starting a mock account. Google comes with the next card; Apple is the Mac card. In mock mode they still start mock accounts.
+- **Logs carry codes, never input.** Failures log the step, our code, Supabase's code and the HTTP status. The email, password, tokens and user id are never passed to the logger.
+- **Still open:** saving the onboarding profile to `profiles` (the onboarding/Supabase profile card). Until then, a live account that finishes onboarding goes back to onboarding on its next sign-in. "Forgot password?" still does nothing; password reset needs its own card.
+
 ## 2026-11-24 · Supabase client and device storage
 
 - **The Supabase session lives in `expo-sqlite`'s `localStorage`,** which is what Supabase's Expo guide recommends now and ships in Expo Go. On the web it's the browser's own `localStorage`, or memory where storage is blocked. The session isn't encrypted at rest there; that's Supabase's standard setup, and the session is revocable from the server. Music-service tokens are a different case and go to SecureStore.

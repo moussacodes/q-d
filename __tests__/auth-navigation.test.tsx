@@ -1,6 +1,8 @@
 import { router } from 'expo-router';
 import { act, fireEvent, renderRouter, screen } from 'expo-router/testing-library';
 
+import { fillEmailForm } from '@/test/emailForm';
+
 // Routing by sign-in state (Forge card "Auth and onboarding navigation").
 // The first render loads every route, which is slow with a cold cache.
 jest.setTimeout(60_000);
@@ -26,6 +28,7 @@ describe('signed out', () => {
 
   it('lands a returning user on Home after signing in', async () => {
     await renderRouter('./app', { initialUrl: '/sign-in' });
+    await fillEmailForm();
     await press('Sign in');
     expect(await screen.findByText('Start a room or jump into one.')).toBeVisible();
     expect(screen).toHavePathname('/home');
@@ -35,6 +38,7 @@ describe('signed out', () => {
 describe('not finished onboarding', () => {
   it('goes to onboarding after creating an account, and stays there', async () => {
     await renderRouter('./app', { initialUrl: '/create-account' });
+    await fillEmailForm();
     await press('Create account');
     expect(await screen.findByText('What should we call you?')).toBeVisible();
     expect(screen).toHavePathname('/onboarding/name');
@@ -83,6 +87,7 @@ describe('signed in and onboarded', () => {
 
   it('skips Welcome, and returns to it after signing out', async () => {
     await renderRouter('./app', { initialUrl: '/sign-in' });
+    await fillEmailForm();
     await press('Sign in');
     await screen.findByText('Start a room or jump into one.');
 

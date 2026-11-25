@@ -11,15 +11,16 @@ import {
   Text,
   useScreenPalette,
 } from '@/components';
-import { useMockSession } from '@/features/session/MockSession';
+import { useSocialSignIn } from '@/features/auth/useSocialSignIn';
 
 /**
- * 1.1 Welcome. Sign-in is mock until the auth cards land: Apple and Google
- * here start a new account (onboarding); Sign in is for returning users.
+ * 1.1 Welcome. In mock auth mode, Apple and Google here start a new account
+ * (onboarding); Sign in is for returning users. In live auth mode they sign
+ * in for real, or say the method isn't available yet.
  */
 export default function Welcome() {
   useScreenPalette();
-  const { createAccount } = useMockSession();
+  const social = useSocialSignIn('create-account');
   return (
     <Screen
       contentStyle={styles.content}
@@ -63,18 +64,28 @@ export default function Welcome() {
         </Text>
       </View>
       <View style={styles.actions}>
+        {social.error ? (
+          <Text
+            variant="caption"
+            color="danger"
+            accessibilityRole="alert"
+            accessibilityLiveRegion="polite"
+          >
+            {social.error}
+          </Text>
+        ) : null}
         <Button
           block
           icon="apple"
           label="Continue with Apple"
-          onPress={() => createAccount('apple')}
+          onPress={() => social.continueWith('apple')}
         />
         <Button
           block
           kind="secondary"
           icon="google"
           label="Continue with Google"
-          onPress={() => createAccount('google')}
+          onPress={() => social.continueWith('google')}
         />
         <Button
           block
