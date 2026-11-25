@@ -254,12 +254,13 @@ export function useRoom(code: string | undefined, view?: RoomView) {
      * How the playing song stands on the room's service: playable, an
      * uncertain match (plays with a warning), unavailable or unresolved.
      */
-    host,
-    pausedForHost,
-    resumeAfterHost,
     nowPlayingAvailability: live.nowPlaying
       ? entryAvailability(live.nowPlaying, live.playsThrough)
       : null,
+    /** Whether the host's phone is in the room, and whether the room paused for it. */
+    host,
+    pausedForHost,
+    resumeAfterHost,
     /** `update_room_rules`. Only the host sees the controls for it. */
     setRules: (rules: RoomRules) => store.setRules(at, rules),
     skip: () => {
@@ -304,10 +305,6 @@ export function useActiveRoom() {
 }
 
 /**
- * `create_room`: start hosting with the name, service and rules chosen on
- * Start a room. The room plays through `playsThrough` on this phone.
- */
-/**
  * Mock mode's stand-in for Realtime Presence: says whether the host's phone
  * is in the room `code`. The `/dev` toggle uses it to show a host who
  * disappears and comes back.
@@ -320,6 +317,10 @@ export function useMockHostPresence() {
   );
 }
 
+/**
+ * `create_room`: start hosting with the name, service and rules chosen on
+ * Start a room. The room plays through `playsThrough` on this phone.
+ */
 export function useStartRoom() {
   const { store } = useRooms();
   const { startRoom } = useMockSession();
