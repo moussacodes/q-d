@@ -7,7 +7,7 @@
  * runs it with recorded, synthetic fixtures. Built from Apple's documented
  * response shape; not yet tested against the live API (no developer key).
  */
-import { normalizeIsrc, parseTitle } from '../../../src/domain/matching/text.ts';
+import { normalizeIsrc, parseTitle } from '../_shared/matching-text.ts';
 
 export const APPLE_MUSIC_API = 'https://api.music.apple.com';
 

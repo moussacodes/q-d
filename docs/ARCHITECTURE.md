@@ -93,6 +93,7 @@ supabase/
   config.toml             Supabase CLI settings for a local stack
   migrations/             Schema, RPC functions, triggers, RLS                   (schema built)
   functions/              Edge Functions                    (delete-account placeholder and catalog-search built)
+    _shared/              Code functions share; can't import src/ (copies are test-checked)
   tests/                  Database and RLS tests on PGlite, plus the harness      (built)
 assets/icons/             The 34 Figma icons, unmodified SVG
 docs/                     These documents and the pitch deck
