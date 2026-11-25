@@ -74,6 +74,24 @@ describe('validateEmailForm', () => {
     });
   });
 
+  it('accepts exactly 8 characters and exactly 72 bytes', () => {
+    expect(
+      validateEmailForm({ email, password: 'x'.repeat(MIN_PASSWORD_LENGTH) }, 'create-account'),
+    ).toEqual({});
+    expect(
+      validateEmailForm({ email, password: 'x'.repeat(MAX_PASSWORD_LENGTH) }, 'create-account'),
+    ).toEqual({});
+    // 18 four-byte emoji are 72 bytes: allowed. One more ASCII byte isn't.
+    expect(validateEmailForm({ email, password: '🎧'.repeat(18) }, 'create-account')).toEqual({});
+    expect(validateEmailForm({ email, password: `${'🎧'.repeat(18)}x` }, 'create-account')).toEqual(
+      { password: 'password_long' },
+    );
+  });
+
+  it('never checks length on sign-in, even past 72 bytes', () => {
+    expect(validateEmailForm({ email, password: 'x'.repeat(200) }, 'sign-in')).toEqual({});
+  });
+
   it('keeps spaces in a password, which count', () => {
     expect(validateEmailForm({ email, password: '        ' }, 'create-account')).toEqual({});
   });

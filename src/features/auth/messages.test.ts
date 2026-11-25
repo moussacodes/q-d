@@ -33,4 +33,10 @@ describe('auth copy', () => {
     );
     expect(methodUnavailableMessage('google')).toContain('Google');
   });
+
+  it('says a too-long password can be fewer characters with emoji or accents', () => {
+    // The limit is 72 bytes, so the copy can't promise 72 of any character.
+    expect(fieldErrorMessages.password_long).toContain('72');
+    expect(fieldErrorMessages.password_long).toMatch(/emoji|accented/);
+  });
 });
