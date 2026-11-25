@@ -136,8 +136,11 @@ function useLiveRoom(base: MockRoom | null, view?: RoomView) {
   const { refresh } = playback;
   useEffect(() => {
     if (!player) return;
-    const next = serviceMissing ? player.hold(nowPlaying) : player.load(nowPlaying, startAtMs);
-    next.then(refresh);
+    // Hold first, so a song loaded meanwhile (after a skip) stays paused too.
+    player
+      .hold(serviceMissing)
+      .then(() => player.load(nowPlaying, startAtMs))
+      .then(refresh);
   }, [player, nowPlaying, startAtMs, serviceMissing, refresh]);
 
   const room = useMemo<LiveRoom | null>(() => {

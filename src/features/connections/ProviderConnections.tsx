@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import type { MusicProvider } from '@/domain/music-provider';
 import { useMockSession } from '@/features/session/MockSession';
@@ -68,6 +68,9 @@ const ProviderConnectionsContext = createContext<ProviderConnectionsValue | null
 export function ProviderConnectionsProvider({ children }: { children: ReactNode }) {
   const { accountId, returning } = useMockSession();
   const [saved, setSaved] = useState<Store>(() => freshStore(accountId, returning));
+  // Connects in flight, read synchronously: two taps in the same frame both
+  // see the old render's `attempts`, so that alone can't stop the second.
+  const inFlight = useRef(new Set<string>());
   // A store saved for another account is never shown.
   const store = useMemo(
     () => (saved.accountId === accountId ? saved : freshStore(accountId, returning)),
@@ -92,13 +95,17 @@ export function ProviderConnectionsProvider({ children }: { children: ReactNode 
       playsThrough,
       connect: async (provider) => {
         // A second tap while the first connect runs does nothing.
-        if (store.attempts[provider] === 'connecting') return;
+        const key = `${accountId}:${provider}`;
+        if (inFlight.current.has(key)) return;
+        inFlight.current.add(key);
         update((current) => withAttempt(current, provider, 'connecting'));
         let connection: ConnectionState | null = null;
         try {
           connection = await createPlayback(provider).connect();
         } catch {
           connection = null;
+        } finally {
+          inFlight.current.delete(key);
         }
         const result = connection;
         // Someone else may have signed in meanwhile; their services stay untouched.

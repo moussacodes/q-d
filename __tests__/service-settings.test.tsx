@@ -98,6 +98,41 @@ describe('connecting', () => {
     expect(screen.queryByText(/Couldn’t connect/)).toBeNull();
   });
 
+  it('starts one connect for two taps in the same frame', async () => {
+    const finish = holdConnect();
+    await signIn();
+    await go('/settings');
+    const connectButton = (await screen.findAllByLabelText('Connect'))[0];
+    await act(async () => {
+      fireEvent.press(connectButton);
+      fireEvent.press(connectButton);
+    });
+    expect(MockPlaybackAdapter.prototype.connect).toHaveBeenCalledTimes(1);
+    await finish(true);
+    expect(await screen.findByText('Mock connection · no Apple Music account used')).toBeVisible();
+  });
+
+  it('drops a connect that finishes after its account signed out', async () => {
+    const finish = holdConnect();
+    await signIn();
+    await go('/settings');
+    await press('Connect'); // Apple Music, for this account
+    await go({ pathname: '/settings', params: { tab: 'account' } });
+    await press('Sign out');
+    await screen.findByText('Different apps. One aux.');
+    await go('/sign-in');
+    await press('Sign in');
+    await screen.findByText('Start a room or jump into one.');
+
+    await finish(true);
+    await go('/settings');
+    await screen.findByText('Settings');
+    // The new account has only its own Spotify; the old connect counts for nobody.
+    expect(screen.queryByText('Mock connection · no Apple Music account used')).toBeNull();
+    expect(screen.queryByText('Connecting Apple Music…')).toBeNull();
+    expect(screen.getByText('Subscription needed for full tracks')).toBeVisible();
+  });
+
   it('treats an adapter error as a failed connect', async () => {
     jest
       .spyOn(MockPlaybackAdapter.prototype, 'connect')
@@ -208,6 +243,38 @@ describe('while hosting a live room', () => {
 
     await press('Play');
     expect(screen.getByLabelText('Pause')).toBeEnabled();
+  });
+
+  it('a skip during the hold doesn’t start the next song, even after reconnecting', async () => {
+    await hostThenOpenSettings();
+    await press('Disconnect Spotify');
+    await press('Disconnect Spotify and pause Sunday Slow Burn');
+    await press('Back');
+    await screen.findByText('Spotify isn’t connected');
+    await press('Skip');
+    expect(await screen.findByText('Lovers Rock')).toBeVisible();
+    expect(screen.getByLabelText('Play')).toBeDisabled();
+
+    await press('Reconnect Spotify');
+    expect(screen.queryByText('Spotify isn’t connected')).toBeNull();
+    // Reconnecting never resumes by itself: Play, not Pause, until the host presses it.
+    expect(screen.getByLabelText('Play')).toBeEnabled();
+    expect(screen.queryByLabelText('Pause')).toBeNull();
+    await press('Play');
+    expect(screen.getByLabelText('Pause')).toBeEnabled();
+  });
+
+  it('disables Reconnect while it runs, so it can’t be tapped twice', async () => {
+    await hostThenOpenSettings();
+    await press('Disconnect Spotify');
+    await press('Disconnect Spotify and pause Sunday Slow Burn');
+    await press('Back');
+    const finish = holdConnect();
+    await press('Reconnect Spotify');
+    expect(screen.getByLabelText('Reconnect Spotify')).toBeDisabled();
+    await finish(true);
+    expect(screen.queryByText('Spotify isn’t connected')).toBeNull();
+    expect(MockPlaybackAdapter.prototype.connect).toHaveBeenCalledTimes(1);
   });
 
   it('keeps the notice when reconnecting fails', async () => {
