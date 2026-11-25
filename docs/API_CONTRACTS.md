@@ -97,17 +97,25 @@ Why it's shaped this way: [ARCHITECTURE.md § 4.10](ARCHITECTURE.md#410-client-v
 
 #### `create_room_invite` (Added)
 
+**Built** (`supabase/migrations/20261125001100_room_invites.sql`).
+
 - **Caller:** host. QR invites need a token separate from the room code, and something has to create it.
 - **Input:** `room_id uuid`, `idempotency_key uuid`
-- **Effect:** creates a high-entropy (at least 128-bit, URL-safe) token with an expiry, which replaces any older one.
-- **Returns:** `{ token, expires_at }`. The QR code encodes `qd://join?invite=<token>`. Universal links can come later.
+- **Effect:** creates a high-entropy token (32 random bytes from two v4 UUIDs, 244 bits, as 43 unpadded base64url characters) that works for 24 hours, and revokes any older invite of the room. Only the token's SHA-256 hash is stored, in `room_invites.token_hash`.
+- **Returns:** `{ token, expires_at }`. The QR code encodes `qd://join?invite=<token>` (`buildInviteLink` and `parseInviteLink` in `src/domain/invite-link.ts`). Universal links can come later.
+- **Errors:** `not_authenticated`, `invalid_input` (`field: 'idempotency_key'`), `room_not_found`, `room_ended`, `not_member`, `not_host`, `idempotency_conflict`
+- **Replay:** the stored result holds the invite's id and expiry, never the token. A replay gives the same invite a fresh token (same row, same `expires_at`) and the token from the lost response stops working. If that invite is no longer live (replaced, expired, or its room ended), the key counts as new and goes through every check.
 
 #### `join_room_by_invite` (Added)
 
-- **Caller:** any signed-in user who scanned a QR code.
+**Built** (`supabase/migrations/20261125001100_room_invites.sql`).
+
+- **Caller:** any signed-in user with a finished profile who scanned a QR code. No music service needed.
 - **Input:** `token text`, `idempotency_key uuid`
-- **Effect, returns:** the same as `join_room_by_code`.
-- **Errors:** `invite_invalid`, `rate_limited`, `room_full`, `room_ended`, `profile_incomplete`
+- **Checks:** sign-in, replay, finished profile, then the attempt limits (§ 7, counted separately from codes) before the lookup.
+- **Effect, returns:** the same as `join_room_by_code`: `{ room_id }`, and `members.changed` for a new member.
+- **Errors:** `not_authenticated`, `profile_incomplete`, `invalid_input` (`field: 'idempotency_key'`), `rate_limited` (`retry_after_seconds`), `invite_invalid` (unknown, malformed, revoked or expired token), `room_ended` (a real token whose room ended), `room_full`, `idempotency_conflict`
+- **Note:** an unknown token is counted as a failed attempt and answered with `private.error_response()` (§ 1, Errors). Malformed, revoked and expired tokens aren't guesses, so they aren't counted.
 
 #### `leave_room` (Added)
 
@@ -415,9 +423,9 @@ type PlaybackSlot = {             // sync (beta) only
 
 | | Room code | QR invite token |
 |---|---|---|
-| Looks like | `QD-7K4F9X` (six characters after the prefix) | A long, URL-safe random string |
-| Entropy | Low by design, so people can type it | At least 128 bits |
-| Protection | Sign-in required, expiry, collision checks, attempt limits per user and per IP | Unguessable, expiry, the host can replace it |
+| Looks like | `QD-7K4F9X` (six characters after the prefix) | 43 URL-safe base64 characters |
+| Entropy | Low by design, so people can type it | 244 bits (at least 128 required) |
+| Protection | Sign-in required, expiry, collision checks, attempt limits per user and per IP | Unguessable, 24-hour expiry, the host can replace it, ending the room revokes it, attempt limits like codes |
 | Stored as | The six characters, uppercase | A hash of the token |
 
 - **Room code character set (decided 2026-11-24):** `23456789ABCDEFGHJKLMNPQRSTUVWXYZ`, 32 characters without `0`, `O`, `1` or `I`, so about 1.07 billion codes. Drawn from `gen_random_uuid()`'s random bytes.

@@ -2,6 +2,16 @@
 
 Product and technical decisions that are not obvious from the code. Newest first.
 
+## 2026-11-25 · QR invitations
+
+- **A QR invite works for 24 hours,** like a room code, counted from when the host creates it. Each new invite revokes the older one, as the contract says, so a room has one live invite. **A teammate should confirm the length.**
+- **The token is 32 random bytes** (two v4 UUIDs, 244 random bits) written as 43 unpadded base64url characters. Only its SHA-256 hash is stored. A salt isn't needed: the token itself can't be guessed.
+- **The database never holds the token, not even for idempotency.** `create_room_invite` stores the invite's id and expiry under the key instead. A replay (the app retried because the response was lost) gives the same invite a fresh token: same row, same expiry. The token from the lost response stops working, which is harmless because nobody received it. If that invite isn't live any more, the key counts as new.
+- **Unknown tokens count toward the attempt limits** like wrong codes, with their own count (5 per user, 20 per IP address in 10 minutes), so a lockout on one doesn't block the other. Malformed, revoked and expired tokens answer `invite_invalid` without counting: they aren't guesses.
+- **A real token of an ended room answers `room_ended`,** not `invite_invalid`. The token proves the caller was invited, so telling them the room is over gives nothing away. (Ending the room also revokes the invite.)
+- **The link helper is pure** (`src/domain/invite-link.ts`): `buildInviteLink(token)` gives `qd://join?invite=<token>` and `parseInviteLink(url)` reads a token back, or null. It never accepts a room code as a token.
+- **Not built here:** the QR on the Invite sheet, the screen that handles `qd://join?invite=…`, and the feature hook that calls these RPCs. Those belong to the Invite/QR screen card.
+
 ## 2026-11-25 · join_room_by_code
 
 - **Attempt limits: 5 wrong codes per user and 20 per IP address in any 10 minutes.** The next try fails with `rate_limited` and `retry_after_seconds` until the oldest failure is ten minutes old. With a billion codes, five guesses per ten minutes can't find a room. This answers the last part of PRODUCT_SPEC.md § 13 "Room codes"; **a teammate should confirm the numbers.**

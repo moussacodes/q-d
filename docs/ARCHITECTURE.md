@@ -151,7 +151,7 @@ ESLint enforces these rules (`no-restricted-imports` in `eslint.config.js`), so 
 
 - **Rule:** pure TypeScript only. That means types (`MusicProvider`, `PlaybackMode`, `Room`, `QueueEntry`, `CanonicalRecording`, `TrackMatch` and so on), Zod schemas and pure functions such as matching scores, text normalization and room-code formatting. No React, no I/O.
 - **Why:** this is the contract that the app, the providers, the database and a future SwiftUI client all agree on. Pure code is easy to unit-test, and the matching rules in particular need exhaustive tests (ISRC, durations, explicit/clean, version markers).
-- Status: `music-provider.ts` exists. The rest is planned under the domain types card (see [API_CONTRACTS.md](API_CONTRACTS.md) for the shapes).
+- Status: `music-provider.ts` exists, and `invite-link.ts` builds and parses QR invite links (Built · QR invitations card). The rest is planned under the domain types card (see [API_CONTRACTS.md](API_CONTRACTS.md) for the shapes).
 
 ### 4.6 Providers (`src/providers/`)
 
@@ -192,6 +192,7 @@ ESLint enforces these rules (`no-restricted-imports` in `eslint.config.js`), so 
 - Broadcasts are sent by the database, from inside the RPC that made the change (`private.broadcast_room_event()`), not by the client. That way no client can announce a change that didn't happen, and a rolled-back change announces nothing.
 - Built (RPC contracts card): the shared checks, the error convention and the idempotency machinery live in the `private` schema (`supabase/migrations/20261124000200_rpc_foundation.sql`). Each RPC is a `security definer` function in `public` with a pinned `search_path`, and `anon` can't execute any of them.
 - Built (join by code card): `join_room_by_code` (`supabase/migrations/20261125001000_join_room_by_code.sql`), with the attempt limits in `private.join_attempts` and `private.join_room()`, which every way of joining shares. Failed guesses are answered with `private.error_response()` so they're kept ([API_CONTRACTS.md § 1](API_CONTRACTS.md#1-conventions)).
+- Built (QR invitations card): `create_room_invite` and `join_room_by_invite` (`supabase/migrations/20261125001100_room_invites.sql`). Tokens are generated in Postgres and stored only as hashes. The pure link helper is `src/domain/invite-link.ts`; the QR screen isn't built yet.
 
 ### 4.11 q’d sign-in vs. music-service authorization
 
