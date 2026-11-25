@@ -407,3 +407,89 @@ describe('disconnect', () => {
     await expect(auth.disconnect()).rejects.toThrow('Could not delete credentials.');
   });
 });
+
+describe('review: edge cases', () => {
+  it('a Disconnect during a refresh isn’t undone when the refresh comes back', async () => {
+    const { auth } = setup();
+    await fake.connectAccount({ expiresAt: NOW - 1 });
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    fake.script('POST', '/api/token', async () => {
+      await gate;
+      return {
+        status: 200,
+        body: { access_token: 'late-access', expires_in: 3600, refresh_token: 'late-refresh' },
+      };
+    });
+    const pending = errorCode(auth.accessToken());
+    // Let the refresh reach the token endpoint, then disconnect.
+    await new Promise<void>((resolve) => setImmediate(() => resolve()));
+    await auth.disconnect();
+    release();
+    expect(await pending).toBe('needs_authorization');
+    expect(await auth.hasCredentials()).toBe(false);
+    expect(fake.secure.values.size).toBe(0);
+  });
+
+  it('a refused refresh with invalid_client also clears the tokens', async () => {
+    const { auth } = setup();
+    await fake.connectAccount({ expiresAt: NOW - 1 });
+    fake.script('POST', '/api/token', { status: 400, body: { error: 'invalid_client' } });
+    expect(await errorCode(auth.accessToken())).toBe('needs_authorization');
+    expect(await auth.hasCredentials()).toBe(false);
+  });
+
+  it('a rotated refresh token is the one used next time', async () => {
+    const { auth } = setup();
+    await fake.connectAccount({ expiresAt: NOW - 1 });
+    await auth.accessToken();
+    clock += 3_600_000;
+    expect(await auth.accessToken()).toBe('fake-access-3');
+    const [, second] = fake.tokenCalls();
+    expect(splitUrl(`https://x/?${second.body}`).query.refresh_token).toBe('fake-refresh-2');
+    // The old one is no longer accepted by Spotify, and q’d never sends it again.
+    expect(fake.validRefresh.has('fake-refresh-1')).toBe(false);
+  });
+
+  it('a second sign-in can start once the first has finished', async () => {
+    const { auth, session } = setup({});
+    await auth.authorize();
+    await auth.authorize();
+    expect(session.open).toHaveBeenCalledTimes(2);
+  });
+
+  it('a redirect without a state is auth_failed, and its code is never exchanged', async () => {
+    const { auth } = setup({
+      open: async () => ({ type: 'success', url: `${FAKE_REDIRECT}?code=fake-auth-code` }),
+    });
+    expect(await auth.authorize()).toEqual({ type: 'failed', code: 'auth_failed' });
+    expect(fake.tokenCalls()).toHaveLength(0);
+  });
+
+  it('an access_denied with a forged state is auth_failed, not cancelled', async () => {
+    const { auth } = setup({
+      open: async () => ({
+        type: 'success',
+        url: `${FAKE_REDIRECT}?error=access_denied&state=forged`,
+      }),
+    });
+    expect(await auth.authorize()).toEqual({ type: 'failed', code: 'auth_failed' });
+  });
+
+  it('the authorize URL carries the redirect URI exactly, and the exchange repeats it', async () => {
+    const { auth, session } = setup();
+    await auth.authorize();
+    const { query } = splitUrl(session.opened[0].url);
+    expect(query.redirect_uri).toBe(FAKE_REDIRECT);
+    const form = splitUrl(`https://x/?${fake.tokenCalls()[0].body}`).query;
+    expect(form.redirect_uri).toBe(query.redirect_uri);
+  });
+
+  it('never stores tokens anywhere but the credential store', async () => {
+    const { auth } = setup();
+    await auth.authorize();
+    expect([...fake.secure.values.keys()]).toEqual(['qd.provider.spotify']);
+  });
+});
