@@ -7,7 +7,12 @@ export type Env = Record<string, string | undefined>;
 export type FetchResponse = { ok: boolean; status: number; text(): Promise<string> };
 export type FetchLike = (
   url: string,
-  init: { method?: string; headers?: Record<string, string>; body?: string },
+  init: {
+    method?: string;
+    headers?: Record<string, string>;
+    body?: string;
+    redirect?: 'error';
+  },
 ) => Promise<FetchResponse>;
 
 export type Config = {

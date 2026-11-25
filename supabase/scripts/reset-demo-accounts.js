@@ -27,6 +27,7 @@ const ADMIN_MAX_PAGES = 50;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const EMAIL = /^[^@\s]+@[^@\s]+$/;
+const QD_CODE = /^[a-z_]{1,40}$/;
 
 const USAGE = [
   'Usage: node supabase/scripts/reset-demo-accounts.js [--dry-run | --yes]',
@@ -110,7 +111,14 @@ function readConfig(env) {
 /** A failed request. `qdCode` is set for q’d errors (API_CONTRACTS.md §2). */
 class RequestError extends Error {
   constructor(status, body) {
-    const qd = body && typeof body === 'object' && body.hint === 'qd';
+    // A q’d code is a short snake_case word (API_CONTRACTS.md §2). Anything
+    // else is server text, which is never printed.
+    const qd =
+      body &&
+      typeof body === 'object' &&
+      body.hint === 'qd' &&
+      typeof body.message === 'string' &&
+      QD_CODE.test(body.message);
     super(qd ? `${body.message}` : `HTTP ${status}`);
     this.name = 'RequestError';
     this.status = status;
@@ -133,8 +141,11 @@ function createClient(config, fetchImpl) {
     Authorization: `Bearer ${config.serviceRoleKey}`,
   };
   const request = async (path, init = {}) => {
+    // No redirects: following one would send the service-role key (in
+    // `apikey`) to wherever it points, possibly over plain http.
     const response = await fetchImpl(`${config.baseUrl}${path}`, {
       ...init,
+      redirect: 'error',
       headers: { ...headers, ...(init.headers ?? {}) },
     });
     const text = await response.text();
