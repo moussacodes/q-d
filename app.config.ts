@@ -23,6 +23,7 @@ const config: ExpoConfig = {
     'expo-status-bar',
     'expo-font',
     'expo-image',
+    'expo-web-browser',
     [
       'expo-splash-screen',
       { backgroundColor: '#000000', image: './assets/splash-icon.png', imageWidth: 200 },

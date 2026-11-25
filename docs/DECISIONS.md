@@ -2,6 +2,28 @@
 
 Product and technical decisions that are not obvious from the code. Newest first.
 
+## 2026-11-25 · Spotify connection (OAuth)
+
+Built, **untested on a device and against real Spotify.** Every test runs against a fake Spotify (`src/test/fakeSpotify.ts`). The `realSpotify` flag stays off by default, so the app keeps the labeled mock.
+
+- **Authorization Code with PKCE, no client secret.** The app makes a random 86-character verifier and sends only its SHA-256 challenge (`S256`) and a random `state` to Spotify's authorize page, in the system sign-in sheet (`expo-web-browser` `openAuthSessionAsync`). The code is exchanged with the verifier. `expo-crypto` supplies the randomness and the hash. Both ship in Expo Go. `expo-auth-session` wasn't added: `expo-linking` already builds the redirect URL, and the PKCE code is small and tested against the RFC 7636 example.
+- **The client ID is public** (`EXPO_PUBLIC_SPOTIFY_CLIENT_ID`, 32 hex characters, validated in `env.ts`). `.env.example` lists the name only. A Spotify client secret never goes in the app.
+- **Three scopes, the least remote control needs:**
+  - `user-read-playback-state`: read the player and the device list (what plays, where, and whether a Spotify app is open).
+  - `user-modify-playback-state`: play a track, pause, resume, seek, add to Spotify's queue, move playback to this phone.
+  - `user-read-currently-playing`: the playing track for Now playing.
+  - **Not asked for:** `streaming` (q’d never plays Spotify audio itself), `user-read-private` and `user-read-email` (q’d doesn't need the profile; Premium shows up as Spotify's `PREMIUM_REQUIRED` refusal of the first play), library and playlist scopes (playlist import is post-demo and adds its own). A grant missing one of the three is refused.
+- **Tokens live only in SecureStore** (`providerCredentials`, Keychain, this device only). No credentials in Postgres: when the Supabase cards add `provider_connections`, its row holds the provider and timestamps only. This branch writes no row, because no table exists here yet.
+- **Nothing secret is logged.** Log entries carry an HTTP status, Spotify's error code word or player reason, and the endpoint path. Tests replace the logger to check that the raw arguments, before redaction, never contain a token, code, verifier or state.
+- **`state` is checked first.** A redirect whose `state` doesn't match is `auth_failed`, even if it says `access_denied`, and its code is never exchanged. Closing the sheet or tapping Cancel on Spotify's page is not an error: the service just stays not connected.
+- **Refresh.** A token is refreshed 60 seconds before it expires. Concurrent callers share one refresh. A rotated refresh token replaces the old one, and the old one is kept when Spotify sends none. A refused refresh (`invalid_grant`) clears the tokens and asks to reconnect. A refresh that fails on Spotify's side (5xx, 429, offline) keeps them.
+- **A 401 refreshes once and retries.** A second 401 clears the tokens and asks to reconnect (`needs_authorization`).
+- **Connect checks the account** by reading the player (`GET /me/player`). Spotify's development mode refuses a user who isn't on the app's user list with a 403 whose wording isn't documented, so q’d matches it loosely ("not registered", "developer dashboard"). That's `not_approved_user`, and its tokens are dropped. Premium isn't known at connect, so Settings keeps the hint "Premium needed to play rooms".
+- **Disconnect clears the tokens.** With the flag on, Connect runs the real flow and Disconnect forgets the tokens on this phone. With it off, both stay mock.
+- **New error codes** in `ProviderErrorCode`: `not_configured`, `needs_authorization`, `auth_failed`, `premium_required`, `not_approved_user`, `no_active_device`, `playback_refused`, `rate_limited`, `provider_unavailable` (API_CONTRACTS.md §5).
+- **Honest copy** (`features/connections/connectionCopy.ts`). A Connect that didn't work says why on the service card: "Spotify Premium is needed to play rooms through Spotify.", "This Spotify account isn’t on q’d’s tester list yet. …", "Spotify isn’t connected yet. Tap Connect to try again.". Start room stays disabled.
+- **Redirect URI: open.** It's `Linking.createURL('spotify-auth')`: `qd://spotify-auth` in a development build, and an `exp://<computer's address>/--/spotify-auth` URL in Expo Go. Spotify only accepts redirect URIs listed in its dashboard, and **the Spotify developer app card isn't done**, so nothing is registered and no client ID exists yet. Whether testing in Expo Go is practical (its address changes) is for that card to decide.
+
 ## 2026-11-24 · Track matching
 
 The rules are PRODUCT_SPEC.md §6. These are the numbers and edge cases the matching card had to pick. All of it is in `src/domain/matching`, pure and deterministic.

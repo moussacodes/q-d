@@ -62,7 +62,7 @@ A broadcast that never arrives costs freshness but never correctness, because th
 | Backend | Supabase Auth, Postgres, RLS, Realtime, Edge Functions, migrations | Client built (`src/services/supabase.ts`, created only when the env validates; untested against a live project). Rest planned · Supabase cards |
 | Device storage | Supabase's recommended Expo session storage, plus SecureStore for provider credentials | Built: `expo-sqlite/localStorage` for the Supabase session (`sessionStorage.native.ts`; browser storage on the web), `expo-secure-store` for provider credentials (`providerCredentials.ts`; memory only on the web) |
 | Apple playback | Local Swift Expo module around MusicKit | Planned · qd-music-kit card |
-| Spotify playback | Spotify iOS SDK (App Remote) and the Web API | Planned · Spotify cards |
+| Spotify playback | Spotify iOS SDK (App Remote) and the Web API | Account connection built, untested on device (`src/providers/spotify`: PKCE sign-in with expo-web-browser and expo-crypto, tokens in SecureStore, refresh). Playback planned · Spotify cards |
 | Tests | Jest/jest-expo, React Native Testing Library, Supabase integration tests, Maestro | Built: Jest, React Native Testing Library, `.maestro/` smoke flow (first runs with a development build). Planned: Supabase tests · Supabase cards |
 | Quality gates | ESLint, Prettier, `tsc`, Jest, Expo Doctor, GitHub Actions, Git pre-push hook | Built · `npm run check`, `.github/workflows/ci.yml`, `.githooks/pre-push` (every push) |
 | Builds | EAS development, preview (internal) and production (TestFlight) profiles | Planned · EAS card |
@@ -84,7 +84,7 @@ src/
   design/                 Tokens: colors, type, spacing, Now playing palettes, ThemeProvider
   domain/                 Pure types and logic: rooms, queue, recordings, matching
   features/               Feature modules: auth, onboarding, rooms, queue, search, settings
-  providers/              Apple, Spotify and mock catalog/playback adapters      (interfaces, mocks and Apple/Spotify stubs built; live Apple, Spotify planned)
+  providers/              Apple, Spotify and mock catalog/playback adapters      (interfaces, mocks and Apple/Spotify stubs built; Spotify connection built, untested on device; live Apple, Spotify playback planned)
   services/               Supabase, env, flags, logging, analytics               (data mode, env, flags, logging, Supabase client, storage, query client built; analytics planned)
   test/                   Fixtures and provider contract helpers
 modules/
@@ -163,6 +163,7 @@ ESLint enforces these rules (`no-restricted-imports` in `eslint.config.js`), so 
   - **Apple:** wraps `modules/qd-music-kit` (MusicKit `ApplicationMusicPlayer`, background audio, queue observation).
   - **Spotify:** controls an installed or active Spotify client through App Remote and the Web API. q’d never streams Spotify audio itself.
   - **Mock:** deterministic adapters for web and Windows development, UI work, automated tests and the demo fallback. They're labeled in the UI and switched by feature flags, so a mock can never pass for a live integration.
+- **Spotify connection: Built, untested on device** (Spotify connection card): `spotify/auth.ts` (Authorization Code with PKCE, token refresh), `spotify/api.ts` (Web API client: bearer token, refresh once on 401, error codes) and `spotify/connection.ts` (Connect, status and Disconnect as a `ConnectionState`). `connectProvider` and `disconnectProvider` in `providers/index.ts` use it only with the `realSpotify` flag on. See [DECISIONS.md, 2026-11-25](DECISIONS.md).
 - **Status: Built** (provider adapters card): both interfaces, `ProviderError`, the share-link parser, the mocks, and Apple Music and Spotify stubs that report "not in this build" until their cards land. The shared contract suite runs against all of them. See [API_CONTRACTS.md § 5](API_CONTRACTS.md#5-provider-adapters).
 - `capabilities()` reports what each adapter can do (for example in-app audio, background playback or autoplay), and the UI asks it instead of checking which provider it is.
 

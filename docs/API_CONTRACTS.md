@@ -313,7 +313,17 @@ type ProviderErrorCode =
   | 'not_found'
   | 'unsupported_link'   // not an Apple Music or Spotify link q’d reads
   | 'wrong_provider'     // e.g. a Spotify track given to the Apple player
-  | 'invalid_argument';  // e.g. a negative seek position
+  | 'invalid_argument'    // e.g. a negative seek position
+  // Added by the Spotify connection card:
+  | 'not_configured'      // no client ID (or other setup) in this build
+  | 'needs_authorization' // not connected, or access revoked: reconnect
+  | 'auth_failed'         // sign-in didn't finish: state mismatch, refused code exchange
+  | 'premium_required'    // Spotify Premium (or a subscription) needed
+  | 'not_approved_user'   // Spotify development mode: not on the app's user list
+  | 'no_active_device'    // Spotify: no Spotify app open to control
+  | 'playback_refused'    // the provider refused the command
+  | 'rate_limited'        // too many requests, even after waiting
+  | 'provider_unavailable'; // offline, or the provider failed (5xx)
 ```
 
 **Built (provider adapters card)** in `src/providers`: the interfaces (`types.ts`), `ProviderError` (`errors.ts`), the share-link parser (`links.ts`), the mocks (`mock/`), and Apple Music and Spotify stubs (`apple/`, `spotify/`, `unavailable.ts`). Changes from the sketch above, marked here for review:
@@ -324,6 +334,7 @@ type ProviderErrorCode =
 - **`getPlaylist` takes an optional cursor** for the next page.
 - **Mocks claim no capability.** They play no audio, so every capability is `false` and `isMock` is `true`.
 - **The Apple Music and Spotify adapters are stubs** until their cards land and are tested on an iPhone. `connect` returns `{ status: 'error', code: 'not_in_this_build', isMock: false }`, every other call rejects with that code, they claim no capability, and `disconnect` resolves (nothing to undo). The app still uses the mocks, because `mock` is the only data mode.
+- **Spotify connection (Spotify connection card; built, untested on device).** `connectProvider(provider)` and `disconnectProvider(provider)` in `src/providers/index.ts` are what Connect and Disconnect call. With the `realSpotify` flag off (the default) they use the mock. With it on, Spotify's Connect runs Authorization Code with PKCE and returns a `ConnectionState`: `connected`; `needs_authorization` (cancelled, or access revoked); `needs_subscription` (Premium required); or `error` with `not_configured`, `auth_failed`, `not_approved_user`, `rate_limited` or `provider_unavailable`. A real Spotify state always has `isMock: false`. Disconnect clears the tokens on this phone.
 - The shared contract suite is `src/test/providerContract.ts`. `src/providers/contract.test.ts` runs it against the mocks and both stubs.
 
 **Rules every adapter follows** (the shared contract test suite checks these):
