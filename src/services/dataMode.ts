@@ -1,3 +1,6 @@
+import { env, envNames, envResult, type AppEnv } from './env';
+import { log } from './logger';
+
 /**
  * Where the app's data comes from.
  *
@@ -10,14 +13,50 @@
  */
 export type DataMode = 'mock' | 'live';
 
-const requested = process.env.EXPO_PUBLIC_DATA_MODE;
+/**
+ * Whether this build has a live data layer to switch to. It stays false until
+ * the screens read rooms and queues from Supabase instead of the mock store.
+ * Until then, `live` would show mock data without the mock label, which the
+ * product rules forbid.
+ */
+export const LIVE_DATA_AVAILABLE = false;
 
-if (__DEV__ && requested !== undefined && requested !== 'mock') {
-  console.warn(
-    `EXPO_PUBLIC_DATA_MODE=${requested} isn't available yet. Using mock data; the app labels it as mock.`,
-  );
+export interface DataModeDecision {
+  mode: DataMode;
+  /** Why `live` was refused, when it was asked for. Names variables, never values. */
+  fallbackReason: string | null;
 }
 
-export const dataMode: DataMode = 'mock';
+/** Decides the data mode. Pure, so every path is testable. */
+export function resolveDataMode(
+  appEnv: Pick<AppEnv, 'requestedDataMode' | 'supabase'>,
+  liveAvailable: boolean = LIVE_DATA_AVAILABLE,
+): DataModeDecision {
+  if (appEnv.requestedDataMode === 'mock') {
+    return { mode: 'mock', fallbackReason: null };
+  }
+  if (appEnv.supabase === null) {
+    return {
+      mode: 'mock',
+      fallbackReason: `${envNames.dataMode}=live needs ${envNames.supabaseUrl} and ${envNames.supabaseKey}. Using mock data; the app labels it as mock.`,
+    };
+  }
+  if (!liveAvailable) {
+    return {
+      mode: 'mock',
+      fallbackReason: `${envNames.dataMode}=live isn't available yet. Using mock data; the app labels it as mock.`,
+    };
+  }
+  return { mode: 'live', fallbackReason: null };
+}
+
+const decision = resolveDataMode(env);
+
+const envLog = log.child('env');
+for (const message of [...envResult.problems, decision.fallbackReason]) {
+  if (message) envLog.warn(message);
+}
+
+export const dataMode: DataMode = decision.mode;
 
 export const isMockMode = dataMode === 'mock';

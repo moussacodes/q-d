@@ -54,19 +54,19 @@ A broadcast that never arrives costs freshness but never correctness, because th
 | Styling | React Native `StyleSheet` and tokens in `src/design`. No UI kit, no NativeWind. | Built |
 | Fonts | Geist and Geist Mono (`@expo-google-fonts/*`) | Built |
 | Visuals | expo-image, expo-blur, react-native-svg | Built |
-| Server state | TanStack Query | Planned · Supabase client card |
+| Server state | TanStack Query | Built: `src/services/queryClient.ts`, provided by `features/server-state/ServerStateProvider` in `app/_layout.tsx`. No screen queries Supabase yet |
 | Ephemeral state | Zustand, only for small room and player state | Planned |
-| Runtime contracts | Zod for env, RPC results and realtime payloads | Built: domain schemas and realtime payload parsers (`src/domain`) · Planned: env (Env validation card), RPC results (RPC contracts card) |
+| Runtime contracts | Zod for env, RPC results and realtime payloads | Built: env (`src/services/env.ts`), domain schemas and realtime payload parsers (`src/domain`) · Planned: RPC results (RPC contracts card) |
 | Forms | React Hook Form | Planned · Auth cards |
 | Interaction | Reanimated, Gesture Handler, a bottom-sheet library | Planned, added only where Figma needs them |
-| Backend | Supabase Auth, Postgres, RLS, Realtime, Edge Functions, migrations | Planned · Supabase cards |
-| Device storage | Supabase's recommended Expo session storage, plus SecureStore for provider credentials | Planned · Supabase client card |
+| Backend | Supabase Auth, Postgres, RLS, Realtime, Edge Functions, migrations | Client built (`src/services/supabase.ts`, created only when the env validates; untested against a live project). Rest planned · Supabase cards |
+| Device storage | Supabase's recommended Expo session storage, plus SecureStore for provider credentials | Built: `expo-sqlite/localStorage` for the Supabase session (`sessionStorage.native.ts`; browser storage on the web), `expo-secure-store` for provider credentials (`providerCredentials.ts`; memory only on the web) |
 | Apple playback | Local Swift Expo module around MusicKit | Planned · qd-music-kit card |
 | Spotify playback | Spotify iOS SDK (App Remote) and the Web API | Planned · Spotify cards |
 | Tests | Jest/jest-expo, React Native Testing Library, Supabase integration tests, Maestro | Built: Jest, React Native Testing Library, `.maestro/` smoke flow (first runs with a development build). Planned: Supabase tests · Supabase cards |
 | Quality gates | ESLint, Prettier, `tsc`, Jest, Expo Doctor, GitHub Actions, Git pre-push hook | Built · `npm run check`, `.github/workflows/ci.yml`, `.githooks/pre-push` (every push) |
 | Builds | EAS development, preview (internal) and production (TestFlight) profiles | Planned · EAS card |
-| Observability | Redacting structured logger, privacy-filtered crash reports, opt-in analytics | Planned · Logging card |
+| Observability | Redacting structured logger, privacy-filtered crash reports, opt-in analytics | Built: logger (`src/services/logger.ts`, `redact.ts`) and the crash-report filter (`crashReporting.ts`, no service connected yet). Planned: a crash-reporting service and analytics |
 
 **Why this stack.** Two students, one fixed demo date and one Windows machine. Expo gives one codebase for iOS, the web and later Android, and the web build lets Baron work without a Mac. Supabase provides auth, a relational database with row-level security, realtime and serverless functions in one managed service, so there's no backend to operate. Both are mainstream enough to learn from, which is half the point of the project (see [LEARNING_PATH.md](LEARNING_PATH.md)).
 
@@ -85,7 +85,7 @@ src/
   domain/                 Pure types and logic: rooms, queue, recordings, matching
   features/               Feature modules: auth, onboarding, rooms, queue, search, settings
   providers/              Apple, Spotify and mock catalog/playback adapters      (interfaces, mocks and Apple/Spotify stubs built; live Apple, Spotify planned)
-  services/               Supabase, env, flags, logging, analytics               (data mode built; rest planned)
+  services/               Supabase, env, flags, logging, analytics               (data mode, env, flags, logging, Supabase client, storage, query client built; analytics planned)
   test/                   Fixtures and provider contract helpers
 modules/
   qd-music-kit/           Local Swift Expo module and config plugin             (planned)
@@ -170,7 +170,8 @@ ESLint enforces these rules (`no-restricted-imports` in `eslint.config.js`), so 
 
 - **Rule:** infrastructure with side effects: the Supabase client, environment validation, feature flags, the logger, analytics and crash reporting.
 - **Why:** these are the places where data leaves the device. Putting them behind one folder means redaction, opt-in checks and environment validation happen in one place that's easy to review.
-- **Logger rule:** structured logging redacts tokens, emails, room codes and listening history before anything is written or sent.
+- **Logger rule:** structured logging redacts tokens, emails, room codes and listening history before anything is written or sent. Built: `log` in `src/services/logger.ts` redacts every entry with `src/services/redact.ts` before any sink sees it. Values under sensitive keys (`token`, `email`, `code`, `title`, `artist`, `queue` and so on) are replaced whole, and every other string is scanned for emails, room codes, JWTs, invite links, provider links and ids. Song titles in free text can't be recognized, so **log messages are fixed strings and data goes in the context object.** Use `log`, not `console`.
+- **Crash reports:** `src/services/crashReporting.ts` sends nothing until a transport is set. Every event passes `beforeSend`, which keeps an allowlist of fields and redacts them. There's no session replay, no automatic breadcrumbs and no automatic event capture (`crashReportingPolicy`).
 - **Env rule:** environment variables are validated with Zod at startup. The app fails fast with a clear message instead of misbehaving later.
 
 ### 4.8 Native module (`modules/qd-music-kit/`)
@@ -193,13 +194,13 @@ ESLint enforces these rules (`no-restricted-imports` in `eslint.config.js`), so 
 
 ### 4.11 q’d sign-in vs. music-service authorization
 
-- **Rule:** Supabase Auth handles q’d accounts (Apple, Google, email). Connecting Apple Music or Spotify is a separate flow that stores tokens on the device in SecureStore. The database's `provider_connections` table holds connection metadata only, never plaintext credentials.
+- **Rule:** Supabase Auth handles q’d accounts (Apple, Google, email). Connecting Apple Music or Spotify is a separate flow that stores tokens on the device in SecureStore (built: `src/services/providerCredentials.ts`, Keychain entries readable after first unlock and never moved to another device; memory only on the web). The database's `provider_connections` table holds connection metadata only, never plaintext credentials.
 - **Why:** most people in a room never play anything, so they never need a music service. Keeping the two flows separate lets guests skip it entirely, and it also keeps provider tokens out of the shared database.
 - Server-side provider secrets (for example an Apple developer signing key or a Spotify client secret) live only in Edge Function secrets, never in the app bundle. Anything named `EXPO_PUBLIC_*` ships inside the app and is public.
 
 ### 4.12 Server state vs. ephemeral state
 
-- **TanStack Query** caches everything that comes from Supabase: room, members, queue, search results. Realtime events invalidate those queries.
+- **TanStack Query** caches everything that comes from Supabase: room, members, queue, search results. Realtime events invalidate those queries. The client (`src/services/queryClient.ts`) retries a failed query twice unless the error is permanent (an RPC error code such as `not_allowed`, or a 4xx), never retries mutations on its own (a retry must reuse the idempotency key), refetches when the app returns to the foreground, and logs failures redacted without the query key, since keys can hold room codes.
 - **Zustand** holds small, short-lived state that never needs to reach the server, such as the local player's progress tick or which sheet is open.
 - **React context** holds app-wide UI state that's already built: the theme palette (`ThemeProvider`) and, for now, the mock session (`MockSessionProvider`) and the mock rooms (`RoomsProvider`). The mock room store stands in for the queue rows in Postgres and follows the queue RPCs, so the Supabase cards swap it for TanStack Query without changing the screens.
 - **Why:** server data has its own lifecycle (loading, stale, refetch, retry). Mixing it into a client store recreates that machinery badly. Keeping the client store tiny keeps the real state in one place.
@@ -257,16 +258,18 @@ Planned · Initial Supabase migrations card. Shapes are in [API_CONTRACTS.md](AP
 - `app.config.ts` holds the app name `q’d`, the slug and scheme `qd`, the bundle ID `app.qd.mobile`, portrait orientation, a dark interface, typed routes and plugins.
 - `.env.example` lists variable names only. Real values live in `.env` (ignored by git) and in EAS secrets.
 
-**Feature flags** (planned · Env validation card). These are the switches that keep unfinished or blocked features off:
+**Environment.** `src/services/env.ts` validates every variable with Zod at startup. Nothing is required: with no `.env` the app runs on labeled mock data. A missing or invalid value is reported by variable name (never by value) in a development warning, and that part falls back to its safe default instead of crashing. `EXPO_PUBLIC_DATA_MODE=live` without valid Supabase values falls back to mock, and so does `live` until the live data cards land (`LIVE_DATA_AVAILABLE` in `dataMode.ts`). The Supabase key must be the publishable (or legacy `anon`) key: a secret or service-role key is rejected, because every `EXPO_PUBLIC_*` value ships inside the app.
+
+**Feature flags** (built · `src/services/flags.ts`, set with `EXPO_PUBLIC_FLAG_*`). These are the switches that keep unfinished or blocked features off:
 
 | Flag | Default | Why it exists |
 |---|---|---|
 | Real Apple Music | off until the MusicKit bridge works on a device | Lets the mock stand in during development and as a demo fallback |
 | Real Spotify | off until Spotify `aux` works on a device | Same, plus the five-user development-mode limit |
-| `sync` | off, private | Blocked until providers and a legal review approve it |
+| `sync` | off, private, locked | Blocked until providers and a legal review approve it. The build ignores `EXPO_PUBLIC_FLAG_SYNC`, and `enabledPlaybackModes()` returns only `aux` |
 | Playlist import | off | Post-demo feature |
 | Moderation | off for the demo, on for the beta | Beta gate |
-| Analytics | off, and opt-in when on | Privacy |
+| Analytics | off, and opt-in when on | Privacy. `analyticsAllowed()` needs the flag and the person's opt-in |
 
 ## 9. Where the app runs
 

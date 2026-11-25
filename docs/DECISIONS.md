@@ -35,6 +35,30 @@ The rules are PRODUCT_SPEC.md §6. These are the numbers and edge cases the matc
 - **Schemas strip unknown fields** instead of rejecting them, so a new column or event field is additive and older clients keep working.
 - **The card's "ProviderCapabilities" is `PlaybackCapabilities`** from API_CONTRACTS.md §5, with `ProviderCapabilities` as an alias. It lives in `src/domain` because the UI reads it.
 - **Two `ProviderTrack` types exist for one branch.** `src/domain/recording.ts` has the contract's shape (`artists[]`, nullable ISRC). `src/providers/types.ts` still has the mocks' older shape; the provider adapters card moves the providers onto the domain type.
+## 2026-11-24 · Supabase client and device storage
+
+- **The Supabase session lives in `expo-sqlite`'s `localStorage`,** which is what Supabase's Expo guide recommends now and ships in Expo Go. On the web it's the browser's own `localStorage`, or memory where storage is blocked. The session isn't encrypted at rest there; that's Supabase's standard setup, and the session is revocable from the server. Music-service tokens are a different case and go to SecureStore.
+- **Provider credentials use the Keychain with `AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY`.** The host's phone can refresh a Spotify token while it plays with the screen locked, and the token never moves to another device through a backup. Unreadable entries are deleted, so the person reconnects instead of the app crashing.
+- **On the web, provider credentials stay in memory.** The web has no secure storage, and any script on the page can read browser storage. The web build is for mock mode and guests, who never connect a service.
+- **No client without a valid env.** `getSupabase()` returns null until both Supabase variables validate, so mock mode needs no `.env` and makes no network calls.
+- **Zustand isn't added yet.** Nothing needs it: the mock room store is React context and moves to TanStack Query with the Supabase cards. It comes in when a small transient player or room state needs it (ARCHITECTURE.md §4.12).
+- **Session refresh follows the app state** on devices (start in the foreground, stop in the background), as Supabase recommends for React Native.
+
+## 2026-11-24 · Structured logging and crash-report filtering
+
+- **Redaction happens inside the logger,** before any sink, so no sink (console, crash reporter, a future service) can leak. It removes credentials, emails, room codes, invite tokens and listening history, in nested objects, arrays, Maps, Sets, Errors and their causes, and inside strings.
+- **Redaction errs toward removing too much.** Whole values under keys like `code`, `title`, `name`, `url`, `query` and anything containing `token`, `email`, `track`, `queue` or `artist` are replaced, even when they'd help debugging. Ids (`roomId`, `userId`) and error codes stay.
+- **Log messages are fixed strings.** A song title in free text can't be told apart from other words, so data goes in the context object, where its key decides.
+- **No crash-reporting service yet.** None is planned in the docs, so none was added. `crashReporting.ts` holds the privacy filter (`beforeSend`), manual breadcrumbs and a global error handler, and sends nothing until a transport is set. Whatever service is picked later must keep `crashReportingPolicy`: no session replay, no automatic breadcrumbs or event capture, no default PII, no screenshots.
+- **Failed crash uploads are dropped,** not retried, so a report can't be sent after the person signs out.
+
+## 2026-11-24 · Environment validation and feature flags
+
+- **Nothing in `.env` is required.** Mock mode must keep working on any machine, so a missing or invalid variable never stops the app. It's reported by name in a development warning and falls back to a safe default. This is how ARCHITECTURE.md's "fail fast with a clear message" applies while mock mode is the default.
+- **Supabase's key variable is `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`.** It accepts a publishable key (`sb_publishable_…`) or the legacy `anon` JWT. Secret keys (`sb_secret_…`) and `service_role` JWTs are rejected, because every `EXPO_PUBLIC_*` value ships inside the app.
+- **`live` still falls back to mock.** Asking for `live` without valid Supabase values, or before the live data layer exists, keeps mock data and its label. Otherwise `live` would show sample data without the "Mock data" strip.
+- **`sync` is locked off in code,** not just off by default. `EXPO_PUBLIC_FLAG_SYNC=true` is ignored with a warning, and the list of modes a host can pick is always just `aux`.
+- **Flags are read from `EXPO_PUBLIC_FLAG_*` at build time.** They're public and per build, not remote config. Remote flags can come later if the beta needs them.
 
 ## 2026-11-20 · Room screen: expanded cover only
 

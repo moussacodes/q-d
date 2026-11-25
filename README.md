@@ -46,7 +46,7 @@ The app shell is in place: design tokens, core components, and every screen as a
 
 ## Setup
 
-Everything currently runs on deterministic mock data, so no accounts, keys, or `.env` file are needed yet. The environment-validation card adds `.env.example` when Supabase arrives.
+Everything currently runs on deterministic mock data, so no accounts, keys, or `.env` file are needed yet. `.env.example` lists every variable the app reads (names only). Copy it to `.env` when you need one; `src/services/env.ts` validates the values and falls back to mock data if they're missing.
 
 ### Everyone
 
