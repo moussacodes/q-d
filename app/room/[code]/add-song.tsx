@@ -18,6 +18,7 @@ import {
 import { useTheme } from '@/design';
 import { canPlayOnHostPhone } from '@/domain/availability';
 import { providerNames, type MusicProvider } from '@/domain/music-provider';
+import { sizedArtworkUrl } from '@/domain/artwork';
 import { formatArtists } from '@/domain/recording';
 import { formatDuration } from '@/domain/time';
 import {
@@ -26,9 +27,16 @@ import {
   useRoom,
   type RoomView,
 } from '@/features/room/useRoom';
-import { useCatalogSearch, type SearchResult } from '@/features/search/useCatalogSearch';
+import {
+  searchErrorMessage,
+  useCatalogSearch,
+  type SearchResult,
+} from '@/features/search/useCatalogSearch';
 
 type Filter = 'all' | MusicProvider;
+
+/** Artwork pixels for a 44 pt cover on a 3× screen. Apple sizes artwork to order. */
+const COVER_PX = 44 * 3;
 
 /** 1 → "1st", 2 → "2nd", 11 → "11th". */
 function ordinal(n: number) {
@@ -66,7 +74,8 @@ export default function AddSongSheet() {
   const [confirming, setConfirming] = useState<string | null>(null);
   const service = providerNames[room.playsThrough];
 
-  const { results, status: searchStatus } = useCatalogSearch(query);
+  const search = useCatalogSearch(query);
+  const { results } = search;
 
   const shown = filter === 'all' ? results : results.filter((r) => r.availableOn.includes(filter));
 
@@ -159,11 +168,11 @@ export default function AddSongSheet() {
           <Text variant="footnote" color="text2">
             Search by song, artist or album.
           </Text>
-        ) : searchStatus === 'error' ? (
+        ) : search.error ? (
           <Text variant="footnote" color="statusWarn" accessibilityRole="alert">
-            Search isn’t working right now. Check your connection, then try again.
+            {searchErrorMessage(search.error)}
           </Text>
-        ) : searchStatus === 'loading' && shown.length === 0 ? (
+        ) : shown.length === 0 && search.status === 'loading' ? (
           <Text variant="footnote" color="text2">
             Searching…
           </Text>
@@ -172,7 +181,7 @@ export default function AddSongSheet() {
             No songs match “{query.trim()}”.
           </Text>
         ) : null}
-        {(searchStatus === 'error' || query.trim() === '' ? [] : shown).map((result) => {
+        {(search.error || query.trim() === '' ? [] : shown).map((result) => {
           const { track } = result;
           const id = track.providerTrackId;
           const status = statusOf(id);
@@ -182,7 +191,7 @@ export default function AddSongSheet() {
           return (
             <View key={id}>
               <View style={styles.result}>
-                <Cover source={track.artworkUrl} size={44} />
+                <Cover source={sizedArtworkUrl(track.artworkUrl, COVER_PX)} size={44} />
                 <View style={styles.flex}>
                   <Text variant="bodyStrong" numberOfLines={1}>
                     {track.title}

@@ -337,9 +337,7 @@ describe('offline', () => {
     await signIn();
     await go({ pathname: '/room/[code]/add-song', params: { code: 'QD-7K4F9X' } });
     expect(
-      await screen.findByText(
-        'Search isn’t working right now. Check your connection, then try again.',
-      ),
+      await screen.findByText('Search isn’t working right now. Try again in a moment.'),
     ).toBeVisible();
     expect(screen.queryByText(/No songs match/)).toBeNull();
   });

@@ -63,7 +63,7 @@ A broadcast that never arrives costs freshness but never correctness, because th
 | Device storage | Supabase's recommended Expo session storage, plus SecureStore for provider credentials | Planned · Supabase client card |
 | Apple playback | Local Swift Expo module around MusicKit | Planned · qd-music-kit card |
 | Spotify playback | Spotify iOS SDK (App Remote) and the Web API | Planned · Spotify cards |
-| Tests | Jest/jest-expo, React Native Testing Library, Supabase integration tests, Maestro | Built: Jest, React Native Testing Library, `.maestro/` smoke flow (first runs with a development build). Planned: Supabase tests · Supabase cards |
+| Tests | Jest/jest-expo, React Native Testing Library, Supabase integration tests, Maestro | Built: Jest, React Native Testing Library, `.maestro/` smoke flow (first runs with a development build), database tests on PGlite (`supabase/tests`, run by `npm test`). Planned: the same database tests against a Supabase local stack |
 | Quality gates | ESLint, Prettier, `tsc`, Jest, Expo Doctor, GitHub Actions, Git pre-push hook | Built · `npm run check`, `.github/workflows/ci.yml`, `.githooks/pre-push` (every push) |
 | Builds | EAS development, preview (internal) and production (TestFlight) profiles | Planned · EAS card |
 | Observability | Redacting structured logger, privacy-filtered crash reports, opt-in analytics | Planned · Logging card |
@@ -84,15 +84,17 @@ src/
   design/                 Tokens: colors, type, spacing, Now playing palettes, ThemeProvider
   domain/                 Pure types and logic: rooms, queue, recordings, matching
   features/               Feature modules: auth, onboarding, rooms, queue, search, settings
-  providers/              Apple, Spotify and mock catalog/playback adapters      (interfaces, mocks and Apple/Spotify stubs built; live Apple, Spotify planned)
-  services/               Supabase, env, flags, logging, analytics               (data mode built; rest planned)
+  providers/              Apple, Spotify and mock catalog/playback adapters      (interfaces, mocks, Apple/Spotify stubs and the Apple catalog search adapter built; live Apple playback, Spotify planned)
+  services/               Supabase, env, flags, logging, analytics               (data mode and Edge Function calls built; rest planned)
   test/                   Fixtures and provider contract helpers
 modules/
   qd-music-kit/           Local Swift Expo module and config plugin             (planned)
 supabase/
-  migrations/             Schema, RPC functions, triggers, RLS                   (planned)
-  functions/              Edge Functions                                          (planned)
-  tests/                  Database and RLS integration tests                      (planned)
+  config.toml             Supabase CLI settings for a local stack
+  migrations/             Schema, RPC functions, triggers, RLS                   (schema built)
+  functions/              Edge Functions                    (delete-account placeholder and catalog-search built)
+    _shared/              Code functions share; can't import src/ (copies are test-checked)
+  tests/                  Database and RLS tests on PGlite, plus the harness      (built)
 assets/icons/             The 34 Figma icons, unmodified SVG
 docs/                     These documents and the pitch deck
 ```
@@ -189,7 +191,8 @@ ESLint enforces these rules (`no-restricted-imports` in `eslint.config.js`), so 
 - **Rule:** Postgres is the source of truth for rooms, membership, the queue and playback state. Every change goes through a server-side RPC (a Postgres function) that validates membership, room state, permission, capacity and idempotency. Clients never write those tables directly. RLS allows only reads to members.
 - **Why:** several phones change one queue at the same time on flaky networks. If the server decides positions and permissions, two people adding at once can't corrupt the order, a retried request can't add a duplicate, and a modified client can't skip the host's rules.
 - **Realtime is a notification layer, not a data layer.** Broadcast events tell clients what changed so they refetch. Presence shows who's here and whether the host is connected. If an event is lost, a refetch fixes it.
-- Broadcasts are sent by the database (by the RPC or a trigger on the table it changes), not by the client that made the change. That way no client can announce a change that didn't happen. The exact mechanism is decided in the RPC card.
+- Broadcasts are sent by the database, from inside the RPC that made the change (`private.broadcast_room_event()`), not by the client. That way no client can announce a change that didn't happen, and a rolled-back change announces nothing.
+- Built (RPC contracts card): the shared checks, the error convention and the idempotency machinery live in the `private` schema (`supabase/migrations/20261124000200_rpc_foundation.sql`). Each RPC is a `security definer` function in `public` with a pinned `search_path`, and `anon` can't execute any of them.
 
 ### 4.11 q’d sign-in vs. music-service authorization
 
@@ -211,7 +214,7 @@ ESLint enforces these rules (`no-restricted-imports` in `eslint.config.js`), so 
 
 ## 5. Data model
 
-Planned · Initial Supabase migrations card. Shapes are in [API_CONTRACTS.md](API_CONTRACTS.md).
+Built · Initial Supabase migrations card (`supabase/migrations/20261124000100_initial_schema.sql`). Shapes are in [API_CONTRACTS.md](API_CONTRACTS.md). Every table has row level security switched on.
 
 | Table | Holds |
 |---|---|
@@ -225,14 +228,23 @@ Planned · Initial Supabase migrations card. Shapes are in [API_CONTRACTS.md](AP
 | `provider_tracks` | One provider's version of a song (provider + provider ID + metadata). |
 | `track_matches` | The link from a recording to a provider track, with its confidence score. |
 | `track_match_overrides` | "Wrong version?" corrections. Audited. |
-| `queue_entries` | Server-assigned position, recording, added by, idempotency key, optional `batch_id`. |
+| `queue_entries` | Server-assigned position, recording, added by, status, optional `batch_id`. Idempotency keys live in `idempotency_keys`. One `playing` entry per room. |
 | `playback_states` | What's playing, from which position, at what time, paused or playing. Written by the host. |
 | `playback_slots` | `sync (beta)` playback slots. Slot 1 is always the host. |
 | `playlist_import_batches` | Post-demo playlist imports and their undo state. |
 | `blocks`, `reports` | Beta moderation. |
-| `analytics_events` | Opt-in events with no provider or song data. |
+| `analytics_events` | Opt-in events with no provider or song data. Keyed by an analytics id, not the user id. |
+| `idempotency_keys` | One row per successful mutation: user, operation, key, a hash of the arguments and the stored result. Kept at least 24 hours. |
 
 **RLS principle:** a signed-in user can read a room's data only if they're a member. Nobody inserts into, updates or deletes from room tables directly. Writes happen only through the RPC functions, which run with elevated rights after their own checks. The RLS tests prove an outsider can't read or change anything.
+
+Built · RLS card (`supabase/migrations/20261124000300_row_level_security.sql`, tests in `supabase/tests/rls.test.ts`):
+
+- Members read their room's rows in every room table. Only the host reads `room_invites`. Members see each other's profiles. The catalog (`recordings`, `provider_tracks`, `track_matches`) is readable by anyone signed in.
+- `anon` holds no privilege on any table. Signed-in users hold no insert, update or delete privilege except on their own profile's onboarding fields, their own `provider_connections` rows and their own `blocks`, so a direct write to a room table fails with permission denied.
+- `idempotency_keys` and `analytics_events` are never readable by clients.
+- Realtime Authorization: members may receive on `room:<room_id>` and track presence there. Nobody may send a broadcast from a client.
+- **Every new table** needs RLS switched on, no `anon` privileges and no write privileges for `authenticated`. Guard tests in `rls.test.ts` fail otherwise, because Supabase's default grants would expose it.
 
 ## 6. Playback in `aux`
 
@@ -251,7 +263,8 @@ Planned · Initial Supabase migrations card. Shapes are in [API_CONTRACTS.md](AP
 - Matching is a pure function in `src/domain` (normalize, then score). The thresholds and rules are in [PRODUCT_SPEC.md § 6](PRODUCT_SPEC.md#6-catalog-and-matching). Results and overrides are stored in Postgres, so every phone sees the same answer and overrides are audited.
 - **Built** (matching card): `src/domain/matching` (`text.ts` normalizes and reads version markers, `match.ts` ranks candidates and decides). `matchRecording(recording, candidates, { provider, overrideTrackId })` returns the `TrackMatch` to store, a status (`matched`, `needs_review` or `unavailable`), the reasons and every candidate ranked for "Wrong version?". The numbers are in [DECISIONS.md](DECISIONS.md) (2026-11-24 · Track matching).
 - **Built** (availability and low-confidence states card, mock mode): `src/domain/availability.ts` turns a stored `TrackMatch` into what the room shows and whether the host's phone may play it. Search results, queue rows, the room's now-playing notice and the mini player follow it, and `RoomPlayer` never plays an unavailable or unmatched song. Mock fixtures get their matches from `matchRecording` against made-up candidates (`src/providers/mock/matches.ts`). The "Wrong version?" button is a prop on `MatchNotice` that the override card passes.
-- Planned · Canonical search card (where search runs, and storing matches in Postgres).
+- **Built** (canonical search card): search runs in the `catalog-search` Edge Function (open decision 1). It holds the Apple Music API developer token, searches Apple's catalog, normalizes each song (`supabase/functions/catalog-search/apple.ts`) and saves it with `save_catalog_tracks` as an Apple `provider_tracks` row plus a canonical `recordings` row, found again by `recordings (source_provider, source_track_id)`. The app calls it through `services/edgeFunctions.ts` and the Apple `CatalogAdapter` (`providers/apple/catalog.ts`), and `features/search/useCatalogSearch` debounces it. Mock mode still uses the mock catalog. **Built, untested against the live Apple Music API**: the team has no developer key yet.
+- Planned · Storing `track_matches` when playback needs a mapping (the queue and playback cards call `matchRecording`).
 
 ## 8. Configuration, environments and flags
 
@@ -288,10 +301,20 @@ Jest, React Native Testing Library and the Maestro folder are set up. Each featu
 |---|---|---|
 | Domain | Jest | Matching (ISRC, durations, explicit/clean, version tokens; Built: `src/domain/matching/rules.test.ts`), room-code formatting, queue ordering helpers |
 | Providers | Shared contract suite in `src/test` (Built: `src/test/providerContract.ts`) | Apple, Spotify and mock adapters behave the same through the interface |
-| Database | Supabase tests in `supabase/tests` | RLS denies outsiders, host/member permissions, idempotent enqueue/reorder/remove, concurrent adds, code collisions, expiry and rate limits |
+| Database | Jest + PGlite in `supabase/tests` (see below) | RLS denies outsiders, host/member permissions, idempotent enqueue/reorder/remove, concurrent adds, code collisions, expiry and rate limits |
 | Components and screens | React Native Testing Library | Loading, offline, empty, unavailable, reconnecting and provider-required states (Built: `__tests__/ui-states.test.tsx`, one describe per state, plus the per-card route tests) |
 | End to end | Maestro | Smoke flows: sign in, create a room, join, add a song |
 | Physical devices | Manual checklist | [PRODUCT_SPEC.md § 2](PRODUCT_SPEC.md#demo-must-haves) and [DEMO_RUNBOOK.md](DEMO_RUNBOOK.md) |
+
+### Database tests
+
+There's no Docker or Supabase CLI on Windows, so the database tests run on [PGlite](https://pglite.dev), Postgres compiled to WebAssembly, inside Jest. `npm test` runs them with the app tests (Jest project `db`), so CI and the pre-push hook run them too.
+
+- `supabase/tests/harness/db.ts` creates a fresh in-memory database per test file: it loads `harness/supabase-shim.sql` and then every file in `supabase/migrations` in filename order. Reuse it for every database card.
+- The shim stands in for what Supabase provides: the `anon`, `authenticated` and `service_role` roles with Supabase's default grants, `auth.users`, `auth.uid()` (read from `request.jwt.claim.sub`), and `realtime.messages`/`realtime.send()`. It's test-only and never applied to a project.
+- `db.as(user)` runs SQL or an RPC the way PostgREST does, as `authenticated` with the user's id in the JWT settings, so RLS and `security definer` functions run for real. `db.asAnon()` and `db.asServiceRole()` cover the other roles, and `db.query()` runs as the superuser for setup and checks.
+- `harness/pglite-transform.js` lets PGlite load inside Jest without `--experimental-vm-modules`. `supabase/tests/tsconfig.json` gives the tests Node types; the app's `tsconfig.json` leaves `supabase/tests` and `supabase/functions` out, and `npm run typecheck` checks both.
+- PGlite runs one connection, so true concurrency can't be tested here. Tests cover sequential replays and conflicting keys. The same tests should also run against a Supabase local stack (`supabase start`) on a machine with Docker. PGlite is Postgres 18; `config.toml` asks the CLI for 17.
 
 ## Sync (beta) research
 
@@ -307,8 +330,8 @@ Post-demo, private, behind the `sync` flag. Nothing here ships publicly without 
 
 Record each answer in [DECISIONS.md](DECISIONS.md) and update this file.
 
-1. **Where canonical (Apple catalog) search runs.** Guests without Apple Music, and Android or web clients, can't use on-device MusicKit search. An Edge Function holding an Apple Music API developer token would serve everyone the same results. On-device MusicKit is simpler but works only on iOS. Decided in the canonical search card.
-2. **How broadcasts are sent.** Either a database trigger or the RPC itself sends the broadcast. Decided in the RPC card.
+1. **Where canonical (Apple catalog) search runs.** Guests without Apple Music, and Android or web clients, can't use on-device MusicKit search. An Edge Function holding an Apple Music API developer token would serve everyone the same results. On-device MusicKit is simpler but works only on iOS. **Decided 2026-11-25 (canonical search card): an Edge Function**, so guests, Android and the web search the same catalog. See DECISIONS.md.
+2. **How broadcasts are sent.** Decided 2026-11-24 (RPC contracts card): the RPC itself sends it, through `private.broadcast_room_event()` and `realtime.send()`. See [API_CONTRACTS.md § 4](API_CONTRACTS.md#4-realtime).
 3. **Queue position representation.** For example, integers with gaps or fractional ranks. Decided in the queue card. Clients never compute positions in either case.
 4. **Bottom-sheet library.** Pick one only when an interaction needs gestures that a modal route can't provide.
 5. **Future SwiftUI client.** After the demo, a SwiftUI client is planned against the same Supabase schema and contracts. The React Native app stays as the reference client and the eventual Android path, and the backend isn't rewritten. This is why `domain/` and the RPC contracts are kept platform-neutral.

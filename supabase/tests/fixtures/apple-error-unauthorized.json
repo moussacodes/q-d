@@ -1,0 +1,11 @@
+{
+  "errors": [
+    {
+      "id": "SYNTHETIC0001",
+      "title": "Unauthorized",
+      "detail": "Synthetic fixture",
+      "status": "401",
+      "code": "40100"
+    }
+  ]
+}

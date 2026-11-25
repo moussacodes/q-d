@@ -71,6 +71,20 @@ Product and technical decisions that are not obvious from the code. Newest first
 - **The wordmark says q’d with the curly apostrophe.** The Logo drew `q'd` with a straight one, although its accessibility label was already curly (PRODUCT_SPEC.md §9).
 - **Still mock:** the email form accepts any input, and "Forgot password?" does nothing. Validation and password reset come with the email auth card.
 
+## 2026-11-25 · Canonical catalog search (Apple catalog)
+
+- **Search runs in an Edge Function** (ARCHITECTURE.md open decision 1, PRODUCT_SPEC.md § 13). `catalog-search` holds the Apple Music API developer token and serves everyone the same results: guests without a service, Android and the web. On-device MusicKit search would leave them out. The card asked for this; **a teammate should confirm**.
+- **The developer token is minted in the function** from the MusicKit key in Edge Function secrets (ES256, 12 hours, replaced an hour early or after Apple rejects it). It never ships in the app. **Built, untested against the live API:** nobody has a developer key yet, so every test uses synthetic recorded fixtures.
+- **One canonical recording per Apple song id.** Saving the same song again keeps its recording id and refreshes its metadata, so search is idempotent. Two Apple songs with the same ISRC (a single and its album copy) stay two recordings; whether to merge them is an **open question**.
+- **Apple's artist credit is kept whole** (`['Delerium & Sarah McLachlan']`). Splitting at "&" would break "Simon & Garfunkel", and matching splits credits itself.
+- **Version tags are read from the title** with the matching card's `parseTitle`, without `clean` (that's the explicit flag). Supabase deploys only what's under `supabase/functions`, so the function can't import `src/`: it uses `supabase/functions/_shared/matching-text.ts`, a copy of `src/domain/matching/text.ts` that a test keeps identical (review fix).
+- **Songs missing an id, title, artist or a positive duration are skipped,** not invented. Artwork must be https; Apple's `{w}x{h}` template is stored and sized in the app.
+- **Search results know only Apple.** `availableOn` is `['apple_music']`. **Open question before live search is wired in:** Add a song reads a missing provider as "Not on Spotify", which live search can't know yet. The app still uses the mock catalog, so nothing shows this today.
+- **60 searches a minute per user,** counted in Postgres, because Apple's limit is per developer token and shared by everyone. Add a song waits 300 ms after typing before a live search; the mock doesn't wait.
+- **New error code `provider_unavailable`** for a music service that can't answer (unreachable, timed out, misconfigured or an unexpected response). The database's code list has it too; another branch that rewrites `private.error_codes()` must keep it.
+- **Add a song shows search errors** as plain copy ("Too many searches. Try again in 12 seconds.", "Search isn’t working right now…") and "Searching…" while a first search loads. Figma has no frame for these; Figma not re-checked.
+- **Track and link lookups aren't built.** The live Apple catalog adapter's `getTrack` and `resolveLink` still say "not in this build".
+
 ## 2026-11-24 · Track matching
 
 The rules are PRODUCT_SPEC.md §6. These are the numbers and edge cases the matching card had to pick. All of it is in `src/domain/matching`, pure and deterministic.
@@ -104,6 +118,46 @@ The rules are PRODUCT_SPEC.md §6. These are the numbers and edge cases the matc
 - **Schemas strip unknown fields** instead of rejecting them, so a new column or event field is additive and older clients keep working.
 - **The card's "ProviderCapabilities" is `PlaybackCapabilities`** from API_CONTRACTS.md §5, with `ProviderCapabilities` as an alias. It lives in `src/domain` because the UI reads it.
 - **Two `ProviderTrack` types exist for one branch.** `src/domain/recording.ts` has the contract's shape (`artists[]`, nullable ISRC). `src/providers/types.ts` still has the mocks' older shape; the provider adapters card moves the providers onto the domain type.
+## 2026-11-24 · create_room
+
+- **Room codes leave out look-alike characters.** Codes use `23456789ABCDEFGHJKLMNPQRSTUVWXYZ` (no `0`, `O`, `1` or `I`), so a code read aloud or typed from a screen can't be misread. Six characters still give about a billion codes. This answers part of PRODUCT_SPEC.md § 13; **a teammate should confirm it**.
+- **A room code works for 24 hours.** Long enough for an evening, short enough that old codes stop working. The room itself keeps going; only joining by code stops. A way to refresh the code can come with the join card if hosts need it. **A teammate should confirm the length.**
+- **A collision draws again,** up to ten times, then fails with an internal error. With a billion codes that should never happen.
+- **`create_room` takes an optional `mode`** (default `aux`). `sync` fails with `feature_disabled`, as the contract says, without needing a flag table yet.
+- **The name is trimmed** and must be 1–40 characters (`invalid_input` otherwise).
+- **One host may run several live rooms.** Nothing in the product rules limits it.
+
+## 2026-11-24 · Row level security
+
+- **Clients only read.** Direct inserts, updates and deletes on room, queue, playback, catalog and system tables fail with permission denied for everyone, the host included. Play, pause, skip, reorder and remove go through RPCs that check the control rule; by default only the host passes it.
+- **Three things a user writes directly:** their own profile's onboarding fields (`display_name`, `color`, `adult_confirmed_at`), their own `provider_connections` rows, and their own `blocks`. Onboarding and Settings need these, and none of them is shared room state.
+- **`create_room` trusts `provider_connections`.** The server can't verify a connection, because provider tokens stay on the device. A modified client could claim one, but it still couldn't play anything without a real provider account.
+- **Members see each other's profiles,** so Listeners and the queue can show names and colors. Outsiders see only their own.
+- **Only the host reads the invite row.** It holds a hash, never the token.
+- **`anon` gets nothing,** not even empty results: every table read fails with permission denied.
+- **Guard tests** fail when a new table keeps Supabase's default grants, so the next migrations can't expose a table by accident.
+
+## 2026-11-24 · RPC contracts
+
+- **The proposals are confirmed.** Every operation marked Added in API_CONTRACTS.md (`update_room_rules`, `create_room_invite`, `join_room_by_invite`, `leave_room`, `undo_batch`, `report_playback_state`, `request_playback`, `advance_queue`, `override_track_match`) stays. Two smaller proposals are confirmed too: adding to an empty room starts that song, and the person who added a queued entry may remove it (the Undo on the "added" toast).
+- **One error transport.** RPCs raise SQLSTATE `P0001` with the code as the message, extra fields as JSON in the detail, and the hint `qd`. Edge Functions return `{ "code": … }`. An unknown code can't be raised, and a test keeps the code list and API_CONTRACTS.md § 2 identical.
+- **New code `invalid_input`** for a missing or out-of-range argument (a blank room name, no idempotency key). The contract had no code for it.
+- **A replay is answered before the other checks,** right after sign-in. Otherwise retrying `end_room` after it succeeded would fail with `room_ended`. A new key goes through every check.
+- **The RPC sends the broadcast** (open decision 2), from inside its transaction with `realtime.send()`, so a rolled-back change announces nothing.
+- **Shared checks live in a `private` schema** the API doesn't expose. Nothing there is executable by `anon` or `authenticated`; public RPCs are `security definer` with a pinned `search_path`. A test fails if any q’d function lacks a pinned `search_path` or is executable by `anon`.
+- **`claim_playback_slot` and `release_playback_slot` exist** and fail with `feature_disabled` while `sync` is off. The `delete-account` Edge Function exists as a placeholder that answers `feature_disabled`.
+
+## 2026-11-24 · Initial Supabase migrations
+
+- **The schema follows ARCHITECTURE.md §5 names**: `recordings`, `provider_tracks` and `track_matches`, not "canonical recordings" or "mappings". `track_matches` and `track_match_overrides` point at a provider track by `(provider, provider_track_id)`, the provider's own id, like the `TrackMatch` domain type.
+- **Row level security is on for every table from the first migration,** with no policies. Everything is denied until the RLS migration opens reads, so there's never a window where Supabase's default grants expose a table.
+- **No credentials in Postgres.** `provider_connections` holds the provider, when it was connected or last checked, and a storefront. A test fails if any public column is named like a token, secret, password or credential, except the invite's `token_hash`.
+- **Every auth user gets an empty profile row** from a trigger on `auth.users`. The profile is complete when `display_name`, `color` and `adult_confirmed_at` are set. `color` has no default, because the first swatch belongs to the design tokens, not the database.
+- **The 15-person cap is a trigger on `room_members`,** under a lock on the room row, so it holds however a member is added. It raises `room_full`.
+- **A room code is unique among rooms that haven't ended.** Ending a room frees its code.
+- **The queue is batch-ready.** `queue_entries.batch_id` points at `playlist_import_batches`, which allows one running import per room. `blocks`, `reports` and `analytics_events` are placeholders for the beta.
+- **Idempotency keys get their own table** (`idempotency_keys`) instead of a column on each table, so every RPC uses the same machinery.
+- **Database tests run on PGlite inside Jest** (ARCHITECTURE.md § Database tests), because Windows has no Docker or Supabase CLI. A test-only shim provides Supabase's roles, `auth` and `realtime`. The same tests should also run against `supabase start` on the Mac.
 
 ## 2026-11-20 · Room screen: expanded cover only
 
