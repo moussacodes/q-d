@@ -127,6 +127,32 @@ describe('the host', () => {
   });
 });
 
+describe('when the host’s phone can’t play', () => {
+  it('stops autoplay once the room’s service is disconnected, and reconnecting doesn’t restart it', async () => {
+    await signIn();
+    await act(async () => {
+      fireEvent.press(await screen.findByText('Start a room'));
+    });
+    await press('Start room');
+    await runOutTheQueue();
+    await screen.findByText('Autoplay by Spotify');
+
+    await go('/settings');
+    await press('Disconnect Spotify');
+    await press('Disconnect Spotify and pause Sunday Slow Burn');
+    await press('Back');
+    expect(await screen.findByText('Spotify isn’t connected')).toBeVisible();
+    expect(screen.queryByText(/^Autoplay by/)).toBeNull();
+    expect(screen.queryByText('Get You')).toBeNull();
+    expect(screen.getByText('Nothing playing yet')).toBeVisible();
+
+    await press('Reconnect Spotify');
+    expect(screen.queryByText('Spotify isn’t connected')).toBeNull();
+    expect(screen.queryByText(/^Autoplay by/)).toBeNull();
+    expect(screen.getByText('Nothing playing yet')).toBeVisible();
+  });
+});
+
 describe('listeners', () => {
   it('see whose songs these are, without the song or the controls', async () => {
     await signIn();
