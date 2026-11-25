@@ -151,6 +151,7 @@ type MiniPlayerProps = {
   /** 0–1 */
   progress: number;
   onPress?: () => void;
+  /** Without it (the room's rules leave you out), Play/Pause is disabled. */
   onTogglePlay?: () => void;
 };
 
@@ -193,9 +194,14 @@ export function MiniPlayer({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={playing ? 'Pause' : 'Play'}
+          disabled={!onTogglePlay}
           onPress={onTogglePlay}
           hitSlop={6}
-          style={[styles.playButton, { backgroundColor: colors.accent }]}
+          style={[
+            styles.playButton,
+            { backgroundColor: colors.accent },
+            !onTogglePlay && styles.playDisabled,
+          ]}
         >
           <Icon name={playing ? 'pause' : 'play'} size={20} color={colors.onAccent} />
         </Pressable>
@@ -297,6 +303,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  playDisabled: { opacity: 0.4 },
   progressTrack: {
     position: 'absolute',
     left: 9,

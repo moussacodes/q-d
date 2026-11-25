@@ -2,6 +2,13 @@
 
 Product and technical decisions that are not obvious from the code. Newest first.
 
+## 2026-11-24 · Home: idle and live states
+
+- **Idle (2.1)** is Home with no room: the greeting, Start a room, the code field and Recent rooms, with no mini player and no Live row. **Live (2.2)** is Home while you're in a room: that room's row says Live and "N listening now", and while a song plays the mini player sits at the foot of the screen. A room with nothing playing is still Live, without a mini player.
+- **The Live row shows the room's name as it was started.** It showed the sample name, so a room started as "Friday Fade" read "Sunday Slow Burn" on Home while the mini player said "Friday Fade".
+- **The mini player's Play/Pause is disabled** when the room's control rule leaves you out. Before, it looked active and did nothing.
+- A person still compares both states with Figma `20 · Mobile`.
+
 ## 2026-11-24 · Welcome, sign-in and account-creation audit
 
 - **Audited against the card, not Figma.** Welcome, Sign in and Create account offer all three entry points: Apple, Google and email. Welcome's email button opens Create account; Sign in and Create account each have the email form plus Apple and Google. A person still has to compare them with Figma `20 · Mobile`.

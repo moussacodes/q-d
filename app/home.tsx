@@ -139,6 +139,8 @@ export default function Home() {
         <SectionLabel>Recent rooms</SectionLabel>
         {mockRooms.map((room) => {
           const live = activeRoom?.code === room.code;
+          // The room you're in shows the name it was started with.
+          const name = live ? activeRoom.name : room.name;
           return (
             <Pressable
               key={room.code}
@@ -153,7 +155,7 @@ export default function Home() {
                 </View>
               </View>
               <View style={styles.flex}>
-                <Text variant="bodyStrong">{room.name}</Text>
+                <Text variant="bodyStrong">{name}</Text>
                 <Text variant="caption" color="text2">
                   {room.youHost ? 'You host' : `Hosted by ${room.hostName}`} ·{' '}
                   {live
