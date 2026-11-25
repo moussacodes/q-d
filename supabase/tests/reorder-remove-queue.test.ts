@@ -537,3 +537,102 @@ describe('remove_queue_entry', () => {
     });
   });
 });
+
+describe('review: every move, grants and edge cases', () => {
+  it('every (entry, after) pair in a 5-song queue lands where a client would expect', async () => {
+    const { host, roomId, playing, queued } = await roomWithQueue(5);
+    let order = [...queued];
+    // null = to the top; the playing entry also means the top.
+    const anchors: (string | null)[] = [null, playing, ...queued];
+    for (const entryId of queued) {
+      for (const after of anchors) {
+        if (after === entryId) continue;
+        const expected = order.filter((id) => id !== entryId);
+        const at = after === null || after === playing ? 0 : expected.indexOf(after) + 1;
+        expected.splice(at, 0, entryId);
+        const result = await reorder(host, {
+          room_id: roomId,
+          entry_id: entryId,
+          after_entry_id: after,
+        });
+        expect(await queuedIds(db, roomId)).toEqual(expected);
+        expect(result).toEqual({
+          entry_id: entryId,
+          position: expected.indexOf(entryId) + 1,
+          queue_length: 5,
+        });
+        order = expected;
+      }
+    }
+    await expectQueueInvariants(db, roomId);
+    expect(await playingId(db, roomId)).toBe(playing);
+  });
+
+  it('Undo needs membership: someone who left cannot take their song back', async () => {
+    const { roomId } = await roomWithQueue(1);
+    const member = await addMember(db, roomId);
+    const entryId = await add(member, roomId);
+    await db.query('delete from public.room_members where room_id = $1 and user_id = $2', [
+      roomId,
+      member.id,
+    ]);
+    await expect(remove(member, { room_id: roomId, entry_id: entryId })).rejects.toMatchObject({
+      code: 'not_member',
+    });
+    expect(await queuedIds(db, roomId)).toContain(entryId);
+  });
+
+  it('an entry whose adder deleted their account can be removed only under the control rule', async () => {
+    const { host, member, roomId, queued } = await roomWithQueue(2);
+    await db.query('update public.queue_entries set added_by = null where id = $1', [queued[0]]);
+    await expect(remove(member, { room_id: roomId, entry_id: queued[0] })).rejects.toMatchObject({
+      code: 'not_allowed',
+    });
+    await expect(remove(host, { room_id: roomId, entry_id: queued[0] })).resolves.toMatchObject({
+      queue_length: 1,
+    });
+  });
+
+  it('check order: a member without control who removes the playing song gets stale_state, not not_allowed', async () => {
+    // Documented order for remove_queue_entry: membership, then the entry, then permission.
+    const { member, roomId, playing } = await roomWithQueue(1);
+    await expect(remove(member, { room_id: roomId, entry_id: playing })).rejects.toMatchObject({
+      code: 'stale_state',
+      details: { status: 'playing' },
+    });
+  });
+
+  it('a rejected reorder or removal changes nothing and sends nothing', async () => {
+    const { member, roomId, queued } = await roomWithQueue(3);
+    const before = await queueRows(db, roomId);
+    const sent = (await db.broadcasts(roomId)).length;
+    await expect(
+      reorder(member, { room_id: roomId, entry_id: queued[2], after_entry_id: null }),
+    ).rejects.toMatchObject({ code: 'not_allowed' });
+    await expect(remove(member, { room_id: roomId, entry_id: queued[0] })).rejects.toMatchObject({
+      code: 'not_allowed',
+    });
+    expect(await queueRows(db, roomId)).toEqual(before);
+    expect((await db.broadcasts(roomId)).length).toBe(sent);
+  });
+
+  it('both RPCs are security definer with a pinned search_path; the entry helper is private', async () => {
+    const rows = await db.query<{ definer: boolean; config: string; anon: boolean; auth: boolean }>(
+      `select p.prosecdef as definer, array_to_string(p.proconfig, ',') as config,
+              has_function_privilege('anon', p.oid, 'execute') as anon,
+              has_function_privilege('authenticated', p.oid, 'execute') as auth
+         from pg_proc p
+        where p.oid in ('public.reorder_queue(uuid, uuid, uuid, uuid)'::regprocedure,
+                        'public.remove_queue_entry(uuid, uuid, uuid)'::regprocedure)`,
+    );
+    expect(rows).toEqual([
+      { definer: true, config: 'search_path=""', anon: false, auth: true },
+      { definer: true, config: 'search_path=""', anon: false, auth: true },
+    ]);
+    const [helper] = await db.query<{ auth: boolean }>(
+      `select has_function_privilege('authenticated',
+                'private.require_queued_entry(uuid, uuid, text)', 'execute') as auth`,
+    );
+    expect(helper).toEqual({ auth: false });
+  });
+});
