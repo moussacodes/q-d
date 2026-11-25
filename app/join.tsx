@@ -5,66 +5,60 @@ import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import {
   Button,
   Chip,
-  Cover,
   Intro,
   Panel,
-  ProviderBadge,
   Screen,
   ScreenHeader,
   Text,
   useScreenPalette,
 } from '@/components';
 import { typography, useTheme } from '@/design';
+import { isRoomCode, lookalikesIn, ROOM_CODE_LENGTH, roomCodeFromInput } from '@/domain/room-code';
 import {
-  CODE_LENGTH,
+  canRetryJoin,
   joinErrorCopy,
-  useRoomCodeLookup,
-  type JoinError,
+  lookalikeMessage,
+  useJoinByCode,
 } from '@/features/room/roomCodes';
 import { useMockSession } from '@/features/session/MockSession';
 
-/** Errors a retry can fix without a new code. */
-const retryable: readonly JoinError[] = ['network', 'rate_limited'];
+const CODE_LENGTH = ROOM_CODE_LENGTH;
 
 /**
- * 2.3 Join with a code. Six characters after QD- (plan.md §2). A complete
- * code is looked up (mock `join_room_by_code`), and every answer is shown:
- * the room, a wrong or expired code, a full or ended room, too many tries, or
- * no connection.
+ * 2.3 Join with a code. Six characters after QD- (plan.md §2). Join calls
+ * `join_room_by_code` (mock), which checks the code and joins in one call,
+ * like the real RPC, so there's no "Room found" preview before it. Every
+ * answer is shown: a wrong or expired code, a full or ended room, too many
+ * tries, an incomplete profile, a lost session, or no connection.
  */
 export default function Join() {
   useScreenPalette();
   const { colors } = useTheme();
   const { enterRoom } = useMockSession();
   const params = useLocalSearchParams<{ code?: string }>();
-  const [code, setCode] = useState((params.code ?? '').slice(0, CODE_LENGTH));
+  const [code, setCode] = useState(roomCodeFromInput(params.code ?? ''));
   const input = useRef<ComponentRef<typeof TextInput>>(null);
-  const { lookup, retry } = useRoomCodeLookup(code);
-  const found = lookup.status === 'found' ? lookup.room : null;
+  const { state, join, reset } = useJoinByCode();
+  const joining = state.status === 'pending';
+  const lookalikes = lookalikesIn(code).length > 0;
+  const ready = isRoomCode(code) && !joining;
 
-  const join = () => {
-    if (!found) return;
-    enterRoom(found.code);
-    router.replace({ pathname: '/room/[code]', params: { code: found.code } });
+  const submit = async () => {
+    if (!ready) return;
+    const joined = await join(code);
+    if (!joined) return;
+    enterRoom(joined);
+    router.replace({ pathname: '/room/[code]', params: { code: joined } });
   };
+
+  const error = state.status === 'failed' ? state.error : null;
 
   return (
     <Screen
       header={<ScreenHeader title="Join a room" />}
       footer={
         <>
-          <Button
-            block
-            label={
-              found
-                ? `Join ${found.name}`
-                : lookup.status === 'loading'
-                  ? 'Looking for the room…'
-                  : 'Join'
-            }
-            disabled={!found}
-            onPress={join}
-          />
+          <Button block label={joining ? 'Joining…' : 'Join'} disabled={!ready} onPress={submit} />
           <Text variant="caption" color="text3">
             The host’s phone plays the music. You don’t need a music service.
           </Text>
@@ -104,14 +98,12 @@ export default function Join() {
         <TextInput
           ref={input}
           value={code}
-          onChangeText={(t) =>
-            setCode(
-              t
-                .toUpperCase()
-                .replace(/[^A-Z0-9]/g, '')
-                .slice(0, CODE_LENGTH),
-            )
-          }
+          onChangeText={(t) => {
+            setCode(roomCodeFromInput(t));
+            // A changed code hasn't been tried yet.
+            reset();
+          }}
+          editable={!joining}
           autoFocus
           autoCapitalize="characters"
           autoCorrect={false}
@@ -121,37 +113,22 @@ export default function Join() {
         />
       </Pressable>
       <Chip label="Paste from clipboard" icon="clipboard" />
-      {found ? (
-        <Panel>
-          <Chip label="Room found" tone="ok" icon="check" />
-          <View style={styles.room}>
-            <Cover size={44} />
-            <View style={styles.flex}>
-              <Text variant="bodyStrong">{found.name}</Text>
-              <Text variant="caption" color="text2">
-                {found.hostName}’s room · {found.people.length} people
-              </Text>
-              {found.nowPlaying ? (
-                <Text variant="caption" color="text3">
-                  Now playing {found.nowPlaying.title} · {found.nowPlaying.artist}
-                </Text>
-              ) : null}
-            </View>
-          </View>
-          <ProviderBadge provider={found.playsThrough} />
-        </Panel>
+      {lookalikes ? (
+        <Text variant="caption" color="statusWarn" accessibilityRole="alert">
+          {lookalikeMessage}
+        </Text>
       ) : null}
-      {lookup.status === 'error' ? (
+      {error ? (
         <Panel style={[styles.error, { borderColor: colors.statusWarn }]}>
           <Text variant="bodyStrong" accessibilityRole="alert">
-            {joinErrorCopy[lookup.error].title}
+            {joinErrorCopy(error).title}
           </Text>
           <Text variant="caption" color="text2">
-            {joinErrorCopy[lookup.error].body}
+            {joinErrorCopy(error).body}
           </Text>
-          {retryable.includes(lookup.error) ? (
+          {canRetryJoin(error) ? (
             <View style={styles.retry}>
-              <Button size="small" kind="secondary" label="Try again" onPress={retry} />
+              <Button size="small" kind="secondary" label="Try again" onPress={submit} />
             </View>
           ) : null}
         </Panel>
@@ -161,7 +138,6 @@ export default function Join() {
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1, gap: 2 },
   codeRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   prefix: { fontSize: 22, marginRight: 2 },
   box: {
@@ -173,7 +149,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   hiddenInput: { position: 'absolute', opacity: 0, width: 1, height: 1 },
-  room: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   error: { gap: 4 },
   retry: { flexDirection: 'row', paddingTop: 8 },
 });

@@ -35,7 +35,7 @@ describe('guests', () => {
     await act(async () => {
       router.push({ pathname: '/join', params: { code: '9M2XR4' } });
     });
-    await pressLabel('Join Kitchen Disco');
+    await pressLabel('Join');
     expect(screen).toHavePathname('/room/QD-9M2XR4');
 
     await pressLabel('Add a song');

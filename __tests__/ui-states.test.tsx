@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { act, fireEvent, renderRouter, screen, waitFor } from 'expo-router/testing-library';
 
-import { roomCodes } from '@/features/room/roomCodes';
+import { MOCK_JOIN_ATTEMPTS, mockJoin } from '@/features/room/roomCodes';
 import { catalog } from '@/providers';
 
 // UI state tests (Forge card "UI tests for each non-happy-path state"). The
@@ -50,17 +50,36 @@ const signUpAsGuest = async () => {
 
 const join = (code: string) => go({ pathname: '/join', params: { code } });
 
+beforeEach(() => {
+  mockJoin.reset();
+});
+
 afterEach(() => {
   jest.restoreAllMocks();
 });
 
+/** Join's own button: Home, under it in the stack, has an arrow labeled Join too. */
+const joinButton = () => {
+  const buttons = screen.getAllByLabelText(/^(Join|Joining…)$/);
+  return buttons[buttons.length - 1];
+};
+
+const pressJoin = async () => {
+  await act(async () => {
+    fireEvent.press(joinButton());
+  });
+};
+
 describe('loading', () => {
-  it('Join says it’s looking for the room and can’t be pressed yet', async () => {
-    jest.spyOn(roomCodes, 'lookup').mockReturnValue(new Promise(() => {}));
+  it('Join says it’s joining and can’t be pressed again', async () => {
+    const call = jest.spyOn(mockJoin, 'joinRoomByCode').mockReturnValue(new Promise(() => {}));
     await signIn();
     await join('9M2XR4');
-    expect(await screen.findByLabelText('Looking for the room…')).toBeDisabled();
-    expect(screen.queryByText('Room found')).toBeNull();
+    await screen.findByText('Enter the room code.');
+    await pressJoin();
+    expect(await screen.findByLabelText('Joining…')).toBeDisabled();
+    await pressJoin();
+    expect(call).toHaveBeenCalledTimes(1);
     expect(screen.queryByText(/doesn’t work/)).toBeNull();
   });
 
@@ -152,7 +171,8 @@ describe('no music service (guest)', () => {
   it('can join and add songs, and is asked for a service only to host', async () => {
     await signUpAsGuest();
     await join('9M2XR4');
-    await press('Join Kitchen Disco');
+    await screen.findByText('Enter the room code.');
+    await pressJoin();
     expect(screen).toHavePathname('/room/QD-9M2XR4');
     expect(screen.getByLabelText('Add a song')).toBeEnabled();
     expect(screen.queryByText(/Connect a music service/)).toBeNull();
@@ -217,50 +237,97 @@ describe('music service disconnected', () => {
   });
 });
 
+// These cover the old Join screen. When this stack merges with join-on-Home
+// (feat/create-join-screens), they move to Home's field (DECISIONS.md,
+// 2026-11-25 · UI state tests).
 describe('joining with a code', () => {
+  /** Opens Join with `code` filled in and presses Join. */
+  const tryCode = async (code: string) => {
+    await join(code);
+    await screen.findByText('Enter the room code.');
+    await pressJoin();
+  };
+
   it.each([
     ['ZZZZZZ', 'That code doesn’t work', false],
-    ['FULL15', 'This room is full', false],
-    ['ENDED1', 'This room has ended', false],
-    ['LIMIT1', 'Too many tries', true],
-    ['OFFLN1', 'Can’t reach q’d', true],
-  ])('%s: “%s”, and Join stays off', async (code, title, canRetry) => {
+    ['STALE2', 'That code doesn’t work', false],
+    ['FULL22', 'This room is full', false],
+    ['ENDED2', 'This room has ended', false],
+    ['NETDWN', 'Can’t reach q’d', true],
+  ])('%s: “%s”, and you stay on Join', async (code, title, canRetry) => {
     await signIn();
-    await join(code);
+    await tryCode(code);
     expect(await screen.findByText(title)).toBeVisible();
-    expect(screen.getByLabelText('Join')).toBeDisabled();
-    expect(screen.queryByText('Room found')).toBeNull();
+    expect(screen).toHavePathname('/join');
     expect(!!screen.queryByText('Try again')).toBe(canRetry);
   });
 
-  it('an incomplete code shows nothing yet, and Join stays off', async () => {
+  it('a wrong code and an expired one read exactly the same', async () => {
+    await signIn();
+    await tryCode('ZZZZZZ');
+    const wrong = screen.getByText(/^It may be mistyped/).props.children;
+    await tryCode('STALE2');
+    expect(screen.getAllByText(/^It may be mistyped/).at(-1)!.props.children).toBe(wrong);
+  });
+
+  it(`pauses joining after ${MOCK_JOIN_ATTEMPTS} wrong codes, and says how long to wait`, async () => {
+    await signIn();
+    for (let i = 0; i < MOCK_JOIN_ATTEMPTS; i += 1) {
+      await tryCode('ZZZZZZ');
+    }
+    // Even a real room's code waits now: the limit is checked first.
+    await tryCode('9M2XR4');
+    expect(await screen.findAllByText('Too many tries')).not.toHaveLength(0);
+    expect(screen.getAllByText(/^Wait \d+ seconds, then try the code again\.$/)).not.toHaveLength(
+      0,
+    );
+    expect(screen).toHavePathname('/join');
+  });
+
+  it('an incomplete code can’t be sent', async () => {
+    const call = jest.spyOn(mockJoin, 'joinRoomByCode');
     await signIn();
     await join('9M2');
-    expect(await screen.findByLabelText('Join')).toBeDisabled();
-    expect(screen.queryByText('Room found')).toBeNull();
-    expect(screen.queryByText(/doesn’t work/)).toBeNull();
+    await screen.findByText('Enter the room code.');
+    expect(joinButton()).toBeDisabled();
+    await pressJoin();
+    expect(call).not.toHaveBeenCalled();
   });
 
-  it('a lookup that fails unexpectedly counts as offline, and Try again recovers', async () => {
-    const lookup = roomCodes.lookup.bind(roomCodes);
-    jest
-      .spyOn(roomCodes, 'lookup')
-      .mockRejectedValueOnce(new Error('fetch failed'))
-      .mockImplementation(lookup);
+  it('a code with 0, O, 1 or I says codes never use them, and isn’t sent', async () => {
+    const call = jest.spyOn(mockJoin, 'joinRoomByCode');
     await signIn();
-    await join('9M2XR4');
+    await join('FULL15');
+    expect(
+      await screen.findByText('Room codes don’t use 0, O, 1 or I. Check the code with the host.'),
+    ).toBeVisible();
+    expect(joinButton()).toBeDisabled();
+    expect(call).not.toHaveBeenCalled();
+  });
+
+  it('a call that fails unexpectedly counts as offline, and Try again joins', async () => {
+    const real = mockJoin.joinRoomByCode.bind(mockJoin);
+    jest
+      .spyOn(mockJoin, 'joinRoomByCode')
+      .mockRejectedValueOnce(new Error('fetch failed'))
+      .mockImplementation(real);
+    await signIn();
+    await tryCode('9M2XR4');
     expect(await screen.findByText('Can’t reach q’d')).toBeVisible();
     await pressText('Try again');
-    expect(await screen.findByText('Room found')).toBeVisible();
-    expect(screen.getByLabelText('Join Kitchen Disco')).toBeEnabled();
+    expect(screen).toHavePathname('/room/QD-9M2XR4');
   });
 
-  it('finds the room once the code is corrected', async () => {
+  it('editing the code clears the error, and a corrected code joins', async () => {
     await signIn();
-    await join('ZZZZZZ');
+    await tryCode('ZZZZZZ');
     expect(await screen.findByText('That code doesn’t work')).toBeVisible();
-    await go({ pathname: '/join', params: { code: '7K4F9X' } });
-    expect(await screen.findByLabelText('Join Sunday Slow Burn')).toBeEnabled();
+    await act(async () => {
+      fireEvent.changeText(screen.getByDisplayValue('ZZZZZZ'), '7k4f9x');
+    });
+    expect(screen.queryByText('That code doesn’t work')).toBeNull();
+    await pressJoin();
+    expect(screen).toHavePathname('/room/QD-7K4F9X');
   });
 });
 

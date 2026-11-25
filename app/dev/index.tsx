@@ -11,7 +11,7 @@ import {
   useScreenPalette,
 } from '@/components';
 import { useTheme } from '@/design';
-import { mockErrorCodes } from '@/features/room/roomCodes';
+import { mockJoinCodes } from '@/features/room/roomCodes';
 import { useMockHostPresence } from '@/features/room/useRoom';
 import { useMockSession, type AuthStatus } from '@/features/session/MockSession';
 
@@ -37,23 +37,19 @@ const sections: { title: string; links: { label: string; href: Href; enter?: boo
       { label: '2.3 Join with a code', href: '/join' },
       {
         label: '2.3 Join · wrong or expired code',
-        href: { pathname: '/join', params: { code: 'ZZZZZZ' } },
+        href: { pathname: '/join', params: { code: mockJoinCodes.expired } },
       },
       {
         label: '2.3 Join · room full',
-        href: { pathname: '/join', params: { code: mockErrorCodes.room_full } },
+        href: { pathname: '/join', params: { code: mockJoinCodes.room_full } },
       },
       {
         label: '2.3 Join · room ended',
-        href: { pathname: '/join', params: { code: mockErrorCodes.room_ended } },
+        href: { pathname: '/join', params: { code: mockJoinCodes.room_ended } },
       },
       {
-        label: '2.3 Join · too many tries',
-        href: { pathname: '/join', params: { code: mockErrorCodes.rate_limited } },
-      },
-      {
-        label: '2.3 Join · offline',
-        href: { pathname: '/join', params: { code: mockErrorCodes.network } },
+        label: '2.3 Join · offline (mock)',
+        href: { pathname: '/join', params: { code: mockJoinCodes.network } },
       },
       { label: '2.4 Start a room', href: '/create-room' },
     ],

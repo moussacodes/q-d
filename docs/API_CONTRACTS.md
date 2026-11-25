@@ -72,7 +72,7 @@ Why it's shaped this way: [ARCHITECTURE.md § 4.10](ARCHITECTURE.md#410-client-v
 - **Effect:** adds the caller as a member. If they're already a member, it succeeds without a change.
 - **Returns:** `{ room_id }`
 - **Errors:** `code_invalid`, `rate_limited`, `room_full`, `room_ended`, `profile_incomplete`
-- **Mock (UI states card):** `src/features/room/roomCodes.ts` stands in for it on Join. The sample rooms' codes find their rooms; `FULL15`, `ENDED1` and `LIMIT1` give `room_full`, `room_ended` and `rate_limited`; `OFFLN1`, or any failed call, is a client-side `network` state (not a server code); anything else is `code_invalid`. The mock looks the code up as soon as it's complete, to show "Room found" before Join; the real RPC both checks and joins, so the Supabase card decides whether a read-only lookup is needed.
+- **Mock (UI states card):** `src/features/room/roomCodes.ts` stands in for it on the Join screen, checking and joining in one call like the RPC (no read-only lookup first). A sample room's code joins it; `QD-FULL22` and `QD-ENDED2` give `room_full` and `room_ended`; wrong codes and `QD-STALE2` (expired) give `code_invalid`; five wrong codes in a row give `rate_limited` with `retryAfterSeconds` for 30 s. `QD-NETDWN` makes the call throw: the client's `network` state, not a server code. Same codes and names as the join-on-Home mock (`mockServer.ts`, `feat/create-join-screens`).
 
 #### `update_room_rules` (Added)
 
