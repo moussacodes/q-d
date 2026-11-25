@@ -250,3 +250,66 @@ describe('end_room idempotency', () => {
     expect(rejected.reason).toMatchObject({ code: 'room_ended' });
   });
 });
+
+describe('end_room details (review)', () => {
+  it('keeps an expiry that had already passed instead of moving it later', async () => {
+    const { host, roomId } = await newRoom();
+    await db.query(
+      `update public.rooms set code_expires_at = now() - interval '2 hours' where id = $1`,
+      [roomId],
+    );
+    const before = (await roomRow(roomId)).code_expires_at;
+    await end(host, roomId);
+    expect((await roomRow(roomId)).code_expires_at.getTime()).toBe(before.getTime());
+  });
+
+  it('the freed code then joins the new room that drew it, never the ended one', async () => {
+    const { host, roomId, code } = await newRoom();
+    await end(host, roomId);
+    const [next] = await db.query<{ id: string }>(
+      `insert into public.rooms (name, host_id, playback_provider, code, code_expires_at)
+       values ('Next', $1, 'spotify', $2, now() + interval '1 day') returning id`,
+      [host.id, code],
+    );
+    await db.query(
+      `insert into public.room_members (room_id, user_id, role) values ($1, $2, 'host')`,
+      [next.id, host.id],
+    );
+    const guest = await db.createUser();
+    await expect(
+      db.as(guest).rpc('join_room_by_code', { code, idempotency_key: newKey() }),
+    ).resolves.toEqual({ room_id: next.id });
+  });
+
+  it('revokes only this room’s invite', async () => {
+    const a = await newRoom();
+    const b = await newRoom();
+    const invite = (room: { host: TestUser; roomId: string }) =>
+      db.as(room.host).rpc<{ token: string }>('create_room_invite', {
+        room_id: room.roomId,
+        idempotency_key: newKey(),
+      });
+    await invite(a);
+    const { token } = await invite(b);
+    await end(a.host, a.roomId);
+    await expect(
+      db.as(await db.createUser()).rpc('join_room_by_invite', { token, idempotency_key: newKey() }),
+    ).resolves.toEqual({ room_id: b.roomId });
+  });
+
+  it('a refused call changes nothing and announces nothing', async () => {
+    const { member, roomId } = await newRoom();
+    await db.query("update public.playback_states set status = 'playing' where room_id = $1", [
+      roomId,
+    ]);
+    const before = (await db.broadcasts(roomId)).length;
+    await expect(end(member, roomId)).rejects.toMatchObject({ code: 'not_host' });
+    expect((await roomRow(roomId)).state).toBe('live');
+    expect(await db.broadcasts(roomId)).toHaveLength(before);
+    const [{ status }] = await db.query<{ status: string }>(
+      'select status from public.playback_states where room_id = $1',
+      [roomId],
+    );
+    expect(status).toBe('playing');
+  });
+});
