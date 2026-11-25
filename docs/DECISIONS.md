@@ -34,6 +34,41 @@ Product and technical decisions that are not obvious from the code. Newest first
 - **Someone already in the room succeeds without a change,** the host included, and no broadcast is sent. A new member makes the RPC broadcast `members.changed`.
 - **`room_full` is checked by the RPC** under the room lock, so it comes back as a q’d error (`hint: 'qd'`). The trigger on `room_members` still backs it up.
 
+## 2026-11-25 · Queue concurrency and idempotency tests
+
+- **PGlite can't run two transactions at once,** so "several people add at once" is tested as bursts of requests fired together, which PGlite runs one whole transaction at a time in arrival order. The tests check what must hold in any order: one playing entry, queued positions `1..n`, each success applied once, replays returning the first result, and the same key with other arguments failing with `idempotency_conflict`.
+- **The lock itself is checked structurally.** A test reads each queue RPC's source and fails if it touches the queue before `private.lock_room()`, and another checks that `lock_room` holds the room row for the rest of the transaction. True parallel blocking needs the same suite on the Supabase local stack (Mac, `supabase start`).
+- **The random burst is seeded,** so a failure can be replayed exactly.
+
+## 2026-11-25 · reorder_queue and remove_queue_entry
+
+- **The control rule decides, not "host only".** The Trello card says only the host may reorder or remove. The newer decisions win: the control rule (Everyone / Chosen / Only you, 2026-11-20) governs both, and its default is still the host only. The person who added an entry may remove it while it's queued (the Undo, 2026-11-24).
+- **Undo ends when the song starts.** Removing a playing entry fails with `stale_state` for everyone, the host included. Skip is `advance_queue`, so a stale Remove can't skip a song.
+- **`stale_state` means "you saw an old queue".** Reordering or removing an entry that's playing now, or moving after an entry that was removed or played since, is `stale_state` (refetch and retry). An entry that's gone is `entry_not_found`, as the contract says.
+- **"After the playing song" is the top.** If the entry the user dropped below has started playing, the move goes to the top, which is where the user meant.
+- **A no-op move succeeds quietly.** Moving an entry to where it already is returns its position and sends no broadcast.
+- **Removed entries stay as rows** with status `removed`, so history and attribution survive; positions of the rest close up.
+- **Returns.** The contract had none: `reorder_queue` returns `{ entry_id, position, queue_length }` and `remove_queue_entry` returns `{ entry_id, queue_length }`.
+
+## 2026-11-25 · enqueue_batch
+
+- **Server-side feature flags live in `private.feature_flags`.** `enqueue_batch` and `undo_batch` check `playlist_import`, which is off, and fail with `feature_disabled`. Clients can't read or change the table. The app-side flag (ARCHITECTURE.md § 8) is still the Env validation card's job; the database refuses even if a modified client calls the RPC.
+- **The import preview creates the batch, not `enqueue_batch`.** The contract passes a `batch_id`, so the batch already exists: the post-demo import card's preview creates it in `previewing` with the playlist's provider and name. `enqueue_batch` adds the confirmed songs, then marks it `done`. Only the person who created the batch can import it.
+- **A batch skips songs already in the queue.** It can't ask "Already in queue" for each song, so songs already queued or playing, and repeats inside the playlist, are skipped and counted in `skipped`. **A teammate should confirm**; the alternative is adding duplicates silently.
+- **A batch already imported is `stale_state`,** with `details.status`. A retry with the same key still gets the stored result.
+- **One broadcast per batch,** not one per song.
+- **`undo_batch` stays host-only,** as the contract says. Undo takes back only songs still waiting; the playing one and played ones stay.
+- **No app entry point yet.** Nothing in the app calls these until the playlist-import card, so nothing is exposed for the demo.
+
+## 2026-11-25 · enqueue_recording
+
+- **Queue positions are dense integers** (ARCHITECTURE.md open decision 3). Queued entries are `1..n` in play order and the playing entry is `0`, so `position` is also the place in line the toast shows. Queues are short (tens of songs), so renumbering on a reorder or removal is cheap, and it's easier to test and reason about than gaps or fractional ranks. A unique index on queued positions per room makes a repeated position impossible.
+- **The room lock decides the order.** `enqueue_recording` locks the room row before reading the last position, so additions made at the same moment are placed one after another in the order they took the lock.
+- **"Already in queue" says which kind.** `already_in_queue` carries `details.status` (`queued` or `playing`), so the app can ask "Already in queue. Add it again?" or "Playing now. Add it again?" (2026-11-19 · Search / add-song overlay) without a second request.
+- **"Nothing playing" starts the song.** The contract's rule is applied literally: if no entry is playing, the new one plays at once (position 0, `queue_length` 0). With today's RPCs a queue never has waiting songs while nothing plays, so this only happens in an empty room.
+- **An unknown `recording_id` is `invalid_input`** (`details.field = 'recording_id'`), like a missing one. Search results always come from `recordings`, so this means a client bug, not a user situation.
+- **No profile check.** Members already finished onboarding to join, so `enqueue_recording` doesn't repeat `profile_incomplete`.
+
 ## 2026-11-24 · create_room
 
 - **Room codes leave out look-alike characters.** Codes use `23456789ABCDEFGHJKLMNPQRSTUVWXYZ` (no `0`, `O`, `1` or `I`), so a code read aloud or typed from a screen can't be misread. Six characters still give about a billion codes. This answers part of PRODUCT_SPEC.md § 13; **a teammate should confirm it**.

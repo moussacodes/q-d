@@ -136,39 +136,62 @@ Why it's shaped this way: [ARCHITECTURE.md § 4.10](ARCHITECTURE.md#410-client-v
 
 #### `enqueue_recording`
 
+**Built** (`supabase/migrations/20261125002000_enqueue_recording.sql`, tests in `supabase/tests/enqueue-recording.test.ts`).
+
 - **Caller:** any member the room's add-songs rule allows (`not_allowed` otherwise). The default is everyone.
 - **Input:** `room_id uuid`, `recording_id uuid`, `allow_duplicate boolean = false`, `idempotency_key uuid`
-- **Effect:** inserts a queue entry at the end, with a position the server assigns while holding a lock on the room's queue.
-- **Returns:** `{ entry_id, position, queue_length }`. The app uses `queue_length` for "Rain Down added · 8th in line".
-- **Errors:** `already_in_queue` (unless `allow_duplicate`), `room_ended`, `not_member`. A song counts as already in the queue while it's queued or playing.
+- **Effect:** inserts a queue entry at the end, with a position the server assigns while holding the lock on the room row (`private.lock_room`), so additions made at the same moment get one authoritative order. Sends `queue.changed` from inside the transaction.
+- **Returns:** `{ entry_id, position, queue_length }`. The app uses `queue_length` for "Rain Down added · 8th in line". `position` is the entry's place in line (1 = next), or 0 when it started playing.
+- **Errors:** `already_in_queue` (unless `allow_duplicate`; `details.status` is `queued` or `playing`, so the app can ask "Already in queue" or "Playing now"), `room_not_found`, `room_ended`, `not_member`, `not_allowed`, `invalid_input` (`details.field`: `room_id`, `recording_id` (missing or not a known recording), `allow_duplicate` or `idempotency_key`), `idempotency_conflict`, `not_authenticated`. A song counts as already in the queue while it's queued or playing; played and removed entries don't count.
 - **Confirmed (RPC contracts card):** when nothing is playing, the new entry becomes the playing one and `queue_length` is 0, so the toast says "playing now". The mock store does this.
 - **Note:** `recording_id` comes from a catalog search result. How search results become `recordings` rows depends on where search runs ([ARCHITECTURE.md, open decision 1](ARCHITECTURE.md#open-technical-decisions)).
 
-#### `enqueue_batch` (post-demo, `playlist import` flag)
+**Queue positions (decided 2026-11-25).** Queued entries hold dense integer positions `1..n` in play order; the playing entry holds `0`; played and removed entries keep their last position, which means nothing. Only RPCs write positions, always under the room lock, and a unique index on queued positions per room backs it up. Clients sort by `position` and never compute one.
 
-- **Caller:** any member the room's add-songs rule allows.
-- **Input:** `room_id uuid`, `batch_id uuid`, `recording_ids uuid[]` (at most 50, in playlist order), `idempotency_key uuid`
-- **Effect:** adds the entries in order under one `batch_id`. Only one import runs per room at a time.
+#### `enqueue_batch` (post-demo, `playlist_import` flag)
+
+**Built, flag off** (`supabase/migrations/20261125002100_enqueue_batch.sql`, tests in `supabase/tests/enqueue-batch.test.ts`). The app has no entry point to it until the playlist-import card.
+
+- **Caller:** any member the room's add-songs rule allows, who created the batch.
+- **Input:** `room_id uuid`, `batch_id uuid`, `recording_ids uuid[]` (1–50, in playlist order), `idempotency_key uuid`
+- **Before it:** the import preview (playlist-import card) creates the `playlist_import_batches` row in `previewing` status. `enqueue_batch` doesn't create batches.
+- **Effect:** under the room lock, marks the batch `importing`, adds the entries in playlist order under its `batch_id` (the same helper as `enqueue_recording`, so an empty room starts the first song), then marks it `done` with its counts. Songs already queued or playing, and repeats inside the batch, are skipped, because a batch can't ask "Already in queue" per song. Sends one `queue.changed` for the whole batch. Only one import runs per room at a time.
 - **Returns:** `{ batch_id, added, skipped }`
-- **Errors:** `import_in_progress`, `limit_exceeded`, `feature_disabled`
+- **Errors:** `feature_disabled` (`details.flag = 'playlist_import'`), `limit_exceeded` (over 50, `details.limit`), `import_in_progress` (another batch in the room is `importing`), `stale_state` (the batch isn't `previewing` anymore, `details.status`), `invalid_input` (`details.field`: `room_id`, `batch_id` (missing, another room's or another person's), `recording_ids` (missing, empty, a null or an unknown recording) or `idempotency_key`), `not_allowed`, `not_member`, `room_not_found`, `room_ended`, `idempotency_conflict`, `not_authenticated`
 
 #### `undo_batch` (post-demo, Added)
 
+**Built, flag off** (same migration and tests).
+
 - **Caller:** host.
 - **Input:** `room_id uuid`, `batch_id uuid`, `idempotency_key uuid`
-- **Effect:** removes the batch's entries that haven't played yet.
+- **Effect:** marks the batch's entries that are still queued `removed`, closes the gap in positions and marks the batch `undone`. The playing entry and played ones stay. Sends `queue.changed`.
+- **Returns:** `{ batch_id, removed }`
+- **Errors:** `feature_disabled`, `not_host`, `stale_state` (the batch isn't `done`, `details.status`), `invalid_input` (`room_id`, `batch_id`), `not_member`, `room_not_found`, `room_ended`, `idempotency_conflict`
+
+**Feature flags in the database.** `private.feature_flags` holds server-side switches; `private.require_feature(flag)` raises `feature_disabled` with `details.flag`. Only the database owner changes them (a migration or the dashboard). `playlist_import` starts off.
 
 #### `reorder_queue`
 
+**Built** (`supabase/migrations/20261125002200_reorder_remove_queue.sql`, tests in `supabase/tests/reorder-remove-queue.test.ts`).
+
 - **Caller:** any member the room's control rule allows. The default is the host only.
-- **Input:** `room_id uuid`, `entry_id uuid`, `after_entry_id uuid | null` (`null` moves it to the top), `idempotency_key uuid`
-- **Errors:** `entry_not_found`, `not_allowed`
+- **Input:** `room_id uuid`, `entry_id uuid`, `after_entry_id uuid | null` (`null` moves it to the top; the playing entry counts as the top too), `idempotency_key uuid`
+- **Effect:** under the room lock, moves a waiting entry to just after `after_entry_id` and shifts the entries in between, so positions stay `1..n`. A move to where the entry already is changes nothing and sends nothing; otherwise it sends `queue.changed`.
+- **Returns:** `{ entry_id, position, queue_length }` (the entry's new place in line).
+- **Errors:** `not_allowed`, `entry_not_found` (`details.field = 'entry_id'`: removed, played or not in this room; `details.field = 'after_entry_id'`: not in this room), `stale_state` (the entry is playing now, or the entry to follow was removed or played since; `details.field`, `details.status`), `invalid_input` (`room_id`, `entry_id`, `after_entry_id` equal to `entry_id`, `idempotency_key`), `not_member`, `room_not_found`, `room_ended`, `idempotency_conflict`, `not_authenticated`
 
 #### `remove_queue_entry`
 
+**Built** (same migration and tests).
+
 - **Caller:** any member the room's control rule allows. **Confirmed (RPC contracts card):** also the member who added the entry, for the Undo on the "added" toast, while the entry is still queued.
 - **Input:** `room_id uuid`, `entry_id uuid`, `idempotency_key uuid`
-- **Errors:** `entry_not_found`, `not_allowed`
+- **Effect:** under the room lock, marks a waiting entry `removed` (the row stays for history), closes the gap in positions and sends `queue.changed`. The playing entry can't be removed; Skip is `advance_queue`.
+- **Returns:** `{ entry_id, queue_length }`
+- **Errors:** `entry_not_found` (removed, played or not in this room), `stale_state` (the entry is playing now, `details.status`), `not_allowed`, `invalid_input` (`room_id`, `entry_id`, `idempotency_key`), `not_member`, `room_not_found`, `room_ended`, `idempotency_conflict`, `not_authenticated`
+- **Check order:** membership, then the entry, then permission, because whether the caller may depends on who added the entry.
+- **Retries:** a replay returns the stored result. A new key for an entry that's already gone fails with `entry_not_found`, so nothing is removed twice.
 
 ### Playback
 

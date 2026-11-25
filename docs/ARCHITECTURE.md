@@ -190,6 +190,9 @@ ESLint enforces these rules (`no-restricted-imports` in `eslint.config.js`), so 
 - **Why:** several phones change one queue at the same time on flaky networks. If the server decides positions and permissions, two people adding at once can't corrupt the order, a retried request can't add a duplicate, and a modified client can't skip the host's rules.
 - **Realtime is a notification layer, not a data layer.** Broadcast events tell clients what changed so they refetch. Presence shows who's here and whether the host is connected. If an event is lost, a refetch fixes it.
 - Broadcasts are sent by the database, from inside the RPC that made the change (`private.broadcast_room_event()`), not by the client. That way no client can announce a change that didn't happen, and a rolled-back change announces nothing.
+- Built (enqueue_recording card): `enqueue_recording` (`supabase/migrations/20261125002000_enqueue_recording.sql`). It takes the room lock before assigning a position, so two people adding at once get one order, and `private.append_queue_entry()` is the one place an entry is added.
+- Built (reorder/remove card): `reorder_queue` and `remove_queue_entry` (`supabase/migrations/20261125002200_reorder_remove_queue.sql`), checked against the control rule, with the adder's Undo.
+- Built (enqueue_batch card), behind the `playlist_import` flag that's off: `enqueue_batch` and `undo_batch` (`supabase/migrations/20261125002100_enqueue_batch.sql`), the `private.feature_flags` table and `private.renumber_queue()`, which every RPC that takes entries out of the middle of the queue calls.
 - Built (RPC contracts card): the shared checks, the error convention and the idempotency machinery live in the `private` schema (`supabase/migrations/20261124000200_rpc_foundation.sql`). Each RPC is a `security definer` function in `public` with a pinned `search_path`, and `anon` can't execute any of them.
 - Built (join by code card): `join_room_by_code` (`supabase/migrations/20261125001000_join_room_by_code.sql`), with the attempt limits in `private.join_attempts` and `private.join_room()`, which every way of joining shares. Failed guesses are answered with `private.error_response()` so they're kept ([API_CONTRACTS.md § 1](API_CONTRACTS.md#1-conventions)).
 - Built (QR invitations card): `create_room_invite` and `join_room_by_invite` (`supabase/migrations/20261125001100_room_invites.sql`). Tokens are generated in Postgres and stored only as hashes. The pure link helper is `src/domain/invite-link.ts`; the QR screen isn't built yet.
@@ -276,7 +279,7 @@ Built · RLS card (`supabase/migrations/20261124000300_row_level_security.sql`, 
 | Real Apple Music | off until the MusicKit bridge works on a device | Lets the mock stand in during development and as a demo fallback |
 | Real Spotify | off until Spotify `aux` works on a device | Same, plus the five-user development-mode limit |
 | `sync` | off, private | Blocked until providers and a legal review approve it |
-| Playlist import | off | Post-demo feature |
+| Playlist import | off | Post-demo feature. Server side: `private.feature_flags` row `playlist_import` (enqueue_batch card) |
 | Moderation | off for the demo, on for the beta | Beta gate |
 | Analytics | off, and opt-in when on | Privacy |
 
@@ -313,7 +316,7 @@ There's no Docker or Supabase CLI on Windows, so the database tests run on [PGli
 - `db.as(user)` runs SQL or an RPC the way PostgREST does, as `authenticated` with the user's id in the JWT settings, so RLS and `security definer` functions run for real. `db.asAnon()` and `db.asServiceRole()` cover the other roles, and `db.query()` runs as the superuser for setup and checks.
 - `harness/pglite-transform.js` lets PGlite load inside Jest without `--experimental-vm-modules`. `supabase/tests/tsconfig.json` gives the tests Node types; the app's `tsconfig.json` leaves `supabase/tests` and `supabase/functions` out, and `npm run typecheck` checks both.
 - Like PostgREST, the harness commits an RPC that sets `response.status` to 400 or more and returns normally, then throws a `DbError` built from the body it returned (`private.error_response()`).
-- PGlite runs one connection, so true concurrency can't be tested here. Tests cover sequential replays and conflicting keys. The same tests should also run against a Supabase local stack (`supabase start`) on a machine with Docker. PGlite is Postgres 18; `config.toml` asks the CLI for 17.
+- PGlite runs one connection, so true concurrency can't be tested here. Requests fired together queue behind PGlite's mutex and run as whole transactions one after another. Built (queue concurrency card, `supabase/tests/queue-concurrency.test.ts`): bursts of simultaneous adds, retries, reorders and removals from several members, plus a seeded 300-operation random burst, check the queue invariants (one playing entry at 0, queued positions 1..n with no gaps or repeats, every success applied once, replays identical). A structural test checks that every queue RPC takes the room lock before touching the queue, and another that `private.lock_room` holds the row for the transaction. Proving that the lock blocks a second backend needs the Supabase local stack. The same tests should also run against a Supabase local stack (`supabase start`) on a machine with Docker. PGlite is Postgres 18; `config.toml` asks the CLI for 17.
 
 ## Sync (beta) research
 
@@ -331,6 +334,6 @@ Record each answer in [DECISIONS.md](DECISIONS.md) and update this file.
 
 1. **Where canonical (Apple catalog) search runs.** Guests without Apple Music, and Android or web clients, can't use on-device MusicKit search. An Edge Function holding an Apple Music API developer token would serve everyone the same results. On-device MusicKit is simpler but works only on iOS. Decided in the canonical search card.
 2. **How broadcasts are sent.** Decided 2026-11-24 (RPC contracts card): the RPC itself sends it, through `private.broadcast_room_event()` and `realtime.send()`. See [API_CONTRACTS.md § 4](API_CONTRACTS.md#4-realtime).
-3. **Queue position representation.** For example, integers with gaps or fractional ranks. Decided in the queue card. Clients never compute positions in either case.
+3. **Queue position representation.** Decided 2026-11-25 (enqueue_recording card): dense integers. Queued entries are `1..n` in play order, the playing entry is `0`, and only RPCs renumber them, under the room lock. See [API_CONTRACTS.md § enqueue_recording](API_CONTRACTS.md#enqueue_recording). Clients never compute positions.
 4. **Bottom-sheet library.** Pick one only when an interaction needs gestures that a modal route can't provide.
 5. **Future SwiftUI client.** After the demo, a SwiftUI client is planned against the same Supabase schema and contracts. The React Native app stays as the reference client and the eventual Android path, and the backend isn't rewritten. This is why `domain/` and the RPC contracts are kept platform-neutral.
