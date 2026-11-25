@@ -39,6 +39,12 @@ describe('roomCodeFromInput', () => {
 });
 
 describe('the room-code alphabet', () => {
+  it('matches the database alphabet character for character', () => {
+    // supabase/migrations/…_create_room.sql on feat/create-room-rpc draws codes
+    // from this exact string. Change both together.
+    expect(ROOM_CODE_ALPHABET).toBe('23456789ABCDEFGHJKLMNPQRSTUVWXYZ');
+  });
+
   it('has 32 characters and no look-alikes', () => {
     expect(ROOM_CODE_ALPHABET).toHaveLength(32);
     for (const char of ['0', 'O', '1', 'I']) {

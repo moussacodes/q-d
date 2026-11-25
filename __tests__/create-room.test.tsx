@@ -212,6 +212,46 @@ describe('starting', () => {
     );
     expect(screen.queryByText(/feature_disabled/)).toBeNull();
   });
+
+  it.each([
+    ['profile_incomplete', 'Finish your profile before starting a room.'],
+    ['invalid_input', 'Room names need 1 to 40 characters.'],
+  ] as const)('explains %s in words', async (code, words) => {
+    const { release } = holdCreate();
+    await openStartRoom();
+    await press('Start room');
+    await act(async () => {
+      release({ ok: false, error: { code } });
+    });
+    expect(screen.getByRole('alert')).toHaveTextContent(words);
+    expect(screen.queryByText(new RegExp(code))).toBeNull();
+  });
+
+  it('says how long to wait when rate limited', async () => {
+    const { release } = holdCreate();
+    await openStartRoom();
+    await press('Start room');
+    await act(async () => {
+      release({ ok: false, error: { code: 'rate_limited', retryAfterSeconds: 1 } });
+    });
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Too many tries. Wait 1 second, then try again.',
+    );
+  });
+
+  it('turns Start room back on if the call throws instead of answering', async () => {
+    const spy = jest
+      .spyOn(MockRoomServer.prototype, 'createRoom')
+      .mockRejectedValueOnce(new Error('network'));
+    await openStartRoom();
+    await press('Start room');
+    expect(screen).toHavePathname('/create-room');
+    expect(startButton()).toBeEnabled();
+    expect(screen.getByText('Start room')).toBeVisible();
+    await press('Start room');
+    expect(spy).toHaveBeenCalledTimes(2);
+    expect(screen).toHavePathname('/room/QD-7K4F9X');
+  });
 });
 
 describe('a host needs a service', () => {

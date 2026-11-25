@@ -33,6 +33,10 @@ describe('joinErrorMessage', () => {
     );
   });
 
+  it('asks a signed-out caller to sign in again', () => {
+    expect(joinErrorMessage(plain('not_authenticated'))).toBe('Sign in again to join a room.');
+  });
+
   it('never shows a raw code', () => {
     expect(joinErrorMessage(plain('stale_state'))).toBe('Couldn’t join right now. Try again.');
   });
