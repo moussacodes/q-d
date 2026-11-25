@@ -15,6 +15,8 @@ export class RoomPlayer {
   private loaded: string | null = null;
   /** The entry the player finished loading and started. Cleared once its end is reported. */
   private started: string | null = null;
+  /** Held while this phone can't play: nothing starts until the host presses Play. */
+  private held = false;
 
   private player: PlaybackAdapter;
 
@@ -54,7 +56,7 @@ export class RoomPlayer {
     if (entry) {
       await this.player.prepare({ ...toProviderTrack(entry), provider }, startAtMs);
       if (this.loaded !== id) return;
-      await this.player.play();
+      if (!this.held) await this.player.play();
     } else {
       await this.player.disconnect();
     }
@@ -62,15 +64,27 @@ export class RoomPlayer {
   }
 
   /**
-   * Stops the music without moving the room on, for when this phone can't
-   * play right now (its service was disconnected). The song that was playing
-   * pauses where it is; any other song isn't started. A later `load` of the
-   * paused song leaves it paused, so the music only resumes when the host
-   * presses Play.
+   * Holds or releases the player, for when this phone can't play right now
+   * (the host disconnected the room's service). Holding pauses the song where
+   * it is, and a song loaded while held is prepared but stays paused, so a
+   * skip during the hold doesn't start anything. Releasing doesn't play: the
+   * music only resumes when the host presses Play. Same signature and meaning
+   * as the host-reconnecting card's `hold` (docs/DECISIONS.md). A song that
+   * isn't on the room's service uses `standBy` instead.
    */
-  async hold(entry: RoomEntry | null) {
+  async hold(on: boolean) {
+    this.held = on;
+    if (on) await this.player.pause();
+  }
+
+  /**
+   * Stops without moving the room on, for a song that's up but isn't on the
+   * room's service: it never starts, and waits for the host to skip it or
+   * switch. A song that had already started pauses where it is instead. A
+   * later `load` of the entry plays it (after a switch).
+   */
+  async standBy(entry: RoomEntry | null) {
     const id = entry?.entryId ?? null;
-    // Only a song that finished loading can pause; one still loading is stopped.
     if (id !== null && this.started === id) {
       await this.player.pause();
       return;
@@ -78,6 +92,10 @@ export class RoomPlayer {
     this.loaded = null;
     this.started = null;
     await this.player.disconnect();
+  }
+
+  get isHeld() {
+    return this.held;
   }
 
   /** The player's state. The first read after the song ends reports the end, once. */
@@ -92,6 +110,7 @@ export class RoomPlayer {
   }
 
   play() {
+    if (this.held) return Promise.resolve();
     return this.player.play();
   }
 

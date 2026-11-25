@@ -82,41 +82,93 @@ describe('room player', () => {
       const { player, ended, entries, wait } = setup();
       await player.load(entries.nowPlaying, 100_000);
       wait(5_000);
-      await player.hold(entries.nowPlaying);
+      await player.hold(true);
       wait(600_000);
       expect(await player.getState()).toMatchObject({ status: 'paused', positionMs: 105_000 });
 
       await player.load(entries.nowPlaying, 0);
       expect(await player.getState()).toMatchObject({ status: 'paused', positionMs: 105_000 });
       expect(ended).not.toHaveBeenCalled();
+    });
 
+    it('ignores Play while held, and releasing doesn’t play by itself', async () => {
+      const { player, entries } = setup();
+      await player.load(entries.nowPlaying, 0);
+      await player.hold(true);
+      await player.play();
+      expect((await player.getState()).status).toBe('paused');
+      expect(player.isHeld).toBe(true);
+
+      await player.hold(false);
+      expect(player.isHeld).toBe(false);
+      expect((await player.getState()).status).toBe('paused');
       await player.play();
       expect((await player.getState()).status).toBe('playing');
     });
 
-    it('doesn’t start a song it hasn’t played yet, but plays it once loaded again', async () => {
+    it('keeps a song loaded during the hold paused, even after the release', async () => {
+      // A skip while the service is disconnected, then a reconnect: the
+      // next song waits at 0:00 for the host's Play (never resumes by itself).
       const { player, entries } = setup();
       await player.load(entries.nowPlaying, 0);
-      await player.hold(entries.queue[0]);
-      expect(await player.getState()).toMatchObject({ status: 'idle', track: null });
-
+      await player.hold(true);
       await player.load(entries.queue[0], 0);
-      expect(await player.getState()).toMatchObject({ status: 'playing' });
+      expect(await player.getState()).toMatchObject({ status: 'paused', positionMs: 0 });
       expect((await player.getState()).track?.title).toBe('Lovers Rock');
+
+      await player.hold(false);
+      await player.load(entries.queue[0], 0);
+      expect((await player.getState()).status).toBe('paused');
     });
 
-    it('stops a song that is still loading instead of letting it start', async () => {
+    it('doesn’t let a song that was still loading start', async () => {
       const { player, entries } = setup();
       const loading = player.load(entries.nowPlaying, 0);
-      await player.hold(entries.nowPlaying);
+      await player.hold(true);
       await loading;
       expect((await player.getState()).status).not.toBe('playing');
     });
 
     it('with nothing playing, stays stopped', async () => {
       const { player } = setup();
-      await player.hold(null);
+      await player.hold(true);
+      await player.load(null, 0);
       expect((await player.getState()).status).toBe('idle');
+    });
+  });
+
+  describe('standBy (the song that’s up isn’t on the room’s service)', () => {
+    it('never starts the song, and plays it once loaded through another service', async () => {
+      const { player, adapter, apple, entries } = setup();
+      await player.load(entries.nowPlaying, 0);
+      await player.standBy(entries.queue[0]);
+      expect(await adapter.getState()).toMatchObject({ status: 'idle', track: null });
+
+      await player.load(entries.queue[0], 0, 'apple_music');
+      expect(await apple.getState()).toMatchObject({ status: 'playing' });
+    });
+
+    it('pauses a song that had already started, instead of stopping it', async () => {
+      const { player, entries, wait } = setup();
+      await player.load(entries.nowPlaying, 0);
+      wait(10_000);
+      await player.standBy(entries.nowPlaying);
+      expect(await player.getState()).toMatchObject({ status: 'paused', positionMs: 10_000 });
+    });
+
+    it('doesn’t report an end for the song it stood by', async () => {
+      const { player, ended, entries, wait } = setup();
+      await player.standBy(entries.nowPlaying);
+      wait(600_000);
+      await player.getState();
+      expect(ended).not.toHaveBeenCalled();
+    });
+
+    it('a switch while held loads the song paused; the host presses Play', async () => {
+      const { player, apple, entries } = setup();
+      await player.hold(true);
+      await player.load(entries.queue[0], 0, 'apple_music');
+      expect(await apple.getState()).toMatchObject({ status: 'paused', positionMs: 0 });
     });
   });
 

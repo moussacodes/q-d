@@ -157,15 +157,19 @@ function useLiveRoom(base: MockRoom | null, view?: RoomView) {
   );
   // A song that isn't on the room's service never starts: it waits for the
   // host to skip it or switch, which is "between songs" by construction.
-  const holding = serviceMissing || (plan !== null && plan.kind !== 'play');
+  const unplayable = plan !== null && plan.kind !== 'play';
+  const holding = serviceMissing || unplayable;
   const { refresh } = playback;
   useEffect(() => {
     if (!player || !playsThrough) return;
-    const next = holding
-      ? player.hold(nowPlaying)
-      : player.load(nowPlaying, startAtMs, playsThrough);
-    next.then(refresh);
-  }, [player, nowPlaying, startAtMs, playsThrough, holding, refresh]);
+    // Hold first, so a song loaded meanwhile (after a skip) stays paused too.
+    player
+      .hold(serviceMissing)
+      .then(() =>
+        unplayable ? player.standBy(nowPlaying) : player.load(nowPlaying, startAtMs, playsThrough),
+      )
+      .then(refresh);
+  }, [player, nowPlaying, startAtMs, playsThrough, serviceMissing, unplayable, refresh]);
 
   const room = useMemo<LiveRoom | null>(() => {
     if (!base || !state || !playsThrough) return null;

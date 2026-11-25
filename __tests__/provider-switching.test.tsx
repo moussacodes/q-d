@@ -121,6 +121,42 @@ describe('the host', () => {
   });
 });
 
+describe('with the room’s own service disconnected', () => {
+  it('still offers the switch, and switching plays through the service that’s connected', async () => {
+    await signIn();
+    await act(async () => {
+      fireEvent.press(await screen.findByText('Start a room'));
+    });
+    await press('Start room');
+    await connectAppleMusic();
+    await skipToPhantom();
+    // Disconnect Spotify, which the room plays through.
+    await go('/settings');
+    await press('Disconnect Spotify');
+    await press('Disconnect Spotify and pause Sunday Slow Burn');
+    await press('Back');
+    expect(await screen.findByText('Spotify isn’t connected')).toBeVisible();
+    expect(screen.getByLabelText('Play')).toBeDisabled();
+
+    await press('Switch to Apple Music');
+    expect(screen.queryByText('Spotify isn’t connected')).toBeNull();
+    expect(screen.queryByText('Not on Spotify')).toBeNull();
+    expect(await screen.findByLabelText('Pause')).toBeEnabled();
+  });
+
+  it('never offers a switch to a service that isn’t connected either', async () => {
+    await signIn();
+    await act(async () => {
+      fireEvent.press(await screen.findByText('Start a room'));
+    });
+    await press('Start room');
+    await skipToPhantom();
+    expect(screen.queryByLabelText('Switch to Apple Music')).toBeNull();
+    expect(screen.getByLabelText('Skip this song')).toBeEnabled();
+    expect(screen.getByLabelText('Play')).toBeDisabled();
+  });
+});
+
 describe('listeners', () => {
   it('see the plain note in the queue and no switch button', async () => {
     await signIn();
