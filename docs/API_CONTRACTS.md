@@ -163,7 +163,7 @@ Why it's shaped this way: [ARCHITECTURE.md § 4.10](ARCHITECTURE.md#410-client-v
 - **Input:** `room_id uuid`, `entry_id uuid`, `after_entry_id uuid | null` (`null` moves it to the top; the playing entry counts as the top too), `idempotency_key uuid`
 - **Effect:** under the room lock, moves a waiting entry to just after `after_entry_id` and shifts the entries in between, so positions stay `1..n`. A move to where the entry already is changes nothing and sends nothing; otherwise it sends `queue.changed`.
 - **Returns:** `{ entry_id, position, queue_length }` (the entry's new place in line).
-- **Errors:** `not_allowed`, `entry_not_found` (`details.field = 'entry_id'` or `'after_entry_id'`: removed, played or not in this room), `stale_state` (the entry is playing now, or the entry to follow was removed or played since; `details.field`, `details.status`), `invalid_input` (`room_id`, `entry_id`, `after_entry_id` equal to `entry_id`, `idempotency_key`), `not_member`, `room_not_found`, `room_ended`, `idempotency_conflict`, `not_authenticated`
+- **Errors:** `not_allowed`, `entry_not_found` (`details.field = 'entry_id'`: removed, played or not in this room; `details.field = 'after_entry_id'`: not in this room), `stale_state` (the entry is playing now, or the entry to follow was removed or played since; `details.field`, `details.status`), `invalid_input` (`room_id`, `entry_id`, `after_entry_id` equal to `entry_id`, `idempotency_key`), `not_member`, `room_not_found`, `room_ended`, `idempotency_conflict`, `not_authenticated`
 
 #### `remove_queue_entry`
 
