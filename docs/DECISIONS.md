@@ -2,6 +2,18 @@
 
 Product and technical decisions that are not obvious from the code. Newest first.
 
+## 2026-11-24 · Initial Supabase migrations
+
+- **The schema follows ARCHITECTURE.md §5 names**: `recordings`, `provider_tracks` and `track_matches`, not "canonical recordings" or "mappings". `track_matches` and `track_match_overrides` point at a provider track by `(provider, provider_track_id)`, the provider's own id, like the `TrackMatch` domain type.
+- **Row level security is on for every table from the first migration,** with no policies. Everything is denied until the RLS migration opens reads, so there's never a window where Supabase's default grants expose a table.
+- **No credentials in Postgres.** `provider_connections` holds the provider, when it was connected or last checked, and a storefront. A test fails if any public column is named like a token, secret, password or credential, except the invite's `token_hash`.
+- **Every auth user gets an empty profile row** from a trigger on `auth.users`. The profile is complete when `display_name`, `color` and `adult_confirmed_at` are set. `color` has no default, because the first swatch belongs to the design tokens, not the database.
+- **The 15-person cap is a trigger on `room_members`,** under a lock on the room row, so it holds however a member is added. It raises `room_full`.
+- **A room code is unique among rooms that haven't ended.** Ending a room frees its code.
+- **The queue is batch-ready.** `queue_entries.batch_id` points at `playlist_import_batches`, which allows one running import per room. `blocks`, `reports` and `analytics_events` are placeholders for the beta.
+- **Idempotency keys get their own table** (`idempotency_keys`) instead of a column on each table, so every RPC uses the same machinery.
+- **Database tests run on PGlite inside Jest** (ARCHITECTURE.md § Database tests), because Windows has no Docker or Supabase CLI. A test-only shim provides Supabase's roles, `auth` and `realtime`. The same tests should also run against `supabase start` on the Mac.
+
 ## 2026-11-20 · Room screen: expanded cover only
 
 - **A playing song always shows the expanded cover (Figma 3.2).** The resize button is gone, so the smaller-cover layout (3.1) no longer appears while a song plays. The cover is as big as it can be while the song info and playback controls still fit above the Up next bar. The full queue is below them.

@@ -63,7 +63,7 @@ A broadcast that never arrives costs freshness but never correctness, because th
 | Device storage | Supabase's recommended Expo session storage, plus SecureStore for provider credentials | Planned · Supabase client card |
 | Apple playback | Local Swift Expo module around MusicKit | Planned · qd-music-kit card |
 | Spotify playback | Spotify iOS SDK (App Remote) and the Web API | Planned · Spotify cards |
-| Tests | Jest/jest-expo, React Native Testing Library, Supabase integration tests, Maestro | Built: Jest, React Native Testing Library, `.maestro/` smoke flow (first runs with a development build). Planned: Supabase tests · Supabase cards |
+| Tests | Jest/jest-expo, React Native Testing Library, Supabase integration tests, Maestro | Built: Jest, React Native Testing Library, `.maestro/` smoke flow (first runs with a development build), database tests on PGlite (`supabase/tests`, run by `npm test`). Planned: the same database tests against a Supabase local stack |
 | Quality gates | ESLint, Prettier, `tsc`, Jest, Expo Doctor, GitHub Actions, Git pre-push hook | Built · `npm run check`, `.github/workflows/ci.yml`, `.githooks/pre-push` (every push) |
 | Builds | EAS development, preview (internal) and production (TestFlight) profiles | Planned · EAS card |
 | Observability | Redacting structured logger, privacy-filtered crash reports, opt-in analytics | Planned · Logging card |
@@ -90,9 +90,10 @@ src/
 modules/
   qd-music-kit/           Local Swift Expo module and config plugin             (planned)
 supabase/
-  migrations/             Schema, RPC functions, triggers, RLS                   (planned)
+  config.toml             Supabase CLI settings for a local stack
+  migrations/             Schema, RPC functions, triggers, RLS                   (schema built)
   functions/              Edge Functions                                          (planned)
-  tests/                  Database and RLS integration tests                      (planned)
+  tests/                  Database and RLS tests on PGlite, plus the harness      (built)
 assets/icons/             The 34 Figma icons, unmodified SVG
 docs/                     These documents and the pitch deck
 ```
@@ -210,7 +211,7 @@ ESLint enforces these rules (`no-restricted-imports` in `eslint.config.js`), so 
 
 ## 5. Data model
 
-Planned · Initial Supabase migrations card. Shapes are in [API_CONTRACTS.md](API_CONTRACTS.md).
+Built · Initial Supabase migrations card (`supabase/migrations/20261124000100_initial_schema.sql`). Shapes are in [API_CONTRACTS.md](API_CONTRACTS.md). Every table has row level security switched on.
 
 | Table | Holds |
 |---|---|
@@ -224,12 +225,13 @@ Planned · Initial Supabase migrations card. Shapes are in [API_CONTRACTS.md](AP
 | `provider_tracks` | One provider's version of a song (provider + provider ID + metadata). |
 | `track_matches` | The link from a recording to a provider track, with its confidence score. |
 | `track_match_overrides` | "Wrong version?" corrections. Audited. |
-| `queue_entries` | Server-assigned position, recording, added by, idempotency key, optional `batch_id`. |
+| `queue_entries` | Server-assigned position, recording, added by, status, optional `batch_id`. Idempotency keys live in `idempotency_keys`. One `playing` entry per room. |
 | `playback_states` | What's playing, from which position, at what time, paused or playing. Written by the host. |
 | `playback_slots` | `sync (beta)` playback slots. Slot 1 is always the host. |
 | `playlist_import_batches` | Post-demo playlist imports and their undo state. |
 | `blocks`, `reports` | Beta moderation. |
-| `analytics_events` | Opt-in events with no provider or song data. |
+| `analytics_events` | Opt-in events with no provider or song data. Keyed by an analytics id, not the user id. |
+| `idempotency_keys` | One row per successful mutation: user, operation, key, a hash of the arguments and the stored result. Kept at least 24 hours. |
 
 **RLS principle:** a signed-in user can read a room's data only if they're a member. Nobody inserts into, updates or deletes from room tables directly. Writes happen only through the RPC functions, which run with elevated rights after their own checks. The RLS tests prove an outsider can't read or change anything.
 
@@ -285,10 +287,20 @@ Jest, React Native Testing Library and the Maestro folder are set up. Each featu
 |---|---|---|
 | Domain | Jest | Matching (ISRC, durations, explicit/clean, version tokens), room-code formatting, queue ordering helpers |
 | Providers | Shared contract suite in `src/test` | Apple, Spotify and mock adapters behave the same through the interface |
-| Database | Supabase tests in `supabase/tests` | RLS denies outsiders, host/member permissions, idempotent enqueue/reorder/remove, concurrent adds, code collisions, expiry and rate limits |
+| Database | Jest + PGlite in `supabase/tests` (see below) | RLS denies outsiders, host/member permissions, idempotent enqueue/reorder/remove, concurrent adds, code collisions, expiry and rate limits |
 | Components and screens | React Native Testing Library | Loading, offline, empty, unavailable, reconnecting and provider-required states |
 | End to end | Maestro | Smoke flows: sign in, create a room, join, add a song |
 | Physical devices | Manual checklist | [PRODUCT_SPEC.md § 2](PRODUCT_SPEC.md#demo-must-haves) and [DEMO_RUNBOOK.md](DEMO_RUNBOOK.md) |
+
+### Database tests
+
+There's no Docker or Supabase CLI on Windows, so the database tests run on [PGlite](https://pglite.dev), Postgres compiled to WebAssembly, inside Jest. `npm test` runs them with the app tests (Jest project `db`), so CI and the pre-push hook run them too.
+
+- `supabase/tests/harness/db.ts` creates a fresh in-memory database per test file: it loads `harness/supabase-shim.sql` and then every file in `supabase/migrations` in filename order. Reuse it for every database card.
+- The shim stands in for what Supabase provides: the `anon`, `authenticated` and `service_role` roles with Supabase's default grants, `auth.users`, `auth.uid()` (read from `request.jwt.claim.sub`), and `realtime.messages`/`realtime.send()`. It's test-only and never applied to a project.
+- `db.as(user)` runs SQL or an RPC the way PostgREST does, as `authenticated` with the user's id in the JWT settings, so RLS and `security definer` functions run for real. `db.asAnon()` and `db.asServiceRole()` cover the other roles, and `db.query()` runs as the superuser for setup and checks.
+- `harness/pglite-transform.js` lets PGlite load inside Jest without `--experimental-vm-modules`. `supabase/tests/tsconfig.json` gives the tests Node types; the app's `tsconfig.json` leaves `supabase/tests` and `supabase/functions` out, and `npm run typecheck` checks both.
+- PGlite runs one connection, so true concurrency can't be tested here. Tests cover sequential replays and conflicting keys. The same tests should also run against a Supabase local stack (`supabase start`) on a machine with Docker. PGlite is Postgres 18; `config.toml` asks the CLI for 17.
 
 ## Sync (beta) research
 

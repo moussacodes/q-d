@@ -1,0 +1,18 @@
+# Supabase CLI settings for a local stack (`supabase start`, needs Docker).
+# Values not listed here use the CLI defaults. No secrets belong in this file.
+project_id = "qd"
+
+[api]
+# Only the public schema is exposed over the API. Helpers live in `private`.
+schemas = ["public"]
+extra_search_path = ["public", "extensions"]
+
+[db]
+major_version = 17
+
+[realtime]
+enabled = true
+
+[auth]
+enabled = true
+site_url = "qd://"
