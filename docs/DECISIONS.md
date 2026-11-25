@@ -2,6 +2,23 @@
 
 Product and technical decisions that are not obvious from the code. Newest first.
 
+## 2026-11-25 · Spotify playback adapter (aux)
+
+Built, **untested on a device and against real Spotify.** It runs the shared PlaybackAdapter contract suite against a fake Spotify player (`installFakePlayer` in `src/test/fakeSpotify.ts`). The `realSpotify` flag stays off, so the app keeps the labeled mock.
+
+- **A remote control over the Web API.** `SpotifyPlaybackAdapter` (`src/providers/spotify/playback.ts`) tells the Spotify app that's open on the host's phone what to play. The Spotify app plays the audio. q’d never streams, relays or rebroadcasts it. The Web API needs no native code, so this runs in Expo Go. The iOS SDK's App Remote, which PROVIDER_FEASIBILITY.md also names, isn't used here. **Open question for the team:** whether the demo needs App Remote too, for example to wake the Spotify app. That needs a development build and the Mac.
+- **Endpoints:** `GET /me/player` (state), `GET /me/player/devices`, `PUT /me/player` (transfer), `PUT /me/player/play` (a track URI with `position_ms`, or a resume), `PUT /me/player/pause`, `PUT /me/player/seek` and `POST /me/player/queue`. None has been checked against Spotify's reduced development-mode endpoint set yet. Check them when the Spotify developer app exists.
+- **`prepare` sends nothing.** Spotify can't load a track without playing it, and starting then pausing would play audio. So `prepare` remembers the track and position, `getState` reports it as paused, and `play` starts it at that position.
+- **No active Spotify app.** `play` reads the device list and moves playback (`play: false`) to the active device, else to this phone's Spotify (`Smartphone`), else to the only device there is. It never guesses between several devices, because that could start music on someone else's speaker. Restricted devices are skipped. With none, `play` fails with `no_active_device` ("Open Spotify on this phone, then try again."), and the track stays ready.
+- **Already paused or already playing isn't an error** (`ALREADY_PAUSED`, `ALREADY_PLAYING`). Pausing when no Spotify app is left isn't either, because nothing plays.
+- **Errors:** 401 refreshes once, then asks to reconnect (`needs_authorization`). 403 `PREMIUM_REQUIRED` is `premium_required`. Other 403s are `playback_refused`, or `not_approved_user` for the development-mode refusal. 404 on a player endpoint is `no_active_device`. 400 is `invalid_argument`.
+- **429 waits for `Retry-After`** (whole seconds, 1 s if missing or unreadable) up to 3 times. A wait longer than 10 s isn't made: the call fails with `rate_limited` so the UI can say so. A **5xx** is retried after 500 ms and 1 s, then fails with `provider_unavailable`. A **failed queue add is never retried**, because it may have worked and the song would be queued twice.
+- **`enqueue` uses Spotify's queue.** The Web API can't reorder or clear it, so the room player should only enqueue what plays next. The room queue stays in Postgres. Tracks enqueued before `play` are held and sent once the first track starts.
+- **`getState` reads Spotify every time.** The caller polls. If someone changes the song in the Spotify app, q’d reports what Spotify actually plays. A podcast episode or an unreadable item reads as idle. Tracks q’d started or queued come back as q’d's own objects, so matched metadata is kept.
+- **`disconnect` lets go but keeps the account.** It pauses only what q’d started, and then sends nothing until `connect` or `prepare`. Forgetting the tokens is Disconnect in Settings (`disconnectProvider`, Spotify connection card).
+- **Capabilities claim nothing untested:** `requiresExternalApp: true`. In-app audio, background playback and autoplay are all false. Spotify's autoplay is an account setting q’d can't read.
+- **Spotify track metadata.** ISRCs come back in compact uppercase form, and a malformed one is dropped without hiding the track. `artworkBackgroundColor` is always null (ARCHITECTURE.md §4.2).
+
 ## 2026-11-25 · Spotify connection (OAuth)
 
 Built, **untested on a device and against real Spotify.** Every test runs against a fake Spotify (`src/test/fakeSpotify.ts`). The `realSpotify` flag stays off by default, so the app keeps the labeled mock.

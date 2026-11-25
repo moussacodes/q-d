@@ -31,7 +31,7 @@ function setup(options: { open?: OpenAuthSession; clientId?: string | null } = {
     store: fake.store,
     now: () => NOW,
   });
-  return { auth, api: createSpotifyApi({ auth, fetch: fake.fetch }) };
+  return { auth, api: createSpotifyApi({ auth, fetch: fake.fetch, sleep: async () => {} }) };
 }
 
 const premiumRequired = {
@@ -128,7 +128,7 @@ describe('connectSpotify', () => {
     [{ status: 500 }, 'provider_unavailable'],
     [{ status: 429, headers: { 'Retry-After': '120' } }, 'rate_limited'],
   ] as const)('a transient failure (%j) keeps the tokens and reports %s', async (reply, code) => {
-    fake.script('GET', '/v1/me/player', reply);
+    for (let i = 0; i < 3; i += 1) fake.script('GET', '/v1/me/player', reply);
     const { auth, api } = setup();
     expect(await connectSpotify(auth, api)).toEqual({ status: 'error', code, isMock: false });
     expect(await auth.hasCredentials()).toBe(true);

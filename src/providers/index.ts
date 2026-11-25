@@ -3,7 +3,7 @@ import { isEnabled } from '@/services/flags';
 
 import { mockCatalog } from './mock/catalog';
 import { MockPlaybackAdapter } from './mock/playback';
-import { connectSpotify, disconnectSpotify, spotify } from './spotify';
+import { connectSpotify, createSpotifyPlayback, disconnectSpotify, spotify } from './spotify';
 import type { CatalogAdapter, ConnectionState, PlaybackAdapter } from './types';
 
 export type * from './types';
@@ -17,7 +17,12 @@ export { isProviderError, ProviderError } from './errors';
  */
 export const catalog: CatalogAdapter = mockCatalog;
 
+/**
+ * A player for this phone. Spotify with the `realSpotify` flag on
+ * remote-controls the Spotify app; everything else is the labeled mock.
+ */
 export function createPlayback(provider: MusicProvider): PlaybackAdapter {
+  if (provider === 'spotify' && usesRealSpotify()) return createSpotifyPlayback();
   return new MockPlaybackAdapter(provider);
 }
 

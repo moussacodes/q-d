@@ -287,3 +287,166 @@ export function fakeAuthSession(
 }
 
 export { split as splitUrl };
+
+export type FakeDevice = {
+  id: string;
+  name: string;
+  type: string;
+  is_active: boolean;
+  is_restricted: boolean;
+};
+
+/** Spotify's track object for a `ProviderTrack`. */
+export function spotifyTrackObject(track: {
+  providerTrackId: string;
+  title: string;
+  artists: string[];
+  album: string | null;
+  durationMs: number;
+  isrc: string | null;
+  explicit: boolean;
+  artworkUrl: string | null;
+}) {
+  return {
+    type: 'track',
+    id: track.providerTrackId,
+    name: track.title,
+    artists: track.artists.map((name) => ({ name })),
+    album: {
+      name: track.album ?? '',
+      images: track.artworkUrl ? [{ url: track.artworkUrl, width: 640, height: 640 }] : [],
+    },
+    duration_ms: track.durationMs,
+    explicit: track.explicit,
+    external_ids: track.isrc ? { isrc: track.isrc } : {},
+  };
+}
+
+/**
+ * A fake Spotify player behind the fake Web API: devices, transfer, play by
+ * URI, pause, resume, seek and the queue. It answers like Spotify's player
+ * endpoints do, including `NO_ACTIVE_DEVICE`, `PREMIUM_REQUIRED`,
+ * `ALREADY_PAUSED` and `ALREADY_PLAYING`. Time doesn't pass on its own.
+ */
+export function installFakePlayer(
+  fake: FakeSpotify,
+  catalog: Parameters<typeof spotifyTrackObject>[0][],
+) {
+  const tracks = new Map(catalog.map((track) => [track.providerTrackId, track]));
+  const player = {
+    premium: true,
+    devices: [
+      { id: 'phone-1', name: 'iPhone', type: 'Smartphone', is_active: true, is_restricted: false },
+    ] as FakeDevice[],
+    isPlaying: false,
+    itemId: null as string | null,
+    progressMs: 0,
+    queue: [] as string[],
+  };
+
+  const active = () => player.devices.find((device) => device.is_active) ?? null;
+  const fail = (status: number, message: string, reason?: string): FakeResponse => ({
+    status,
+    body: { error: { status, message, ...(reason ? { reason } : {}) } },
+  });
+  const noDevice = () =>
+    fail(404, 'Player command failed: No active device found', 'NO_ACTIVE_DEVICE');
+  const activate = (id: string) => {
+    player.devices.forEach((device) => (device.is_active = device.id === id));
+  };
+  const target = (call: RecordedCall) => {
+    if (call.query.device_id) {
+      const device = player.devices.find((d) => d.id === call.query.device_id);
+      if (!device) return null;
+      activate(device.id);
+      return device;
+    }
+    return active();
+  };
+
+  fake.handleApi = (call) => {
+    const key = `${call.method} ${call.path}`;
+    switch (key) {
+      case 'GET /v1/me/player': {
+        const device = active();
+        if (!device || !player.itemId) return { status: 204 };
+        return {
+          status: 200,
+          body: {
+            device,
+            is_playing: player.isPlaying,
+            progress_ms: player.progressMs,
+            item: spotifyTrackObject(tracks.get(player.itemId)!),
+          },
+        };
+      }
+      case 'GET /v1/me/player/devices':
+        return { status: 200, body: { devices: player.devices } };
+      case 'PUT /v1/me/player': {
+        const id = (JSON.parse(call.body ?? '{}') as { device_ids?: string[] }).device_ids?.[0];
+        if (!player.devices.some((device) => device.id === id)) return noDevice();
+        activate(id!);
+        return { status: 204 };
+      }
+      case 'PUT /v1/me/player/play': {
+        if (!player.premium) return fail(403, 'Premium required', 'PREMIUM_REQUIRED');
+        if (!target(call)) return noDevice();
+        const body = call.body
+          ? (JSON.parse(call.body) as { uris?: string[]; position_ms?: number })
+          : {};
+        if (body.uris) {
+          const id = body.uris[0]?.replace('spotify:track:', '') ?? '';
+          if (!tracks.has(id)) return fail(400, 'Invalid track uri');
+          player.itemId = id;
+          player.progressMs = body.position_ms ?? 0;
+        } else if (player.isPlaying) {
+          return fail(403, 'Player command failed: Already playing', 'ALREADY_PLAYING');
+        }
+        player.isPlaying = true;
+        return { status: 204 };
+      }
+      case 'PUT /v1/me/player/pause':
+        if (!player.premium) return fail(403, 'Premium required', 'PREMIUM_REQUIRED');
+        if (!target(call)) return noDevice();
+        if (!player.isPlaying) {
+          return fail(403, 'Player command failed: Already paused', 'ALREADY_PAUSED');
+        }
+        player.isPlaying = false;
+        return { status: 204 };
+      case 'PUT /v1/me/player/seek':
+        if (!target(call)) return noDevice();
+        player.progressMs = Number(call.query.position_ms);
+        return { status: 204 };
+      case 'POST /v1/me/player/queue':
+        if (!target(call)) return noDevice();
+        player.queue.push(call.query.uri);
+        return { status: 204 };
+      default:
+        return fail(404, 'Not found');
+    }
+  };
+
+  return player;
+}
+
+/**
+ * A ready Spotify playback setup for tests that need one synchronously (the
+ * shared contract suite): a fake Spotify with a connected account and a
+ * player holding `catalog`.
+ */
+export function connectedFakeSpotify(catalog: Parameters<typeof spotifyTrackObject>[0][]) {
+  const fake = createFakeSpotify();
+  const access = 'fake-access-contract';
+  fake.validAccess.add(access);
+  fake.validRefresh.add('fake-refresh-contract');
+  fake.secure.values.set(
+    'qd.provider.spotify',
+    JSON.stringify({
+      accessToken: access,
+      refreshToken: 'fake-refresh-contract',
+      expiresAt: Date.now() + 3_600_000,
+    }),
+  );
+  const player = installFakePlayer(fake, catalog);
+  return { fake, player };
+}

@@ -88,7 +88,11 @@ function setup(open?: OpenAuthSession) {
     store: fake.store,
     now: () => NOW,
   });
-  return { auth, api: createSpotifyApi({ auth, fetch: fake.fetch }), session };
+  return {
+    auth,
+    api: createSpotifyApi({ auth, fetch: fake.fetch, sleep: async () => {} }),
+    session,
+  };
 }
 
 async function caught(promise: Promise<unknown>) {

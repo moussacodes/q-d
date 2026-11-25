@@ -5,25 +5,27 @@ import * as WebBrowser from 'expo-web-browser';
 import { env } from '@/services/env';
 import { providerCredentials } from '@/services/providerCredentials';
 
-import { UnavailableCatalogAdapter, UnavailablePlaybackAdapter } from '../unavailable';
+import { UnavailableCatalogAdapter } from '../unavailable';
 import { createSpotifyApi, type SpotifyApi } from './api';
 import { createSpotifyAuth, type SpotifyAuth } from './auth';
 import { SPOTIFY_REDIRECT_PATH, type FetchLike } from './config';
 import type { PkceCrypto } from './pkce';
+import { SpotifyPlaybackAdapter } from './playback';
 
 export { connectSpotify, disconnectSpotify, spotifyConnectionStatus } from './connection';
 
 /**
  * Spotify. q’d remote-controls the Spotify app; it never streams, relays or
  * rebroadcasts Spotify audio. Connecting an account (Authorization Code with
- * PKCE) is built but untested on a device, and only used when the
- * `realSpotify` flag is on. Catalog and playback still say "not in this
- * build" until their cards land.
+ * PKCE) and playback over the Web API are built but untested on a device,
+ * and only used when the `realSpotify` flag is on. The catalog still says
+ * "not in this build" until its card lands.
  */
 export const spotifyCatalog = new UnavailableCatalogAdapter('spotify');
 
-export function createSpotifyPlayback() {
-  return new UnavailablePlaybackAdapter('spotify');
+/** A player that remote-controls this phone's Spotify app (Web API). */
+export function createSpotifyPlayback(): SpotifyPlaybackAdapter {
+  return new SpotifyPlaybackAdapter(spotify());
 }
 
 const expoCrypto: PkceCrypto = {
@@ -39,7 +41,12 @@ const expoCrypto: PkceCrypto = {
  * URL with the computer's address, which Spotify's dashboard must list too.
  */
 export function spotifyRedirectUri(): string {
-  return Linking.createURL(SPOTIFY_REDIRECT_PATH);
+  try {
+    return Linking.createURL(SPOTIFY_REDIRECT_PATH);
+  } catch {
+    // No manifest to read the scheme from (tests, some web setups).
+    return `qd://${SPOTIFY_REDIRECT_PATH}`;
+  }
 }
 
 let instance: { auth: SpotifyAuth; api: SpotifyApi } | null = null;

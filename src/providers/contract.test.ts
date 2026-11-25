@@ -2,13 +2,22 @@ import {
   describeCatalogAdapterContract,
   describePlaybackAdapterContract,
 } from '@/test/providerContract';
+import {
+  connectedFakeSpotify,
+  FAKE_CLIENT_ID,
+  FAKE_REDIRECT,
+  nodePkceCrypto,
+} from '@/test/fakeSpotify';
 
 import { appleMusicCatalog, createAppleMusicPlayback } from './apple';
 import { catalog, createPlayback } from './index';
 import { mockCatalog, toProviderTrack } from './mock/catalog';
 import { mockQueue } from './mock/data';
 import { MockPlaybackAdapter } from './mock/playback';
-import { createSpotifyPlayback, spotifyCatalog } from './spotify';
+import { spotifyCatalog } from './spotify';
+import { createSpotifyApi } from './spotify/api';
+import { createSpotifyAuth } from './spotify/auth';
+import { SpotifyPlaybackAdapter } from './spotify/playback';
 import type { MusicProvider } from './types';
 
 /** The shared contract suite (src/test/providerContract.ts) against every adapter. */
@@ -36,11 +45,24 @@ describePlaybackAdapterContract({
   available: false,
 });
 
+// The real Spotify adapter, remote-controlling a fake Spotify player.
 describePlaybackAdapterContract({
-  name: 'Spotify (not in this build)',
-  create: createSpotifyPlayback,
+  name: 'Spotify Web API remote (fake Spotify)',
+  create: () => {
+    const { fake } = connectedFakeSpotify(tracksFor('spotify'));
+    const auth = createSpotifyAuth({
+      clientId: FAKE_CLIENT_ID,
+      redirectUri: FAKE_REDIRECT,
+      fetch: fake.fetch,
+      crypto: nodePkceCrypto,
+      openAuthSession: async () => ({ type: 'cancel' }),
+      store: fake.store,
+    });
+    return new SpotifyPlaybackAdapter({ auth, api: createSpotifyApi({ auth, fetch: fake.fetch }) });
+  },
   isMock: false,
-  available: false,
+  available: true,
+  tracks: tracksFor('spotify'),
 });
 
 describeCatalogAdapterContract({

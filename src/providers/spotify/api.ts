@@ -39,7 +39,29 @@ export interface SpotifyApi {
 export type SpotifyApiDeps = {
   auth: SpotifyAuth;
   fetch: FetchLike;
+  /** Waits between retries. Defaults to `setTimeout`, so tests use fake timers. */
+  sleep?: (ms: number) => Promise<void>;
+  /** How many times a 429 is retried after waiting. */
+  maxRateLimitRetries?: number;
+  /** A `Retry-After` longer than this isn't waited for: the call fails with `rate_limited`. */
+  maxRetryAfterMs?: number;
 };
+
+/** Default waits. */
+export const RATE_LIMIT_RETRIES = 3;
+export const MAX_RETRY_AFTER_MS = 10_000;
+/** Used when a 429 has no readable `Retry-After`. */
+export const DEFAULT_RETRY_AFTER_MS = 1_000;
+/** Backoff before retrying a 5xx: 500 ms, then 1 s. */
+export const SERVER_ERROR_BACKOFF_MS = [500, 1_000] as const;
+
+const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/** `Retry-After` in milliseconds. Spotify sends whole seconds. */
+export function retryAfterMs(header: string | null): number {
+  if (header === null || !/^\s*\d+(\.\d+)?\s*$/.test(header)) return DEFAULT_RETRY_AFTER_MS;
+  return Math.ceil(Number(header) * 1000);
+}
 
 const apiLog = log.child('spotify.api');
 
@@ -112,6 +134,9 @@ export function spotifyReason(error: unknown): string | undefined {
 
 export function createSpotifyApi(deps: SpotifyApiDeps): SpotifyApi {
   const { auth, fetch } = deps;
+  const sleep = deps.sleep ?? defaultSleep;
+  const maxRateLimitRetries = deps.maxRateLimitRetries ?? RATE_LIMIT_RETRIES;
+  const maxRetryAfter = deps.maxRetryAfterMs ?? MAX_RETRY_AFTER_MS;
 
   async function send(request: ApiRequest, token: string): Promise<HttpResponse> {
     const query = request.query ? encodeForm(request.query) : '';
@@ -133,6 +158,8 @@ export function createSpotifyApi(deps: SpotifyApiDeps): SpotifyApi {
     async request(request) {
       let token = await auth.accessToken();
       let refreshed = false;
+      let rateLimitRetries = 0;
+      let serverRetries = 0;
       for (;;) {
         const response = await send(request, token);
         const text = await readText(response);
@@ -145,6 +172,25 @@ export function createSpotifyApi(deps: SpotifyApiDeps): SpotifyApi {
           token = await auth.refreshAfterRejection(token);
           continue;
         }
+        if (response.status === 429 && rateLimitRetries < maxRateLimitRetries) {
+          const wait = retryAfterMs(response.headers.get('Retry-After'));
+          if (wait <= maxRetryAfter) {
+            rateLimitRetries += 1;
+            await sleep(wait);
+            continue;
+          }
+        }
+        // A 5xx is retried with backoff, except POST (adding to Spotify's
+        // queue), which might have worked and would add the song twice.
+        if (
+          response.status >= 500 &&
+          request.method !== 'POST' &&
+          serverRetries < SERVER_ERROR_BACKOFF_MS.length
+        ) {
+          await sleep(SERVER_ERROR_BACKOFF_MS[serverRetries]);
+          serverRetries += 1;
+          continue;
+        }
         if (response.status === 401) {
           // A fresh token was refused too: the grant is gone. Reconnect.
           apiLog.warn('Spotify refused a refreshed token');
@@ -152,7 +198,8 @@ export function createSpotifyApi(deps: SpotifyApiDeps): SpotifyApi {
         }
         const code = errorCodeFor(response.status, data, request.path);
         const { reason } = errorBody(data);
-        if (code !== 'no_active_device') {
+        // Expected answers the adapter handles itself aren't worth a warning.
+        if (code !== 'no_active_device' && !reason?.startsWith('ALREADY_')) {
           apiLog.warn('Spotify request failed', {
             status: response.status,
             reason,
