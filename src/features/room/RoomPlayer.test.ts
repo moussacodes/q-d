@@ -10,11 +10,16 @@ function setup() {
   let now = 0;
   const adapter = new MockPlaybackAdapter('spotify', () => now);
   const ended = jest.fn();
-  const player = new RoomPlayer(adapter, ended);
+  const adapters = {
+    spotify: adapter,
+    apple_music: new MockPlaybackAdapter('apple_music', () => now),
+  };
+  const player = new RoomPlayer((provider) => adapters[provider], 'spotify', ended);
   const entries = createRoomStore().get(room);
   return {
     player,
     adapter,
+    apple: adapters.apple_music,
     ended,
     entries,
     wait: (ms: number) => {
@@ -112,6 +117,39 @@ describe('room player', () => {
       const { player } = setup();
       await player.hold(null);
       expect((await player.getState()).status).toBe('idle');
+    });
+  });
+
+  describe('switching services', () => {
+    it('plays the next song through the new service, and lets the old one go', async () => {
+      const { player, adapter, apple, entries } = setup();
+      const stop = jest.spyOn(adapter, 'disconnect');
+      await player.load(entries.nowPlaying, 0);
+      expect(player.provider).toBe('spotify');
+
+      await player.load(entries.queue[0], 0, 'apple_music');
+      expect(player.provider).toBe('apple_music');
+      expect(stop).toHaveBeenCalled();
+      const state = await apple.getState();
+      expect(state).toMatchObject({ status: 'playing' });
+      expect(state.track).toMatchObject({ title: 'Lovers Rock', provider: 'apple_music' });
+      expect((await adapter.getState()).status).toBe('idle');
+    });
+
+    it('never changes service in the middle of a song', async () => {
+      const { player, adapter, entries } = setup();
+      await player.load(entries.nowPlaying, 0);
+      await player.load(entries.nowPlaying, 0, 'apple_music');
+      expect(player.provider).toBe('spotify');
+      expect((await adapter.getState()).status).toBe('playing');
+    });
+
+    it('reports the end of a song played through the new service', async () => {
+      const { player, ended, entries, wait } = setup();
+      await player.load(entries.queue[0], 0, 'apple_music');
+      wait(213_000); // "Lovers Rock" is 3:33
+      await player.getState();
+      expect(ended).toHaveBeenCalledWith(entries.queue[0].entryId);
     });
   });
 });

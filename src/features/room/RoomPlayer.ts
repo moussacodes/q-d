@@ -1,3 +1,4 @@
+import type { MusicProvider } from '@/domain/music-provider';
 import type { PlaybackAdapter, PlaybackState } from '@/providers';
 import { toProviderTrack } from '@/providers/mock/catalog';
 
@@ -15,19 +16,43 @@ export class RoomPlayer {
   /** The entry the player finished loading and started. Cleared once its end is reported. */
   private started: string | null = null;
 
-  constructor(
-    private readonly player: PlaybackAdapter,
-    private readonly onEnded: (entryId: string) => void,
-  ) {}
+  private player: PlaybackAdapter;
 
-  /** Plays `entry` from `startAtMs`, or stops with nothing to play. Repeat calls do nothing. */
-  async load(entry: RoomEntry | null, startAtMs: number) {
+  /**
+   * `adapterFor` gives the player for a service. The room starts on
+   * `provider`; a switch hands the next song to another service's player.
+   */
+  constructor(
+    private readonly adapterFor: (provider: MusicProvider) => PlaybackAdapter,
+    provider: MusicProvider,
+    private readonly onEnded: (entryId: string) => void,
+  ) {
+    this.player = adapterFor(provider);
+  }
+
+  /** The service the player plays through now. */
+  get provider(): MusicProvider {
+    return this.player.provider;
+  }
+
+  /**
+   * Plays `entry` from `startAtMs` through `provider`, or stops with nothing
+   * to play. Repeat calls for the same entry do nothing, even with another
+   * service: services only change when a new song loads, never mid-song.
+   */
+  async load(entry: RoomEntry | null, startAtMs: number, provider = this.player.provider) {
     const id = entry?.entryId ?? null;
     if (this.loaded === id) return;
     this.loaded = id;
     this.started = null;
+    if (entry && provider !== this.player.provider) {
+      const previous = this.player;
+      this.player = this.adapterFor(provider);
+      await previous.disconnect();
+      if (this.loaded !== id) return;
+    }
     if (entry) {
-      await this.player.prepare(toProviderTrack(entry), startAtMs);
+      await this.player.prepare({ ...toProviderTrack(entry), provider }, startAtMs);
       if (this.loaded !== id) return;
       await this.player.play();
     } else {

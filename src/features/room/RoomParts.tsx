@@ -16,12 +16,14 @@ import {
   type IconName,
 } from '@/components';
 import { useTheme } from '@/design';
-import { providerNames } from '@/domain/music-provider';
+import { providerNames, type MusicProvider } from '@/domain/music-provider';
+import { planSong } from '@/domain/provider-switch';
 import { formatDuration, formatMinutes, parseDuration } from '@/domain/time';
 import type { MockRoom, MockTrack } from '@/providers/mock/data';
 
 import { cantAddNote } from './RoomRules';
-import { roomParams, type LiveRoom, type RoomHandle } from './useRoom';
+import { availableOn } from './roomStore';
+import { roomParams, type LiveRoom, type RoomEntry, type RoomHandle } from './useRoom';
 
 /** "1 song", "7 songs". */
 export function songCount(count: number) {
@@ -229,7 +231,16 @@ export type QueueControls = Pick<RoomHandle, 'moveUp' | 'moveDown' | 'remove'>;
  * on a song moves it up or down, or removes it. Buttons stand in for dragging the
  * grip until a gesture library is chosen (ARCHITECTURE.md, open decision 4).
  */
-export function QueueList({ room, controls }: { room: LiveRoom; controls?: QueueControls }) {
+export function QueueList({
+  room,
+  controls,
+  hostConnected,
+}: {
+  room: LiveRoom;
+  controls?: QueueControls;
+  /** The host's services, on the host's phone, so a missing song can say it can be switched. */
+  hostConnected?: readonly MusicProvider[];
+}) {
   const [open, setOpen] = useState<string | null>(null);
   const last = room.queue.length - 1;
   return (
@@ -246,11 +257,7 @@ export function QueueList({ room, controls }: { room: LiveRoom; controls?: Queue
             addedBy={`by ${entry.addedBy}`}
             duration={entry.duration}
             showGrip={!!controls}
-            note={
-              entry.unavailableOn === room.playsThrough
-                ? `Not on ${providerNames[entry.unavailableOn]} · the host can skip it`
-                : undefined
-            }
+            note={missingNote(entry, room.playsThrough, hostConnected)}
             onPress={
               controls
                 ? () => setOpen((current) => (current === entryId ? null : entryId))
@@ -298,6 +305,24 @@ export function QueueList({ room, controls }: { room: LiveRoom; controls?: Queue
       })}
     </View>
   );
+}
+
+/** The queue's note for a song that isn't on the room's service. */
+function missingNote(
+  entry: RoomEntry,
+  playsThrough: MusicProvider,
+  hostConnected?: readonly MusicProvider[],
+) {
+  const plan = planSong({
+    playsThrough,
+    availableOn: availableOn(entry),
+    hostConnected: hostConnected ?? [playsThrough],
+  });
+  if (plan.kind === 'play') return undefined;
+  const service = providerNames[playsThrough];
+  return plan.kind === 'offer_switch' && hostConnected
+    ? `Not on ${service} · you can switch to ${providerNames[plan.to]} when it comes up`
+    : `Not on ${service} · the host can skip it`;
 }
 
 /**

@@ -32,7 +32,7 @@ import {
   UpNextPeek,
 } from '@/features/room/RoomParts';
 import { ServiceMissingNotice } from '@/features/room/ServiceMissingNotice';
-import { UnavailableNotice } from '@/features/room/UnavailableNotice';
+import { SwitchedNote, UnavailableNotice } from '@/features/room/UnavailableNotice';
 import { roomParams, useRoom, type RoomView } from '@/features/room/useRoom';
 
 /**
@@ -55,6 +55,9 @@ export default function Room() {
     canControl,
     canPlay,
     serviceMissing,
+    plan,
+    switchProvider,
+    hostConnected,
     skip,
     moveUp,
     moveDown,
@@ -62,8 +65,8 @@ export default function Room() {
   } = useRoom(params.code, params.view);
   const track = room.nowPlaying;
   // 4.3: the song isn't on the service the host's phone plays through.
-  // The host is asked to skip it; everyone else is told why it can't play.
-  const missing = track?.unavailableOn === room.playsThrough;
+  // The host is asked to skip it or switch; everyone else is told why it can't play.
+  const missing = plan !== null && plan.kind !== 'play';
   useScreenPalette(roomPalette(room));
 
   const { colors } = useTheme();
@@ -109,7 +112,11 @@ export default function Room() {
     <View style={styles.gap6}>
       <SectionLabel right={songCount(room.queue.length)}>Up next</SectionLabel>
       {room.queue.length ? (
-        <QueueList room={room} controls={canControl ? { moveUp, moveDown, remove } : undefined} />
+        <QueueList
+          room={room}
+          controls={canControl ? { moveUp, moveDown, remove } : undefined}
+          hostConnected={isHost ? hostConnected : undefined}
+        />
       ) : (
         <View style={[styles.emptyQueue, { borderColor: colors.strokeStrong }]}>
           <Text variant="bodyStrong">The queue is empty</Text>
@@ -163,7 +170,16 @@ export default function Room() {
           ) : null}
 
           {missing ? (
-            <UnavailableNotice playsThrough={room.playsThrough} isHost={isHost} onSkip={skip} />
+            <UnavailableNotice
+              playsThrough={room.playsThrough}
+              plan={plan}
+              isHost={isHost}
+              onSkip={skip}
+              onSwitch={switchProvider}
+            />
+          ) : null}
+          {track && room.switched?.entryId === track.entryId ? (
+            <SwitchedNote from={room.switched.from} to={room.switched.to} isHost={isHost} />
           ) : null}
 
           {track ? (

@@ -1,3 +1,5 @@
+import type { MusicProvider } from '@/domain/music-provider';
+import { checkSwitch, type SwitchError } from '@/domain/provider-switch';
 import { defaultRoomRules, type RoomRules } from '@/domain/room-rules';
 import { findRoom, mockQueue, type MockRoom, type MockTrack } from '@/providers/mock/data';
 
@@ -21,6 +23,10 @@ export type RoomState = {
   startAtMs: number;
   /** Who adds songs and who controls the music. */
   rules: RoomRules;
+  /** The service the room plays through after a switch. Null: the one it started with. */
+  playsThrough: MusicProvider | null;
+  /** The last switch, so everyone can be told while that song plays. */
+  switched: { entryId: string; from: MusicProvider; to: MusicProvider } | null;
 };
 
 /**
@@ -33,6 +39,28 @@ export type RoomView = 'listener' | 'empty' | 'unavailable' | 'apple';
 export type RoomRef = { code: string; view?: RoomView };
 
 export type AdvanceReason = 'ended' | 'skipped' | 'unavailable';
+
+/** A host's request to switch the room's service, as `switch_playback_provider` takes it. */
+export type SwitchRequest = {
+  /** The song the host answered the prompt for. */
+  forEntryId: string;
+  to: MusicProvider;
+  /**
+   * What the server checks for itself in real mode: who's asking, whether the
+   * song has started, the room's service and what the host has connected.
+   */
+  isHost: boolean;
+  songStarted: boolean;
+  playsThrough: MusicProvider;
+  hostConnected: readonly MusicProvider[];
+};
+
+export type SwitchResult = { ok: true } | { ok: false; error: SwitchError };
+
+/** The services a queue song is on. Mock songs say which one they're missing from. */
+export function availableOn(entry: Pick<MockTrack, 'unavailableOn'>): MusicProvider[] {
+  return (['spotify', 'apple_music'] as const).filter((p) => p !== entry.unavailableOn);
+}
 
 /** What `enqueue_recording` answers. `queueLength` gives "Rain Down added · 8th in line". */
 export type EnqueueResult =
@@ -71,6 +99,8 @@ function seed(ref: RoomRef): RoomState {
     queue: room.queue.map(entry),
     startAtMs: room.nowPlaying ? MOCK_START_MS : 0,
     rules: defaultRoomRules,
+    playsThrough: null,
+    switched: null,
   };
 }
 
@@ -175,6 +205,32 @@ export function createRoomStore() {
       const [next = null, ...rest] = room.queue;
       update(ref, { ...room, nowPlaying: next, queue: rest, startAtMs: 0 });
       return true;
+    },
+
+    /**
+     * `switch_playback_provider`: the host answers the prompt for a song
+     * that isn't on the room's service by switching to one it's on. Only the
+     * host, only for the song that's up, and only before it starts
+     * (`src/domain/provider-switch`). The room keeps the new service for the
+     * songs after it. A repeat of the same answer changes nothing.
+     */
+    switchProvider(ref: RoomRef, request: SwitchRequest): SwitchResult {
+      const room = get(ref);
+      const song = room.nowPlaying;
+      const check = checkSwitch({
+        ...request,
+        upEntryId: song?.entryId ?? null,
+        availableOn: song ? availableOn(song) : [],
+      });
+      if (!check.ok) return check;
+      update(ref, {
+        ...room,
+        playsThrough: check.to,
+        switched: { entryId: request.forEntryId, from: check.from, to: check.to },
+        // The song hasn't started, so it plays from the top through the new service.
+        startAtMs: 0,
+      });
+      return { ok: true };
     },
 
     /**

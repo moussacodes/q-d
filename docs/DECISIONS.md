@@ -2,6 +2,16 @@
 
 Product and technical decisions that are not obvious from the code. Newest first.
 
+## 2026-11-25 · Provider switching between songs
+
+- **A song that isn't on the room's service never starts.** Before, the mock played it anyway. Now the host's player holds it at 0:00 with Play disabled until the host skips it or switches. Because it never started, a switch always happens between songs (PRODUCT_SPEC.md §6).
+- **The host is asked, and only the host.** When the song is on another service the host connected, the notice says "This song isn’t on Spotify, but it’s on Apple Music. Skip it, or switch to Apple Music for this song and the ones after it." with **Skip** and **Switch to Apple Music**. This replaces the "Switch for next song" button that did nothing (2026-11-24). Without the other service connected, the notice still only offers Skip. Listeners' text is unchanged and they get no buttons.
+- **The switch keeps the new service.** The room plays this song and the ones after it through Apple Music, and the room's badge, palette and Settings note follow. It doesn't switch back by itself, because that would be a second switch the host didn't ask for. **Open question for the team:** PRODUCT_SPEC.md says "switch services for that song" and PLAN.md says "for the next song". Neither says whether the room should go back afterwards. This build keeps the new service; confirm or change it.
+- **Everyone is told.** While the switched song plays, the host sees "You switched from Spotify to Apple Music between songs. The room plays through Apple Music now." and listeners see "The host switched from Spotify to Apple Music between songs."
+- **The queue warns the host ahead of time.** A coming song that can be switched reads "Not on Spotify · you can switch to Apple Music when it comes up" on the host's phone. Everyone else still reads "Not on Spotify · the host can skip it".
+- **Contracts.** `switch_playback_provider` is added, with the error codes `not_between_songs` and `not_needed`. It's a proposal for the RPC contracts card. The rule lives in `src/domain/provider-switch.ts` (`planSong`, `checkSwitch`).
+- Mock only. The real adapters still have to resolve the song on the new service and hand playback over on a device. Figma not re-checked.
+
 ## 2026-11-25 · Music-service settings: connect, change, disconnect
 
 - **A connect only counts once it worked.** A service shows as connected only when its adapter answers `connected`. While a connect runs, the card says "Connecting Spotify…" and its Connect button is disabled, so a second tap can't start another. A connect that fails or throws says "Couldn’t connect Spotify. Try again." and keeps Connect. Before, any answer from the adapter showed as connected. This applies wherever the service cards appear (onboarding step 2, Start a room, Settings).

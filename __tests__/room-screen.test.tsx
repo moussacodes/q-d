@@ -1,6 +1,8 @@
 import { router } from 'expo-router';
 import { act, fireEvent, renderRouter, screen, waitFor } from 'expo-router/testing-library';
 
+import { MockPlaybackAdapter } from '@/providers/mock/playback';
+
 // Room screen: default, expanded and queue states (Forge card). The queue
 // changes now: the host skips, reorders and removes, and every screen that
 // shows the room agrees.
@@ -149,14 +151,26 @@ describe('listeners', () => {
 });
 
 describe('when a song ends', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   it('the next one plays, without anyone tapping', async () => {
     await signIn();
-    // The 4.3 preview opens 1:40 into "Phantom", which is 1:49 long.
-    await openRoom({ code: 'QD-7K4F9X', view: 'unavailable' });
-    expect(await screen.findByText('Not on Spotify')).toBeVisible();
-    await waitFor(() => expect(screen.queryByText('Not on Spotify')).toBeNull(), {
-      timeout: 20_000,
+    // The mock player keeps real time; run its songs ahead instead of waiting.
+    let ahead = 0;
+    const adapter = MockPlaybackAdapter.prototype as unknown as {
+      position: (this: { status: string }) => number;
+    };
+    const position = adapter.position;
+    jest.spyOn(adapter, 'position').mockImplementation(function (this: { status: string }) {
+      return position.call(this) + (this.status === 'playing' ? ahead : 0);
     });
-    expect(screen.getByText('3 songs')).toBeVisible();
+    // The room opens 1:40 into "Have a Baby (With Me)", which is 3:45 long.
+    await openRoom({ code: 'QD-7K4F9X' });
+    expect(await screen.findByText('Have a Baby (With Me)')).toBeVisible();
+    ahead = 130_000;
+    await waitFor(() => expect(screen.getByText('6 songs')).toBeVisible());
+    expect(screen.queryByText('Have a Baby (With Me)')).toBeNull();
   });
 });

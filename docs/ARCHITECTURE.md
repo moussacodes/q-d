@@ -241,7 +241,7 @@ Planned · Initial Supabase migrations card. Shapes are in [API_CONTRACTS.md](AP
 - The host's player holds one song at a time, the room's now-playing entry (`features/room/RoomPlayer`). When it ends, the host calls `advance_queue` and loads the next entry. The player keeps no copy of the queue, so reorders and removals apply immediately. Built in mock mode; the real adapters follow the same pattern.
 - **Apple Music:** plays inside q’d through MusicKit and keeps playing with the screen locked (background audio).
 - **Spotify:** q’d tells the Spotify app what to play. The host needs Spotify installed and Premium for on-demand playback, and q’d stays in the foreground for the demo.
-- **Switching services:** only between songs, never during one, and only after the host agrees (see [PRODUCT_SPEC.md § 6](PRODUCT_SPEC.md#song-not-on-the-hosts-service)).
+- **Switching services:** only between songs, never during one, and only after the host agrees (see [PRODUCT_SPEC.md § 6](PRODUCT_SPEC.md#song-not-on-the-hosts-service)). **Built in mock mode:** `src/domain/provider-switch.ts` decides what the host's phone does with the song that's up (`planSong`: play, offer a switch, or skip only) and whether a switch is allowed (`checkSwitch`). A song that isn't on the room's service never starts, so the switch happens before it plays. The room store's `switchProvider` stands in for `switch_playback_provider`, and `RoomPlayer` changes adapters only when a new song loads.
 - **Host disconnect:** presence notices the host is gone. Everyone sees "Host reconnecting" for 30 seconds, and then the room pauses. The returning host refetches room state before resuming.
 - **Autoplay:** when the queue ends, the provider may autoplay, and q’d labels it with the provider's name.
 

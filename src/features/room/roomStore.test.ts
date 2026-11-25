@@ -1,7 +1,7 @@
 import { defaultRoomRules } from '@/domain/room-rules';
 import { findRoom } from '@/providers/mock/data';
 
-import { createRoomStore, MOCK_START_MS, previewRoom, roomKey } from './roomStore';
+import { availableOn, createRoomStore, MOCK_START_MS, previewRoom, roomKey } from './roomStore';
 
 const room = { code: 'QD-7K4F9X' };
 const titles = (store: ReturnType<typeof createRoomStore>, ref = room) =>
@@ -224,5 +224,86 @@ describe('room store', () => {
       const shown = previewRoom(findRoom(room.code), 'unavailable');
       expect(shown.nowPlaying?.unavailableOn).toBe(shown.playsThrough);
     });
+  });
+});
+
+describe('switch_playback_provider', () => {
+  // The 4.3 preview: "Phantom" is up and isn't on Spotify.
+  const preview = { code: 'QD-7K4F9X', view: 'unavailable' as const };
+  const request = (store: ReturnType<typeof createRoomStore>) => ({
+    forEntryId: store.get(preview).nowPlaying!.entryId,
+    to: 'apple_music' as const,
+    isHost: true,
+    songStarted: false,
+    playsThrough: 'spotify' as const,
+    hostConnected: ['spotify' as const, 'apple_music' as const],
+  });
+
+  it('knows which services a song is on', () => {
+    expect(availableOn({ unavailableOn: 'spotify' })).toEqual(['apple_music']);
+    expect(availableOn({})).toEqual(['spotify', 'apple_music']);
+  });
+
+  it('switches the room for the song that’s up, from its start, and says so', () => {
+    const store = createRoomStore();
+    const listener = jest.fn();
+    store.subscribe(listener);
+    const ask = request(store);
+    expect(store.get(preview).playsThrough).toBeNull();
+
+    expect(store.switchProvider(preview, ask)).toEqual({ ok: true });
+    const after = store.get(preview);
+    expect(after.playsThrough).toBe('apple_music');
+    expect(after.switched).toEqual({ entryId: ask.forEntryId, from: 'spotify', to: 'apple_music' });
+    expect(after.startAtMs).toBe(0);
+    expect(after.nowPlaying?.entryId).toBe(ask.forEntryId);
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it('changes nothing when the same answer comes again', () => {
+    const store = createRoomStore();
+    const ask = request(store);
+    store.switchProvider(preview, ask);
+    const after = store.get(preview);
+    expect(store.switchProvider(preview, { ...ask, playsThrough: 'apple_music' })).toEqual({
+      ok: false,
+      error: 'not_needed',
+    });
+    expect(store.get(preview)).toBe(after);
+  });
+
+  it.each([
+    ['not_host', { isHost: false }],
+    ['not_between_songs', { songStarted: true }],
+    ['provider_required', { hostConnected: ['spotify' as const] }],
+    ['stale_state', { forEntryId: 'gone' }],
+  ] as const)('refuses with %s and leaves the room alone', (error, change) => {
+    const store = createRoomStore();
+    const before = store.get(preview);
+    expect(store.switchProvider(preview, { ...request(store), ...change })).toEqual({
+      ok: false,
+      error,
+    });
+    expect(store.get(preview)).toBe(before);
+  });
+
+  it('refuses once the song was skipped', () => {
+    const store = createRoomStore();
+    const ask = request(store);
+    store.advance(preview, ask.forEntryId, 'skipped');
+    expect(store.switchProvider(preview, ask)).toEqual({ ok: false, error: 'stale_state' });
+    expect(store.get(preview).playsThrough).toBeNull();
+  });
+
+  it('refuses for a song that’s on the room’s service', () => {
+    const store = createRoomStore();
+    const ask = { ...request(store), forEntryId: store.get(room).nowPlaying!.entryId };
+    expect(store.switchProvider(room, ask)).toEqual({ ok: false, error: 'not_needed' });
+  });
+
+  it('keeps the previews apart from the real room', () => {
+    const store = createRoomStore();
+    store.switchProvider(preview, request(store));
+    expect(store.get(room).playsThrough).toBeNull();
   });
 });
