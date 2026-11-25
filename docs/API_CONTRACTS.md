@@ -157,15 +157,25 @@ Why it's shaped this way: [ARCHITECTURE.md § 4.10](ARCHITECTURE.md#410-client-v
 
 #### `reorder_queue`
 
+**Built** (`supabase/migrations/20261125002200_reorder_remove_queue.sql`, tests in `supabase/tests/reorder-remove-queue.test.ts`).
+
 - **Caller:** any member the room's control rule allows. The default is the host only.
-- **Input:** `room_id uuid`, `entry_id uuid`, `after_entry_id uuid | null` (`null` moves it to the top), `idempotency_key uuid`
-- **Errors:** `entry_not_found`, `not_allowed`
+- **Input:** `room_id uuid`, `entry_id uuid`, `after_entry_id uuid | null` (`null` moves it to the top; the playing entry counts as the top too), `idempotency_key uuid`
+- **Effect:** under the room lock, moves a waiting entry to just after `after_entry_id` and shifts the entries in between, so positions stay `1..n`. A move to where the entry already is changes nothing and sends nothing; otherwise it sends `queue.changed`.
+- **Returns:** `{ entry_id, position, queue_length }` (the entry's new place in line).
+- **Errors:** `not_allowed`, `entry_not_found` (`details.field = 'entry_id'` or `'after_entry_id'`: removed, played or not in this room), `stale_state` (the entry is playing now, or the entry to follow was removed or played since; `details.field`, `details.status`), `invalid_input` (`room_id`, `entry_id`, `after_entry_id` equal to `entry_id`, `idempotency_key`), `not_member`, `room_not_found`, `room_ended`, `idempotency_conflict`, `not_authenticated`
 
 #### `remove_queue_entry`
 
+**Built** (same migration and tests).
+
 - **Caller:** any member the room's control rule allows. **Confirmed (RPC contracts card):** also the member who added the entry, for the Undo on the "added" toast, while the entry is still queued.
 - **Input:** `room_id uuid`, `entry_id uuid`, `idempotency_key uuid`
-- **Errors:** `entry_not_found`, `not_allowed`
+- **Effect:** under the room lock, marks a waiting entry `removed` (the row stays for history), closes the gap in positions and sends `queue.changed`. The playing entry can't be removed; Skip is `advance_queue`.
+- **Returns:** `{ entry_id, queue_length }`
+- **Errors:** `entry_not_found` (removed, played or not in this room), `stale_state` (the entry is playing now, `details.status`), `not_allowed`, `invalid_input` (`room_id`, `entry_id`, `idempotency_key`), `not_member`, `room_not_found`, `room_ended`, `idempotency_conflict`, `not_authenticated`
+- **Check order:** membership, then the entry, then permission, because whether the caller may depends on who added the entry.
+- **Retries:** a replay returns the stored result. A new key for an entry that's already gone fails with `entry_not_found`, so nothing is removed twice.
 
 ### Playback
 

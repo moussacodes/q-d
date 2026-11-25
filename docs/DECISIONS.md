@@ -2,6 +2,16 @@
 
 Product and technical decisions that are not obvious from the code. Newest first.
 
+## 2026-11-25 · reorder_queue and remove_queue_entry
+
+- **The control rule decides, not "host only".** The Trello card says only the host may reorder or remove. The newer decisions win: the control rule (Everyone / Chosen / Only you, 2026-11-20) governs both, and its default is still the host only. The person who added an entry may remove it while it's queued (the Undo, 2026-11-24).
+- **Undo ends when the song starts.** Removing a playing entry fails with `stale_state` for everyone, the host included. Skip is `advance_queue`, so a stale Remove can't skip a song.
+- **`stale_state` means "you saw an old queue".** Reordering or removing an entry that's playing now, or moving after an entry that was removed or played since, is `stale_state` (refetch and retry). An entry that's gone is `entry_not_found`, as the contract says.
+- **"After the playing song" is the top.** If the entry the user dropped below has started playing, the move goes to the top, which is where the user meant.
+- **A no-op move succeeds quietly.** Moving an entry to where it already is returns its position and sends no broadcast.
+- **Removed entries stay as rows** with status `removed`, so history and attribution survive; positions of the rest close up.
+- **Returns.** The contract had none: `reorder_queue` returns `{ entry_id, position, queue_length }` and `remove_queue_entry` returns `{ entry_id, queue_length }`.
+
 ## 2026-11-25 · enqueue_batch
 
 - **Server-side feature flags live in `private.feature_flags`.** `enqueue_batch` and `undo_batch` check `playlist_import`, which is off, and fail with `feature_disabled`. Clients can't read or change the table. The app-side flag (ARCHITECTURE.md § 8) is still the Env validation card's job; the database refuses even if a modified client calls the RPC.
