@@ -213,7 +213,15 @@ export function SheetHeader({
 }
 
 /** Background for sheet routes (presented as modals). */
-export function SheetScreen({ children, footer }: { children: ReactNode; footer?: ReactNode }) {
+export function SheetScreen({
+  children,
+  footer,
+  contentStyle,
+}: {
+  children: ReactNode;
+  footer?: ReactNode;
+  contentStyle?: ViewStyle;
+}) {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   return (
@@ -221,7 +229,11 @@ export function SheetScreen({ children, footer }: { children: ReactNode; footer?
       <View style={[styles.sheetGlow, { backgroundColor: colors.glow1 }]} />
       <ScrollView
         style={styles.flex}
-        contentContainerStyle={[styles.sheetContent, { paddingBottom: insets.bottom + 24 }]}
+        contentContainerStyle={[
+          styles.sheetContent,
+          contentStyle,
+          { paddingBottom: insets.bottom + 24 },
+        ]}
         keyboardShouldPersistTaps="handled"
       >
         {children}
