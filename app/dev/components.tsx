@@ -112,7 +112,7 @@ export default function ComponentGallery() {
         <Section title="Typography">
           {(Object.keys(typography) as TypographyVariant[]).map((variant) => (
             <Text key={variant} variant={variant}>
-              {variant === 'logo' ? "q'd" : `${variant} · Different apps. One aux.`}
+              {variant === 'logo' ? 'q’d' : `${variant} · Different apps. One aux.`}
             </Text>
           ))}
         </Section>
