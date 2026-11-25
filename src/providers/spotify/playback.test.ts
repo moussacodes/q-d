@@ -549,3 +549,111 @@ describe('trackFromSpotify', () => {
     expect(trackFromSpotify(item)).toBeNull();
   });
 });
+
+describe('review: edge cases', () => {
+  it('pause still stops the playing track after the next one was prepared', async () => {
+    const { adapter } = setup();
+    await adapter.prepare(A);
+    await adapter.play();
+    await adapter.prepare(B);
+    expect(player.isPlaying).toBe(true);
+    await adapter.pause();
+    expect(player.isPlaying).toBe(false);
+    expect(commands().at(-1)).toBe('PUT /me/player/pause');
+    // B is still ready and starts on play.
+    await adapter.play();
+    expect(player.itemId).toBe(B.providerTrackId);
+    expect(player.isPlaying).toBe(true);
+  });
+
+  it('enqueue after disconnect sends nothing to Spotify, and the tracks follow the next play', async () => {
+    const { adapter } = setup();
+    await adapter.prepare(A);
+    await adapter.play();
+    await adapter.disconnect();
+    const before = fake.apiCalls().length;
+    await adapter.enqueue([C]);
+    expect(fake.apiCalls()).toHaveLength(before);
+    expect(player.queue).toEqual([]);
+    await adapter.prepare(B);
+    await adapter.play();
+    expect(player.queue).toEqual(['spotify:track:trackCCCCCCCCCCCCCCCCC3']);
+  });
+
+  it('never guesses between two phones', async () => {
+    player.devices = [
+      { id: 'p1', name: 'iPhone', type: 'Smartphone', is_active: false, is_restricted: false },
+      { id: 'p2', name: 'Pixel', type: 'Smartphone', is_active: false, is_restricted: false },
+    ];
+    const { adapter } = setup();
+    await adapter.prepare(A);
+    expect(await code(adapter.play())).toBe('no_active_device');
+    expect(commands()).not.toContain('PUT /me/player');
+  });
+
+  it('skips a restricted phone and uses the one usable device', async () => {
+    player.devices = [
+      { id: 'p1', name: 'iPhone', type: 'Smartphone', is_active: false, is_restricted: true },
+      { id: 'mac', name: 'Mac', type: 'Computer', is_active: false, is_restricted: false },
+    ];
+    const { adapter } = setup();
+    await adapter.prepare(A);
+    await adapter.play();
+    expect(commands().at(-1)).toBe('PUT /me/player/play?device_id=mac');
+  });
+
+  it('a device without an id is never chosen', async () => {
+    player.devices = [
+      {
+        id: null as unknown as string,
+        name: 'Ghost',
+        type: 'Smartphone',
+        is_active: false,
+        is_restricted: false,
+      },
+    ];
+    const { adapter } = setup();
+    await adapter.prepare(A);
+    expect(await code(adapter.play())).toBe('no_active_device');
+  });
+
+  it('a 429 on a queue add is retried (Spotify did nothing), a 5xx is not', async () => {
+    const { adapter } = setup({ sleep: async () => {} });
+    await adapter.prepare(A);
+    await adapter.play();
+    fake.script('POST', '/v1/me/player/queue', { status: 429, headers: { 'Retry-After': '1' } });
+    await adapter.enqueue([B]);
+    expect(commands().filter((c) => c.startsWith('POST'))).toHaveLength(2);
+    expect(player.queue).toEqual(['spotify:track:trackBBBBBBBBBBBBBBBBB2']);
+  });
+
+  it('a 5xx on a PUT play command is retried, since repeating it is harmless', async () => {
+    const { adapter } = setup({ sleep: async () => {} });
+    fake.script('PUT', '/v1/me/player/play', { status: 503 });
+    await adapter.prepare(A);
+    await adapter.play();
+    expect(commands().filter((c) => c.startsWith('PUT /me/player/play'))).toHaveLength(2);
+    expect(player.isPlaying).toBe(true);
+  });
+
+  it('a 401 during play refreshes once and plays with the new token', async () => {
+    const { adapter } = setup();
+    fake.validAccess.delete('fake-access-1');
+    await adapter.prepare(A);
+    await adapter.play();
+    expect(fake.tokenCalls()).toHaveLength(1);
+    expect(player.isPlaying).toBe(true);
+  });
+
+  it('a Retry-After past the cap fails fast with rate_limited and no wait', async () => {
+    const sleep = jest.fn(async () => {});
+    const { adapter } = setup({ sleep });
+    fake.script('PUT', '/v1/me/player/play', {
+      status: 429,
+      headers: { 'Retry-After': String(MAX_RETRY_AFTER_MS / 1000 + 1) },
+    });
+    await adapter.prepare(A);
+    expect(await code(adapter.play())).toBe('rate_limited');
+    expect(sleep).not.toHaveBeenCalled();
+  });
+});

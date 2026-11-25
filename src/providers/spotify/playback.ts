@@ -145,7 +145,9 @@ export class SpotifyPlaybackAdapter implements PlaybackAdapter {
   }
 
   async pause() {
-    if (this.pending || !this.current || this.released) return;
+    // A track prepared while another plays: the old one is still audible in
+    // the Spotify app, so pausing must still reach Spotify.
+    if (!this.current || this.released) return;
     try {
       await this.deps.api.request({
         method: 'PUT',
@@ -180,7 +182,8 @@ export class SpotifyPlaybackAdapter implements PlaybackAdapter {
    */
   async enqueue(tracks: ProviderTrack[]) {
     tracks.forEach((track) => this.check(track));
-    if (this.pending) {
+    // After `disconnect` q’d sends nothing to Spotify: hold them for the next play.
+    if (this.pending || this.released) {
       this.held.push(...tracks);
       return;
     }
