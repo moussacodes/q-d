@@ -132,19 +132,28 @@ Why it's shaped this way: [ARCHITECTURE.md § 4.10](ARCHITECTURE.md#410-client-v
 
 **Queue positions (decided 2026-11-25).** Queued entries hold dense integer positions `1..n` in play order; the playing entry holds `0`; played and removed entries keep their last position, which means nothing. Only RPCs write positions, always under the room lock, and a unique index on queued positions per room backs it up. Clients sort by `position` and never compute one.
 
-#### `enqueue_batch` (post-demo, `playlist import` flag)
+#### `enqueue_batch` (post-demo, `playlist_import` flag)
 
-- **Caller:** any member the room's add-songs rule allows.
-- **Input:** `room_id uuid`, `batch_id uuid`, `recording_ids uuid[]` (at most 50, in playlist order), `idempotency_key uuid`
-- **Effect:** adds the entries in order under one `batch_id`. Only one import runs per room at a time.
+**Built, flag off** (`supabase/migrations/20261125002100_enqueue_batch.sql`, tests in `supabase/tests/enqueue-batch.test.ts`). The app has no entry point to it until the playlist-import card.
+
+- **Caller:** any member the room's add-songs rule allows, who created the batch.
+- **Input:** `room_id uuid`, `batch_id uuid`, `recording_ids uuid[]` (1–50, in playlist order), `idempotency_key uuid`
+- **Before it:** the import preview (playlist-import card) creates the `playlist_import_batches` row in `previewing` status. `enqueue_batch` doesn't create batches.
+- **Effect:** under the room lock, marks the batch `importing`, adds the entries in playlist order under its `batch_id` (the same helper as `enqueue_recording`, so an empty room starts the first song), then marks it `done` with its counts. Songs already queued or playing, and repeats inside the batch, are skipped, because a batch can't ask "Already in queue" per song. Sends one `queue.changed` for the whole batch. Only one import runs per room at a time.
 - **Returns:** `{ batch_id, added, skipped }`
-- **Errors:** `import_in_progress`, `limit_exceeded`, `feature_disabled`
+- **Errors:** `feature_disabled` (`details.flag = 'playlist_import'`), `limit_exceeded` (over 50, `details.limit`), `import_in_progress` (another batch in the room is `importing`), `stale_state` (the batch isn't `previewing` anymore, `details.status`), `invalid_input` (`details.field`: `room_id`, `batch_id` (missing, another room's or another person's), `recording_ids` (missing, empty, a null or an unknown recording) or `idempotency_key`), `not_allowed`, `not_member`, `room_not_found`, `room_ended`, `idempotency_conflict`, `not_authenticated`
 
 #### `undo_batch` (post-demo, Added)
 
+**Built, flag off** (same migration and tests).
+
 - **Caller:** host.
 - **Input:** `room_id uuid`, `batch_id uuid`, `idempotency_key uuid`
-- **Effect:** removes the batch's entries that haven't played yet.
+- **Effect:** marks the batch's entries that are still queued `removed`, closes the gap in positions and marks the batch `undone`. The playing entry and played ones stay. Sends `queue.changed`.
+- **Returns:** `{ batch_id, removed }`
+- **Errors:** `feature_disabled`, `not_host`, `stale_state` (the batch isn't `done`, `details.status`), `invalid_input` (`room_id`, `batch_id`), `not_member`, `room_not_found`, `room_ended`, `idempotency_conflict`
+
+**Feature flags in the database.** `private.feature_flags` holds server-side switches; `private.require_feature(flag)` raises `feature_disabled` with `details.flag`. Only the database owner changes them (a migration or the dashboard). `playlist_import` starts off.
 
 #### `reorder_queue`
 

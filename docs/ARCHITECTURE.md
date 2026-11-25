@@ -191,6 +191,7 @@ ESLint enforces these rules (`no-restricted-imports` in `eslint.config.js`), so 
 - **Realtime is a notification layer, not a data layer.** Broadcast events tell clients what changed so they refetch. Presence shows who's here and whether the host is connected. If an event is lost, a refetch fixes it.
 - Broadcasts are sent by the database, from inside the RPC that made the change (`private.broadcast_room_event()`), not by the client. That way no client can announce a change that didn't happen, and a rolled-back change announces nothing.
 - Built (enqueue_recording card): `enqueue_recording` (`supabase/migrations/20261125002000_enqueue_recording.sql`). It takes the room lock before assigning a position, so two people adding at once get one order, and `private.append_queue_entry()` is the one place an entry is added.
+- Built (enqueue_batch card), behind the `playlist_import` flag that's off: `enqueue_batch` and `undo_batch` (`supabase/migrations/20261125002100_enqueue_batch.sql`), the `private.feature_flags` table and `private.renumber_queue()`, which every RPC that takes entries out of the middle of the queue calls.
 - Built (RPC contracts card): the shared checks, the error convention and the idempotency machinery live in the `private` schema (`supabase/migrations/20261124000200_rpc_foundation.sql`). Each RPC is a `security definer` function in `public` with a pinned `search_path`, and `anon` can't execute any of them.
 
 ### 4.11 q’d sign-in vs. music-service authorization
@@ -274,7 +275,7 @@ Built · RLS card (`supabase/migrations/20261124000300_row_level_security.sql`, 
 | Real Apple Music | off until the MusicKit bridge works on a device | Lets the mock stand in during development and as a demo fallback |
 | Real Spotify | off until Spotify `aux` works on a device | Same, plus the five-user development-mode limit |
 | `sync` | off, private | Blocked until providers and a legal review approve it |
-| Playlist import | off | Post-demo feature |
+| Playlist import | off | Post-demo feature. Server side: `private.feature_flags` row `playlist_import` (enqueue_batch card) |
 | Moderation | off for the demo, on for the beta | Beta gate |
 | Analytics | off, and opt-in when on | Privacy |
 

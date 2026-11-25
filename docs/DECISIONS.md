@@ -2,6 +2,16 @@
 
 Product and technical decisions that are not obvious from the code. Newest first.
 
+## 2026-11-25 · enqueue_batch
+
+- **Server-side feature flags live in `private.feature_flags`.** `enqueue_batch` and `undo_batch` check `playlist_import`, which is off, and fail with `feature_disabled`. Clients can't read or change the table. The app-side flag (ARCHITECTURE.md § 8) is still the Env validation card's job; the database refuses even if a modified client calls the RPC.
+- **The import preview creates the batch, not `enqueue_batch`.** The contract passes a `batch_id`, so the batch already exists: the post-demo import card's preview creates it in `previewing` with the playlist's provider and name. `enqueue_batch` adds the confirmed songs, then marks it `done`. Only the person who created the batch can import it.
+- **A batch skips songs already in the queue.** It can't ask "Already in queue" for each song, so songs already queued or playing, and repeats inside the playlist, are skipped and counted in `skipped`. **A teammate should confirm**; the alternative is adding duplicates silently.
+- **A batch already imported is `stale_state`,** with `details.status`. A retry with the same key still gets the stored result.
+- **One broadcast per batch,** not one per song.
+- **`undo_batch` stays host-only,** as the contract says. Undo takes back only songs still waiting; the playing one and played ones stay.
+- **No app entry point yet.** Nothing in the app calls these until the playlist-import card, so nothing is exposed for the demo.
+
 ## 2026-11-25 · enqueue_recording
 
 - **Queue positions are dense integers** (ARCHITECTURE.md open decision 3). Queued entries are `1..n` in play order and the playing entry is `0`, so `position` is also the place in line the toast shows. Queues are short (tens of songs), so renumbering on a reorder or removal is cheap, and it's easier to test and reason about than gaps or fractional ranks. A unique index on queued positions per room makes a repeated position impossible.
