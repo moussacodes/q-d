@@ -66,7 +66,7 @@ A broadcast that never arrives costs freshness but never correctness, because th
 | Tests | Jest/jest-expo, React Native Testing Library, Supabase integration tests, Maestro | Built: Jest, React Native Testing Library, `.maestro/` smoke flow (first runs with a development build). Planned: Supabase tests · Supabase cards |
 | Quality gates | ESLint, Prettier, `tsc`, Jest, Expo Doctor, GitHub Actions, Git pre-push hook | Built · `npm run check`, `.github/workflows/ci.yml`, `.githooks/pre-push` (every push) |
 | Builds | EAS development, preview (internal) and production (TestFlight) profiles | Planned · EAS card |
-| Observability | Redacting structured logger, privacy-filtered crash reports, opt-in analytics | Planned · Logging card |
+| Observability | Redacting structured logger, privacy-filtered crash reports, opt-in analytics | Built: logger (`src/services/logger.ts`, `redact.ts`) and the crash-report filter (`crashReporting.ts`, no service connected yet). Planned: a crash-reporting service and analytics |
 
 **Why this stack.** Two students, one fixed demo date and one Windows machine. Expo gives one codebase for iOS, the web and later Android, and the web build lets Baron work without a Mac. Supabase provides auth, a relational database with row-level security, realtime and serverless functions in one managed service, so there's no backend to operate. Both are mainstream enough to learn from, which is half the point of the project (see [LEARNING_PATH.md](LEARNING_PATH.md)).
 
@@ -85,7 +85,7 @@ src/
   domain/                 Pure types and logic: rooms, queue, recordings, matching
   features/               Feature modules: auth, onboarding, rooms, queue, search, settings
   providers/              Apple, Spotify and mock catalog/playback adapters      (mock built; Apple, Spotify planned)
-  services/               Supabase, env, flags, logging, analytics               (data mode, env and flags built; rest planned)
+  services/               Supabase, env, flags, logging, analytics               (data mode, env, flags, logging built; rest planned)
   test/                   Fixtures and provider contract helpers
 modules/
   qd-music-kit/           Local Swift Expo module and config plugin             (planned)
@@ -169,7 +169,8 @@ ESLint enforces these rules (`no-restricted-imports` in `eslint.config.js`), so 
 
 - **Rule:** infrastructure with side effects: the Supabase client, environment validation, feature flags, the logger, analytics and crash reporting.
 - **Why:** these are the places where data leaves the device. Putting them behind one folder means redaction, opt-in checks and environment validation happen in one place that's easy to review.
-- **Logger rule:** structured logging redacts tokens, emails, room codes and listening history before anything is written or sent.
+- **Logger rule:** structured logging redacts tokens, emails, room codes and listening history before anything is written or sent. Built: `log` in `src/services/logger.ts` redacts every entry with `src/services/redact.ts` before any sink sees it. Values under sensitive keys (`token`, `email`, `code`, `title`, `artist`, `queue` and so on) are replaced whole, and every other string is scanned for emails, room codes, JWTs, invite links, provider links and ids. Song titles in free text can't be recognized, so **log messages are fixed strings and data goes in the context object.** Use `log`, not `console`.
+- **Crash reports:** `src/services/crashReporting.ts` sends nothing until a transport is set. Every event passes `beforeSend`, which keeps an allowlist of fields and redacts them. There's no session replay, no automatic breadcrumbs and no automatic event capture (`crashReportingPolicy`).
 - **Env rule:** environment variables are validated with Zod at startup. The app fails fast with a clear message instead of misbehaving later.
 
 ### 4.8 Native module (`modules/qd-music-kit/`)

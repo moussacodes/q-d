@@ -74,9 +74,9 @@ describe('module start-up', () => {
     });
     const messages = warn.mock.calls.map(([message]) => message as string);
     expect(messages).toEqual([
-      'EXPO_PUBLIC_FLAG_ANALYTICS is invalid. It was ignored.',
-      expect.stringContaining('EXPO_PUBLIC_DATA_MODE=live needs'),
-      "EXPO_PUBLIC_FLAG_SYNC is ignored: sync (beta) is private and can't be enabled.",
+      '[env] EXPO_PUBLIC_FLAG_ANALYTICS is invalid. It was ignored.',
+      expect.stringContaining('[env] EXPO_PUBLIC_DATA_MODE=live needs'),
+      "[flags] EXPO_PUBLIC_FLAG_SYNC is ignored: sync (beta) is private and can't be enabled.",
     ]);
   });
 

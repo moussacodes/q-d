@@ -1,4 +1,5 @@
 import { env, envNames, envResult, type AppEnv } from './env';
+import { log } from './logger';
 
 /**
  * Where the app's data comes from.
@@ -51,10 +52,9 @@ export function resolveDataMode(
 
 const decision = resolveDataMode(env);
 
-if (__DEV__) {
-  for (const message of [...envResult.problems, decision.fallbackReason]) {
-    if (message) console.warn(message);
-  }
+const envLog = log.child('env');
+for (const message of [...envResult.problems, decision.fallbackReason]) {
+  if (message) envLog.warn(message);
 }
 
 export const dataMode: DataMode = decision.mode;

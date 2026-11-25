@@ -1,4 +1,5 @@
 import { env, envNames, type RequestedFlags } from './env';
+import { log } from './logger';
 
 /**
  * Feature flags (docs/ARCHITECTURE.md §8). Every flag is off unless the
@@ -78,9 +79,7 @@ export function analyticsAllowed(flags: FeatureFlags, optedIn: boolean | undefin
 
 const resolved = resolveFlags(env.requestedFlags);
 
-if (__DEV__) {
-  for (const message of resolved.problems) console.warn(message);
-}
+for (const message of resolved.problems) log.child('flags').warn(message);
 
 /** This run's flags. */
 export const flags: FeatureFlags = resolved.flags;

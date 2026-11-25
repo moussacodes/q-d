@@ -2,6 +2,14 @@
 
 Product and technical decisions that are not obvious from the code. Newest first.
 
+## 2026-11-24 · Structured logging and crash-report filtering
+
+- **Redaction happens inside the logger,** before any sink, so no sink (console, crash reporter, a future service) can leak. It removes credentials, emails, room codes, invite tokens and listening history, in nested objects, arrays, Maps, Sets, Errors and their causes, and inside strings.
+- **Redaction errs toward removing too much.** Whole values under keys like `code`, `title`, `name`, `url`, `query` and anything containing `token`, `email`, `track`, `queue` or `artist` are replaced, even when they'd help debugging. Ids (`roomId`, `userId`) and error codes stay.
+- **Log messages are fixed strings.** A song title in free text can't be told apart from other words, so data goes in the context object, where its key decides.
+- **No crash-reporting service yet.** None is planned in the docs, so none was added. `crashReporting.ts` holds the privacy filter (`beforeSend`), manual breadcrumbs and a global error handler, and sends nothing until a transport is set. Whatever service is picked later must keep `crashReportingPolicy`: no session replay, no automatic breadcrumbs or event capture, no default PII, no screenshots.
+- **Failed crash uploads are dropped,** not retried, so a report can't be sent after the person signs out.
+
 ## 2026-11-24 · Environment validation and feature flags
 
 - **Nothing in `.env` is required.** Mock mode must keep working on any machine, so a missing or invalid variable never stops the app. It's reported by name in a development warning and falls back to a safe default. This is how ARCHITECTURE.md's "fail fast with a clear message" applies while mock mode is the default.
