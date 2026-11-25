@@ -497,3 +497,79 @@ describe('queue positions', () => {
     expect((await queueRows(db, roomId)).filter((r) => r.status === 'queued')).toHaveLength(11);
   });
 });
+
+describe('review: security and decided edge cases', () => {
+  it('is security definer with a pinned search_path, and only authenticated may run it', async () => {
+    const [fn] = await db.query<{
+      definer: boolean;
+      config: string;
+      anon: boolean;
+      authenticated: boolean;
+    }>(
+      `select p.prosecdef as definer, array_to_string(p.proconfig, ',') as config,
+              has_function_privilege('anon', p.oid, 'execute') as anon,
+              has_function_privilege('authenticated', p.oid, 'execute') as authenticated
+         from pg_proc p where p.oid = 'public.enqueue_recording(uuid, uuid, uuid, boolean)'::regprocedure`,
+    );
+    expect(fn).toEqual({
+      definer: true,
+      config: 'search_path=""',
+      anon: false,
+      authenticated: true,
+    });
+  });
+
+  it('the queue helpers in private are not callable by clients', async () => {
+    const { host, roomId } = await startRoom(db);
+    const recordingId = await insertRecording(db);
+    await expect(
+      db
+        .as(host)
+        .query('select private.append_queue_entry($1, $2, $3)', [roomId, recordingId, host.id]),
+    ).rejects.toMatchObject({ sqlstate: '42501' });
+    await expect(
+      db.as(host).query('select private.queued_count($1)', [roomId]),
+    ).rejects.toMatchObject({ sqlstate: '42501' });
+    expect(await entryCount(roomId)).toBe(0);
+  });
+
+  it('a rejected add (already_in_queue) sends no broadcast', async () => {
+    const { host, roomId } = await startRoom(db);
+    const recordingId = await insertRecording(db);
+    await enqueue(host, { room_id: roomId, recording_id: recordingId });
+    await expect(
+      enqueue(host, { room_id: roomId, recording_id: recordingId }),
+    ).rejects.toMatchObject({ code: 'already_in_queue' });
+    expect(await broadcastCount(db, roomId, 'queue.changed')).toBe(1);
+  });
+
+  it('a Chosen pick for controls does not let a member add songs', async () => {
+    const { roomId } = await startRoom(db, { add_songs: 'chosen', control: 'chosen' });
+    const member = await addMember(db, roomId);
+    await choose(db, roomId, 'control', member);
+    await expect(
+      enqueue(member, { room_id: roomId, recording_id: await insertRecording(db) }),
+    ).rejects.toMatchObject({ code: 'not_allowed' });
+  });
+
+  it('does not re-check the profile: a member is not asked for profile_incomplete (DECISIONS 2026-11-25)', async () => {
+    const { roomId } = await startRoom(db);
+    const member = await addMember(db, roomId);
+    await db.query('update public.profiles set display_name = null where id = $1', [member.id]);
+    await expect(
+      enqueue(member, { room_id: roomId, recording_id: await insertRecording(db) }),
+    ).resolves.toMatchObject({ position: 0 });
+  });
+
+  it('a member who left can no longer add', async () => {
+    const { roomId } = await startRoom(db);
+    const member = await addMember(db, roomId);
+    await db.query('delete from public.room_members where room_id = $1 and user_id = $2', [
+      roomId,
+      member.id,
+    ]);
+    await expect(
+      enqueue(member, { room_id: roomId, recording_id: await insertRecording(db) }),
+    ).rejects.toMatchObject({ code: 'not_member' });
+  });
+});
