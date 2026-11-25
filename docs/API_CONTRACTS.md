@@ -50,6 +50,7 @@ Why it's shaped this way: [ARCHITECTURE.md § 4.10](ARCHITECTURE.md#410-client-v
 | `invite_invalid` | Wrong, expired or revoked QR invite token |
 | `rate_limited` | Too many attempts. Includes `retry_after_seconds`. |
 | `provider_required` | This device needs a connected music service to do this |
+| `provider_unavailable` | The music service couldn't answer: unreachable, timed out, rejected q’d's credentials or sent something unexpected. Includes `provider` and `reason`. Edge Functions only (catalog search). (Added) |
 | `already_in_queue` | The recording is already queued. Retry with `allow_duplicate: true` after the user confirms. |
 | `entry_not_found` | The queue entry was removed or already played |
 | `stale_state` | The caller acted on an old view (for example, skipping a song that already changed). Refetch and retry. |
@@ -126,7 +127,7 @@ Why it's shaped this way: [ARCHITECTURE.md § 4.10](ARCHITECTURE.md#410-client-v
 - **Returns:** `{ entry_id, position, queue_length }`. The app uses `queue_length` for "Rain Down added · 8th in line".
 - **Errors:** `already_in_queue` (unless `allow_duplicate`), `room_ended`, `not_member`. A song counts as already in the queue while it's queued or playing.
 - **Confirmed (RPC contracts card):** when nothing is playing, the new entry becomes the playing one and `queue_length` is 0, so the toast says "playing now". The mock store does this.
-- **Note:** `recording_id` comes from a catalog search result. How search results become `recordings` rows depends on where search runs ([ARCHITECTURE.md, open decision 1](ARCHITECTURE.md#open-technical-decisions)).
+- **Note:** `recording_id` comes from a catalog search result: `catalog-search` saves every result as a `recordings` row and returns its id ([§ Catalog](#catalog)).
 
 #### `enqueue_batch` (post-demo, `playlist import` flag)
 
@@ -189,6 +190,26 @@ Moves the room to the next song when the current one ends, is skipped, or isn't 
 - **Input:** `room_id uuid`, `idempotency_key uuid`
 - **Errors:** `feature_disabled` while `sync` is off, `provider_required`, `limit_exceeded` (15 slots)
 - **Built as placeholders:** both functions exist, check sign-in, and fail with `feature_disabled` (`details.flag = 'sync'`).
+
+### Catalog
+
+#### `catalog-search` (Edge Function, Added)
+
+**Built** (`supabase/functions/catalog-search`, migration `20261125003000_catalog_search.sql`). Built, not yet tested against the live Apple Music API (no developer key).
+
+- **Caller:** any signed-in user, with or without a music service. Supabase checks the JWT (`verify_jwt`); the function reads `sub`, so the anon key alone gets `401 not_authenticated`.
+- **Input (JSON body):** `query` string (trimmed and whitespace-collapsed, 1–100 characters), `limit` integer 1–25 (default 20), `storefront` two-letter Apple storefront (default `us`, case-insensitive).
+- **Effect:** counts one search against the caller's limit (60 a minute, `consume_catalog_search`), searches Apple's catalog for songs with the developer token the function holds, and saves each usable song with `save_catalog_tracks`: an Apple `provider_tracks` row and a canonical `recordings` row with version tags read from the title. Saving the same song again keeps its recording id and refreshes its metadata. No `track_matches` are written; mappings are resolved when playback needs them.
+- **Returns:** `200 { storefront, results: [{ recordingId, track, availableOn }] }` in Apple's order, camelCase, with `track` in the `ProviderTrack` shape (§ 6). `artworkUrl` is Apple's template with `{w}`/`{h}` left in; the app sizes it (`src/domain/artwork.ts`). `availableOn` is `['apple_music']`: search can't know about other services. The app parses it with `catalogSearchResponseSchema` (`src/domain/catalog.ts`).
+- **Errors:** `400 invalid_input` (`field`: `body`, `query`, `limit`, `storefront` or `method`; Apple answering 404 means an unknown storefront), `401 not_authenticated`, `429 rate_limited` (`retry_after_seconds` and a `Retry-After` header, from q’d's limit or Apple's), `502 provider_unavailable` (`provider`, `reason`: `not_configured`, `unauthorized`, `timeout`, `network`, `upstream_error` or `bad_response`). An unexpected failure (for example the database) is `500 {}` without a code, which the app shows as generic copy.
+- **Secrets:** `APPLE_MUSIC_TEAM_ID`, `APPLE_MUSIC_KEY_ID`, `APPLE_MUSIC_PRIVATE_KEY` (the MusicKit `.p8` text) in Edge Function secrets, never `EXPO_PUBLIC_*`. The function mints a 12-hour ES256 developer token, and mints a new one an hour early or after Apple rejects it.
+
+#### `save_catalog_tracks`, `consume_catalog_search` (service role only)
+
+Called by `catalog-search`, not by apps: `anon` and `authenticated` can't execute them.
+
+- `save_catalog_tracks(tracks jsonb)` returns `[{ provider_track_id, recording_id }]` in input order. At most 25 tracks (`limit_exceeded`), all or nothing (`invalid_input` with `field: 'tracks'` and the element's `index`).
+- `consume_catalog_search(user_id uuid, per_minute integer = 60)`: `rate_limited` with `retry_after_seconds` over the limit, per user, in one-minute windows.
 
 ### Matching
 
@@ -310,7 +331,11 @@ type ConnectionState = { isMock: boolean } & (  // isMock: the UI labels mock co
   | { status: 'error'; code: ProviderErrorCode }
 );
 
-type CatalogResult = { track: ProviderTrack; availableOn: MusicProvider[] };
+type CatalogResult = {
+  track: ProviderTrack;
+  availableOn: MusicProvider[];
+  recordingId?: string;         // Added (canonical search card): the saved recording; mocks leave it out
+};
 type ProviderEntity =
   | { kind: 'track'; track: ProviderTrack }
   | { kind: 'playlist'; provider: MusicProvider; playlistId: string };
@@ -327,7 +352,9 @@ type ProviderErrorCode =
   | 'not_found'
   | 'unsupported_link'   // not an Apple Music or Spotify link q’d reads
   | 'wrong_provider'     // e.g. a Spotify track given to the Apple player
-  | 'invalid_argument';  // e.g. a negative seek position
+  | 'invalid_argument'   // e.g. a negative seek position
+  | 'rate_limited'       // Added (canonical search card); ProviderError.retryAfterSeconds says when
+  | 'provider_unavailable'; // Added (canonical search card): the service or q’d's server couldn't answer
 ```
 
 **Built (provider adapters card)** in `src/providers`: the interfaces (`types.ts`), `ProviderError` (`errors.ts`), the share-link parser (`links.ts`), the mocks (`mock/`), and Apple Music and Spotify stubs (`apple/`, `spotify/`, `unavailable.ts`). Changes from the sketch above, marked here for review:

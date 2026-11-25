@@ -2,6 +2,20 @@
 
 Product and technical decisions that are not obvious from the code. Newest first.
 
+## 2026-11-25 · Canonical catalog search (Apple catalog)
+
+- **Search runs in an Edge Function** (ARCHITECTURE.md open decision 1, PRODUCT_SPEC.md § 13). `catalog-search` holds the Apple Music API developer token and serves everyone the same results: guests without a service, Android and the web. On-device MusicKit search would leave them out. The card asked for this; **a teammate should confirm**.
+- **The developer token is minted in the function** from the MusicKit key in Edge Function secrets (ES256, 12 hours, replaced an hour early or after Apple rejects it). It never ships in the app. **Built, untested against the live API:** nobody has a developer key yet, so every test uses synthetic recorded fixtures.
+- **One canonical recording per Apple song id.** Saving the same song again keeps its recording id and refreshes its metadata, so search is idempotent. Two Apple songs with the same ISRC (a single and its album copy) stay two recordings; whether to merge them is an **open question**.
+- **Apple's artist credit is kept whole** (`['Delerium & Sarah McLachlan']`). Splitting at "&" would break "Simon & Garfunkel", and matching splits credits itself.
+- **Version tags are read from the title** with the matching card's `parseTitle`, without `clean` (that's the explicit flag). The function imports `src/domain/matching/text.ts`, so there's one copy of the rules.
+- **Songs missing an id, title, artist or a positive duration are skipped,** not invented. Artwork must be https; Apple's `{w}x{h}` template is stored and sized in the app.
+- **Search results know only Apple.** `availableOn` is `['apple_music']`. **Open question before live search is wired in:** Add a song reads a missing provider as "Not on Spotify", which live search can't know yet. The app still uses the mock catalog, so nothing shows this today.
+- **60 searches a minute per user,** counted in Postgres, because Apple's limit is per developer token and shared by everyone. Add a song waits 300 ms after typing before a live search; the mock doesn't wait.
+- **New error code `provider_unavailable`** for a music service that can't answer (unreachable, timed out, misconfigured or an unexpected response). The database's code list has it too; another branch that rewrites `private.error_codes()` must keep it.
+- **Add a song shows search errors** as plain copy ("Too many searches. Try again in 12 seconds.", "Search isn’t working right now…") and "Searching…" while a first search loads. Figma has no frame for these; Figma not re-checked.
+- **Track and link lookups aren't built.** The live Apple catalog adapter's `getTrack` and `resolveLink` still say "not in this build".
+
 ## 2026-11-24 · Track matching
 
 The rules are PRODUCT_SPEC.md §6. These are the numbers and edge cases the matching card had to pick. All of it is in `src/domain/matching`, pure and deterministic.

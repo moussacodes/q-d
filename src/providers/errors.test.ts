@@ -23,3 +23,12 @@ describe('ProviderError', () => {
     expect(isProviderError(null)).toBe(false);
   });
 });
+
+describe('ProviderError retry time', () => {
+  it('carries how long to wait after rate_limited', () => {
+    const error = new ProviderError('rate_limited', 'apple_music', 'slow down', 12);
+    expect(error.code).toBe('rate_limited');
+    expect(error.retryAfterSeconds).toBe(12);
+    expect(new ProviderError('not_found', 'spotify').retryAfterSeconds).toBeUndefined();
+  });
+});

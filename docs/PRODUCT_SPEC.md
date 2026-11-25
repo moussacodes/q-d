@@ -250,4 +250,4 @@ These questions are still open. Record each answer in [DECISIONS.md](DECISIONS.m
 - **Android.** The app has to work in both the App Store and the Play Store eventually. When Android work starts (demo, beta or later) is undecided.
 - **Room codes.** The exact attempt limits. (Answered 2026-11-24: codes stay valid for 24 hours, and look-alike characters `0`, `O`, `1` and `I` are left out. See [DECISIONS.md](DECISIONS.md).)
 - **Expo owner.** Which Expo account slug owns the project (`owner` in `app.config.ts`).
-- **Catalog search for guests.** Where Apple catalog search runs for people without Apple Music, and on Android or the web. See [ARCHITECTURE.md § Open technical decisions](ARCHITECTURE.md#open-technical-decisions).
+- **Catalog search for guests.** Where Apple catalog search runs for people without Apple Music, and on Android or the web. See [ARCHITECTURE.md § Open technical decisions](ARCHITECTURE.md#open-technical-decisions). *Decided 2026-11-25: in an Edge Function, for everyone (DECISIONS.md).*

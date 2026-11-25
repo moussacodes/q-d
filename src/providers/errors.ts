@@ -13,6 +13,8 @@ export class ProviderError extends Error {
     readonly code: ProviderErrorCode,
     readonly provider: MusicProvider,
     message: string = code,
+    /** With `rate_limited`: seconds until a retry can work. */
+    readonly retryAfterSeconds?: number,
   ) {
     super(message);
   }

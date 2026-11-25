@@ -84,15 +84,15 @@ src/
   design/                 Tokens: colors, type, spacing, Now playing palettes, ThemeProvider
   domain/                 Pure types and logic: rooms, queue, recordings, matching
   features/               Feature modules: auth, onboarding, rooms, queue, search, settings
-  providers/              Apple, Spotify and mock catalog/playback adapters      (interfaces, mocks and Apple/Spotify stubs built; live Apple, Spotify planned)
-  services/               Supabase, env, flags, logging, analytics               (data mode built; rest planned)
+  providers/              Apple, Spotify and mock catalog/playback adapters      (interfaces, mocks, Apple/Spotify stubs and the Apple catalog search adapter built; live Apple playback, Spotify planned)
+  services/               Supabase, env, flags, logging, analytics               (data mode and Edge Function calls built; rest planned)
   test/                   Fixtures and provider contract helpers
 modules/
   qd-music-kit/           Local Swift Expo module and config plugin             (planned)
 supabase/
   config.toml             Supabase CLI settings for a local stack
   migrations/             Schema, RPC functions, triggers, RLS                   (schema built)
-  functions/              Edge Functions                    (delete-account placeholder built)
+  functions/              Edge Functions                    (delete-account placeholder and catalog-search built)
   tests/                  Database and RLS tests on PGlite, plus the harness      (built)
 assets/icons/             The 34 Figma icons, unmodified SVG
 docs/                     These documents and the pitch deck
@@ -261,7 +261,8 @@ Built · RLS card (`supabase/migrations/20261124000300_row_level_security.sql`, 
 - Apple's catalog is canonical. Search results become `recordings`. When a song has to play, the host's provider resolves a `provider_track` and stores a `track_match`.
 - Matching is a pure function in `src/domain` (normalize, then score). The thresholds and rules are in [PRODUCT_SPEC.md § 6](PRODUCT_SPEC.md#6-catalog-and-matching). Results and overrides are stored in Postgres, so every phone sees the same answer and overrides are audited.
 - **Built** (matching card): `src/domain/matching` (`text.ts` normalizes and reads version markers, `match.ts` ranks candidates and decides). `matchRecording(recording, candidates, { provider, overrideTrackId })` returns the `TrackMatch` to store, a status (`matched`, `needs_review` or `unavailable`), the reasons and every candidate ranked for "Wrong version?". The numbers are in [DECISIONS.md](DECISIONS.md) (2026-11-24 · Track matching).
-- Planned · Canonical search card (where search runs, and storing matches in Postgres).
+- **Built** (canonical search card): search runs in the `catalog-search` Edge Function (open decision 1). It holds the Apple Music API developer token, searches Apple's catalog, normalizes each song (`supabase/functions/catalog-search/apple.ts`) and saves it with `save_catalog_tracks` as an Apple `provider_tracks` row plus a canonical `recordings` row, found again by `recordings (source_provider, source_track_id)`. The app calls it through `services/edgeFunctions.ts` and the Apple `CatalogAdapter` (`providers/apple/catalog.ts`), and `features/search/useCatalogSearch` debounces it. Mock mode still uses the mock catalog. **Built, untested against the live Apple Music API**: the team has no developer key yet.
+- Planned · Storing `track_matches` when playback needs a mapping (the queue and playback cards call `matchRecording`).
 
 ## 8. Configuration, environments and flags
 
@@ -327,7 +328,7 @@ Post-demo, private, behind the `sync` flag. Nothing here ships publicly without 
 
 Record each answer in [DECISIONS.md](DECISIONS.md) and update this file.
 
-1. **Where canonical (Apple catalog) search runs.** Guests without Apple Music, and Android or web clients, can't use on-device MusicKit search. An Edge Function holding an Apple Music API developer token would serve everyone the same results. On-device MusicKit is simpler but works only on iOS. Decided in the canonical search card.
+1. **Where canonical (Apple catalog) search runs.** Guests without Apple Music, and Android or web clients, can't use on-device MusicKit search. An Edge Function holding an Apple Music API developer token would serve everyone the same results. On-device MusicKit is simpler but works only on iOS. **Decided 2026-11-25 (canonical search card): an Edge Function**, so guests, Android and the web search the same catalog. See DECISIONS.md.
 2. **How broadcasts are sent.** Decided 2026-11-24 (RPC contracts card): the RPC itself sends it, through `private.broadcast_room_event()` and `realtime.send()`. See [API_CONTRACTS.md § 4](API_CONTRACTS.md#4-realtime).
 3. **Queue position representation.** For example, integers with gaps or fractional ranks. Decided in the queue card. Clients never compute positions in either case.
 4. **Bottom-sheet library.** Pick one only when an interaction needs gestures that a modal route can't provide.

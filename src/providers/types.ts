@@ -16,6 +16,12 @@ export type CatalogResult = {
   track: ProviderTrack;
   /** Services the recording is available on. */
   availableOn: MusicProvider[];
+  /**
+   * The canonical recording the server saved for this result, which
+   * `enqueue_recording` takes. Live canonical search sets it; the mock
+   * catalog has no server, so it leaves it out.
+   */
+  recordingId?: string;
 };
 
 /** What a pasted Apple Music or Spotify link points at. */
@@ -97,4 +103,8 @@ export type ProviderErrorCode =
   /** The track belongs to a different provider than the player. */
   | 'wrong_provider'
   /** An argument is out of range, e.g. a negative seek position. */
-  | 'invalid_argument';
+  | 'invalid_argument'
+  /** Too many requests. `ProviderError.retryAfterSeconds` says when to try again. */
+  | 'rate_limited'
+  /** The service (or q’d's server in front of it) couldn't answer right now. */
+  | 'provider_unavailable';
