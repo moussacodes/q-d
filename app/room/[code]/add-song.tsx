@@ -63,7 +63,7 @@ export default function AddSongSheet() {
   const [confirming, setConfirming] = useState<string | null>(null);
   const service = providerNames[room.playsThrough];
 
-  const results = useCatalogSearch(query);
+  const { results, status: searchStatus } = useCatalogSearch(query);
 
   const shown = filter === 'all' ? results : results.filter((r) => r.availableOn.includes(filter));
 
@@ -151,12 +151,20 @@ export default function AddSongSheet() {
           <Text variant="footnote" color="text2">
             Search by song, artist or album.
           </Text>
+        ) : searchStatus === 'error' ? (
+          <Text variant="footnote" color="statusWarn" accessibilityRole="alert">
+            Search isn’t working right now. Check your connection, then try again.
+          </Text>
+        ) : searchStatus === 'loading' && shown.length === 0 ? (
+          <Text variant="footnote" color="text2">
+            Searching…
+          </Text>
         ) : shown.length === 0 ? (
           <Text variant="footnote" color="text2">
             No songs match “{query.trim()}”.
           </Text>
         ) : null}
-        {shown.map((result) => {
+        {(searchStatus === 'error' || query.trim() === '' ? [] : shown).map((result) => {
           const { track } = result;
           const id = track.providerTrackId;
           const status = statusOf(id);

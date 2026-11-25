@@ -2,6 +2,17 @@
 
 Product and technical decisions that are not obvious from the code. Newest first.
 
+## 2026-11-25 · UI state tests
+
+- **Every non-happy state has a test** in `__tests__/ui-states.test.tsx`: loading, empty queue, unavailable and low-confidence songs, host reconnecting, no music service (guest), music service disconnected, wrong or expired code, room full, room ended, too many tries, and offline.
+- **Fixed while testing, all small:**
+  - **Join accepted any six characters** and always found Kitchen Disco, so a wrong code, a full room or an ended room couldn't be shown. Join now looks the code up through a mock `join_room_by_code` (`src/features/room/roomCodes.ts`) and shows each error with its own copy, "Looking for the room…" while it waits, and Try again for "Too many tries" and "Can’t reach q’d". Wrong and expired codes read the same ("That code doesn’t work"), as decided on 2026-11-19. `/dev` links each one.
+  - **Add a song flashed "No songs match" before results arrived,** and a failed search showed the same thing. It now says "Searching…" while a query is out and "Search isn’t working right now" when it fails.
+  - **Up next with an empty queue was a blank sheet.** It shows "The queue is empty", like the room.
+  - **A host whose room's service was disconnected in Settings kept "playing".** The room now says "Spotify isn’t connected", holds the player, turns Play off (the mini player too) and links to Settings. The room and queue are kept; after reconnecting, the host presses Play. Listeners never see it: they don't need a service.
+- **Not covered, because the state doesn't exist in the app yet:** a room that ends while you're in it (`room.ended`, Realtime card) and a lost connection inside the room (Supabase and Realtime cards). An unknown code typed into the room URL still shows the sample room in mock mode; the room route loads by code once Supabase lands.
+- **Conflict warning:** `feat/join-from-home` (WIP) removes the Join screen. Its join-on-Home should use `useRoomCodeLookup` and `joinErrorCopy` so these states survive the move.
+
 ## 2026-11-25 · Host reconnecting
 
 - **The grace period is the spec's 30 seconds** (PRODUCT_SPEC.md §4, API_CONTRACTS.md §4), `HOST_RECONNECT_GRACE_MS`. Nothing new to confirm.

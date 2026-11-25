@@ -11,6 +11,7 @@ import {
   useScreenPalette,
 } from '@/components';
 import { useTheme } from '@/design';
+import { mockErrorCodes } from '@/features/room/roomCodes';
 import { useMockHostPresence } from '@/features/room/useRoom';
 import { useMockSession, type AuthStatus } from '@/features/session/MockSession';
 
@@ -34,6 +35,26 @@ const sections: { title: string; links: { label: string; href: Href; enter?: boo
       { label: '2.1 Home · nothing playing', href: '/home' },
       { label: '2.2 Home · room playing (mini player)', href: '/home', enter: true },
       { label: '2.3 Join with a code', href: '/join' },
+      {
+        label: '2.3 Join · wrong or expired code',
+        href: { pathname: '/join', params: { code: 'ZZZZZZ' } },
+      },
+      {
+        label: '2.3 Join · room full',
+        href: { pathname: '/join', params: { code: mockErrorCodes.room_full } },
+      },
+      {
+        label: '2.3 Join · room ended',
+        href: { pathname: '/join', params: { code: mockErrorCodes.room_ended } },
+      },
+      {
+        label: '2.3 Join · too many tries',
+        href: { pathname: '/join', params: { code: mockErrorCodes.rate_limited } },
+      },
+      {
+        label: '2.3 Join · offline',
+        href: { pathname: '/join', params: { code: mockErrorCodes.network } },
+      },
       { label: '2.4 Start a room', href: '/create-room' },
     ],
   },

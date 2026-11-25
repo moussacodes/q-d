@@ -114,3 +114,35 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: 10 },
   actions: { flexDirection: 'row', gap: 8 },
 });
+
+/**
+ * You host this room, but the service it plays through isn't connected on
+ * your phone any more. Nothing plays until it's connected again; the room and
+ * queue are kept. Listeners need no service, so they never see this.
+ */
+export function ServiceMissingNotice({
+  service,
+  onOpenSettings,
+}: {
+  service: string;
+  onOpenSettings: () => void;
+}) {
+  const { colors } = useTheme();
+  return (
+    <Panel style={[styles.notice, { borderColor: colors.statusWarn }]}>
+      <View style={styles.row}>
+        <Icon name="alert" size={18} color={colors.statusWarn} />
+        <View style={styles.flex}>
+          <Text variant="bodyStrong">{service} isn’t connected</Text>
+          <Text variant="caption" color="text2">
+            Your phone plays this room through {service}. Connect it again in Settings to play
+            music. The room and the queue are kept.
+          </Text>
+        </View>
+      </View>
+      <View style={styles.actions}>
+        <Button size="small" kind="secondary" label="Open Settings" onPress={onOpenSettings} />
+      </View>
+    </Panel>
+  );
+}

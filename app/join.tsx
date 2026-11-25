@@ -15,14 +15,23 @@ import {
   useScreenPalette,
 } from '@/components';
 import { typography, useTheme } from '@/design';
+import {
+  CODE_LENGTH,
+  joinErrorCopy,
+  useRoomCodeLookup,
+  type JoinError,
+} from '@/features/room/roomCodes';
 import { useMockSession } from '@/features/session/MockSession';
-import { mockRooms } from '@/test/fixtures/mock-data';
 
-const CODE_LENGTH = 6;
-/** Any complete code finds this room in the mock. */
-const mockFound = mockRooms[1];
+/** Errors a retry can fix without a new code. */
+const retryable: readonly JoinError[] = ['network', 'rate_limited'];
 
-/** 2.3 Join with a code. Six characters after QD- (plan.md §2). */
+/**
+ * 2.3 Join with a code. Six characters after QD- (plan.md §2). A complete
+ * code is looked up (mock `join_room_by_code`), and every answer is shown:
+ * the room, a wrong or expired code, a full or ended room, too many tries, or
+ * no connection.
+ */
 export default function Join() {
   useScreenPalette();
   const { colors } = useTheme();
@@ -30,11 +39,13 @@ export default function Join() {
   const params = useLocalSearchParams<{ code?: string }>();
   const [code, setCode] = useState((params.code ?? '').slice(0, CODE_LENGTH));
   const input = useRef<ComponentRef<typeof TextInput>>(null);
-  const found = code.length === CODE_LENGTH;
+  const { lookup, retry } = useRoomCodeLookup(code);
+  const found = lookup.status === 'found' ? lookup.room : null;
 
   const join = () => {
-    enterRoom(mockFound.code);
-    router.replace({ pathname: '/room/[code]', params: { code: mockFound.code } });
+    if (!found) return;
+    enterRoom(found.code);
+    router.replace({ pathname: '/room/[code]', params: { code: found.code } });
   };
 
   return (
@@ -44,7 +55,13 @@ export default function Join() {
         <>
           <Button
             block
-            label={found ? `Join ${mockFound.name}` : 'Join'}
+            label={
+              found
+                ? `Join ${found.name}`
+                : lookup.status === 'loading'
+                  ? 'Looking for the room…'
+                  : 'Join'
+            }
             disabled={!found}
             onPress={join}
           />
@@ -110,18 +127,33 @@ export default function Join() {
           <View style={styles.room}>
             <Cover size={44} />
             <View style={styles.flex}>
-              <Text variant="bodyStrong">{mockFound.name}</Text>
+              <Text variant="bodyStrong">{found.name}</Text>
               <Text variant="caption" color="text2">
-                {mockFound.hostName}’s room · {mockFound.people.length} people
+                {found.hostName}’s room · {found.people.length} people
               </Text>
-              {mockFound.nowPlaying ? (
+              {found.nowPlaying ? (
                 <Text variant="caption" color="text3">
-                  Now playing {mockFound.nowPlaying.title} · {mockFound.nowPlaying.artist}
+                  Now playing {found.nowPlaying.title} · {found.nowPlaying.artist}
                 </Text>
               ) : null}
             </View>
           </View>
-          <ProviderBadge provider={mockFound.playsThrough} />
+          <ProviderBadge provider={found.playsThrough} />
+        </Panel>
+      ) : null}
+      {lookup.status === 'error' ? (
+        <Panel style={[styles.error, { borderColor: colors.statusWarn }]}>
+          <Text variant="bodyStrong" accessibilityRole="alert">
+            {joinErrorCopy[lookup.error].title}
+          </Text>
+          <Text variant="caption" color="text2">
+            {joinErrorCopy[lookup.error].body}
+          </Text>
+          {retryable.includes(lookup.error) ? (
+            <View style={styles.retry}>
+              <Button size="small" kind="secondary" label="Try again" onPress={retry} />
+            </View>
+          ) : null}
         </Panel>
       ) : null}
     </Screen>
@@ -142,4 +174,6 @@ const styles = StyleSheet.create({
   },
   hiddenInput: { position: 'absolute', opacity: 0, width: 1, height: 1 },
   room: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  error: { gap: 4 },
+  retry: { flexDirection: 'row', paddingTop: 8 },
 });

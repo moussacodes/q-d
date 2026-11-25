@@ -1,7 +1,13 @@
 import { router, useLocalSearchParams } from 'expo-router';
 
 import { SheetHeader, SheetScreen } from '@/components';
-import { AddSongFooter, queueSummary, QueueList, RoomStrip } from '@/features/room/RoomParts';
+import {
+  AddSongFooter,
+  EmptyQueue,
+  queueSummary,
+  QueueList,
+  RoomStrip,
+} from '@/features/room/RoomParts';
 import { roomParams, useRoom, type RoomView } from '@/features/room/useRoom';
 
 /** 3.3 Up next (swiped up from the expanded room). */
@@ -25,7 +31,11 @@ export default function QueueSheet() {
     >
       <SheetHeader title="Up next" subtitle={queueSummary(room.queue)} />
       <RoomStrip room={room} isHost={isHost} />
-      <QueueList room={room} controls={canControl ? { moveUp, moveDown, remove } : undefined} />
+      {room.queue.length ? (
+        <QueueList room={room} controls={canControl ? { moveUp, moveDown, remove } : undefined} />
+      ) : (
+        <EmptyQueue />
+      )}
     </SheetScreen>
   );
 }

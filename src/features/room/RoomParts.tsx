@@ -304,6 +304,19 @@ export function QueueList({ room, controls }: { room: LiveRoom; controls?: Queue
   );
 }
 
+/** Up next with nothing in it: says so, rather than leaving a blank list. */
+export function EmptyQueue() {
+  const { colors } = useTheme();
+  return (
+    <View style={[styles.emptyQueue, { borderColor: colors.strokeStrong }]}>
+      <Text variant="bodyStrong">The queue is empty</Text>
+      <Text variant="caption" color="text2">
+        Songs people add show up here, in order.
+      </Text>
+    </View>
+  );
+}
+
 /**
  * The Add a song button at the foot of the room and Up next. Disabled, with
  * the reason under it, when the room's add-songs rule leaves you out.
@@ -375,6 +388,14 @@ export function UpNextPeek({ room, canAdd }: { room: LiveRoom; canAdd: boolean }
 
 const styles = StyleSheet.create({
   flex: { flex: 1, gap: 2 },
+  emptyQueue: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    padding: 20,
+    alignItems: 'center',
+    gap: 4,
+  },
   // Tight lines, so the expanded cover can be as big as possible.
   track: { gap: 2 },
   addedBy: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },

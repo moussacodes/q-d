@@ -15,6 +15,7 @@ import {
   useScreenPalette,
 } from '@/components';
 import { useTheme } from '@/design';
+import { providerNames } from '@/domain/music-provider';
 import { roomPalette } from '@/features/playback/palette';
 import {
   EXPANDED_COVER_GAP,
@@ -24,6 +25,7 @@ import {
 import {
   AddSongFooter,
   Controls,
+  EmptyQueue,
   QueueList,
   RoomStrip,
   songCount,
@@ -31,7 +33,7 @@ import {
   TrackInfo,
   UpNextPeek,
 } from '@/features/room/RoomParts';
-import { hostAwayNote, HostNotice } from '@/features/room/HostNotice';
+import { hostAwayNote, HostNotice, ServiceMissingNotice } from '@/features/room/HostNotice';
 import { MatchNotice } from '@/features/room/MatchNotice';
 import { UnavailableNotice } from '@/features/room/UnavailableNotice';
 import { roomParams, useRoom, type RoomView } from '@/features/room/useRoom';
@@ -57,6 +59,7 @@ export default function Room() {
     nowPlayingAvailability: availability,
     host,
     pausedForHost,
+    serviceMissing,
     resumeAfterHost,
     skip,
     moveUp,
@@ -68,7 +71,8 @@ export default function Room() {
   // The host is asked to skip it; everyone else is told why it can't play.
   const missing = availability?.kind === 'unavailable';
   // The host's phone doesn't play a song it can't find, so only Skip works.
-  const playable = availability?.kind === 'playable' || availability?.kind === 'uncertain';
+  const playable =
+    (availability?.kind === 'playable' || availability?.kind === 'uncertain') && !serviceMissing;
   // Only the host's phone plays, so its controls wait for it (PRODUCT_SPEC.md §4).
   // A returning host's Play resumes the room; everyone else waits for that.
   const hostAway = host.kind !== 'connected';
@@ -120,12 +124,7 @@ export default function Room() {
       {room.queue.length ? (
         <QueueList room={room} controls={canControl ? { moveUp, moveDown, remove } : undefined} />
       ) : (
-        <View style={[styles.emptyQueue, { borderColor: colors.strokeStrong }]}>
-          <Text variant="bodyStrong">The queue is empty</Text>
-          <Text variant="caption" color="text2">
-            Songs people add show up here, in order.
-          </Text>
-        </View>
+        <EmptyQueue />
       )}
     </View>
   );
@@ -174,6 +173,13 @@ export default function Room() {
             hostName={room.hostName}
             onResume={resumeAfterHost}
           />
+
+          {serviceMissing ? (
+            <ServiceMissingNotice
+              service={providerNames[room.playsThrough]}
+              onOpenSettings={() => router.push('/settings')}
+            />
+          ) : null}
 
           {missing ? (
             <UnavailableNotice playsThrough={room.playsThrough} isHost={isHost} onSkip={skip} />
@@ -239,13 +245,5 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  emptyQueue: {
-    borderRadius: 16,
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    padding: 20,
-    alignItems: 'center',
-    gap: 4,
   },
 });
