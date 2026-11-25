@@ -190,6 +190,7 @@ ESLint enforces these rules (`no-restricted-imports` in `eslint.config.js`), so 
 - **Why:** several phones change one queue at the same time on flaky networks. If the server decides positions and permissions, two people adding at once can't corrupt the order, a retried request can't add a duplicate, and a modified client can't skip the host's rules.
 - **Realtime is a notification layer, not a data layer.** Broadcast events tell clients what changed so they refetch. Presence shows who's here and whether the host is connected. If an event is lost, a refetch fixes it.
 - Broadcasts are sent by the database, from inside the RPC that made the change (`private.broadcast_room_event()`), not by the client. That way no client can announce a change that didn't happen, and a rolled-back change announces nothing.
+- Built (enqueue_recording card): `enqueue_recording` (`supabase/migrations/20261125002000_enqueue_recording.sql`). It takes the room lock before assigning a position, so two people adding at once get one order, and `private.append_queue_entry()` is the one place an entry is added.
 - Built (RPC contracts card): the shared checks, the error convention and the idempotency machinery live in the `private` schema (`supabase/migrations/20261124000200_rpc_foundation.sql`). Each RPC is a `security definer` function in `public` with a pinned `search_path`, and `anon` can't execute any of them.
 
 ### 4.11 q’d sign-in vs. music-service authorization
@@ -327,6 +328,6 @@ Record each answer in [DECISIONS.md](DECISIONS.md) and update this file.
 
 1. **Where canonical (Apple catalog) search runs.** Guests without Apple Music, and Android or web clients, can't use on-device MusicKit search. An Edge Function holding an Apple Music API developer token would serve everyone the same results. On-device MusicKit is simpler but works only on iOS. Decided in the canonical search card.
 2. **How broadcasts are sent.** Decided 2026-11-24 (RPC contracts card): the RPC itself sends it, through `private.broadcast_room_event()` and `realtime.send()`. See [API_CONTRACTS.md § 4](API_CONTRACTS.md#4-realtime).
-3. **Queue position representation.** For example, integers with gaps or fractional ranks. Decided in the queue card. Clients never compute positions in either case.
+3. **Queue position representation.** Decided 2026-11-25 (enqueue_recording card): dense integers. Queued entries are `1..n` in play order, the playing entry is `0`, and only RPCs renumber them, under the room lock. See [API_CONTRACTS.md § enqueue_recording](API_CONTRACTS.md#enqueue_recording). Clients never compute positions.
 4. **Bottom-sheet library.** Pick one only when an interaction needs gestures that a modal route can't provide.
 5. **Future SwiftUI client.** After the demo, a SwiftUI client is planned against the same Supabase schema and contracts. The React Native app stays as the reference client and the eventual Android path, and the backend isn't rewritten. This is why `domain/` and the RPC contracts are kept platform-neutral.

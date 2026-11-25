@@ -2,6 +2,15 @@
 
 Product and technical decisions that are not obvious from the code. Newest first.
 
+## 2026-11-25 · enqueue_recording
+
+- **Queue positions are dense integers** (ARCHITECTURE.md open decision 3). Queued entries are `1..n` in play order and the playing entry is `0`, so `position` is also the place in line the toast shows. Queues are short (tens of songs), so renumbering on a reorder or removal is cheap, and it's easier to test and reason about than gaps or fractional ranks. A unique index on queued positions per room makes a repeated position impossible.
+- **The room lock decides the order.** `enqueue_recording` locks the room row before reading the last position, so additions made at the same moment are placed one after another in the order they took the lock.
+- **"Already in queue" says which kind.** `already_in_queue` carries `details.status` (`queued` or `playing`), so the app can ask "Already in queue. Add it again?" or "Playing now. Add it again?" (2026-11-19 · Search / add-song overlay) without a second request.
+- **"Nothing playing" starts the song.** The contract's rule is applied literally: if no entry is playing, the new one plays at once (position 0, `queue_length` 0). With today's RPCs a queue never has waiting songs while nothing plays, so this only happens in an empty room.
+- **An unknown `recording_id` is `invalid_input`** (`details.field = 'recording_id'`), like a missing one. Search results always come from `recordings`, so this means a client bug, not a user situation.
+- **No profile check.** Members already finished onboarding to join, so `enqueue_recording` doesn't repeat `profile_incomplete`.
+
 ## 2026-11-24 · create_room
 
 - **Room codes leave out look-alike characters.** Codes use `23456789ABCDEFGHJKLMNPQRSTUVWXYZ` (no `0`, `O`, `1` or `I`), so a code read aloud or typed from a screen can't be misread. Six characters still give about a billion codes. This answers part of PRODUCT_SPEC.md § 13; **a teammate should confirm it**.
