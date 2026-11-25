@@ -103,9 +103,10 @@ Why it's shaped this way: [ARCHITECTURE.md § 4.10](ARCHITECTURE.md#410-client-v
 - **Caller:** host. QR invites need a token separate from the room code, and something has to create it.
 - **Input:** `room_id uuid`, `idempotency_key uuid`
 - **Effect:** creates a high-entropy token (32 random bytes from two v4 UUIDs, 244 bits, as 43 unpadded base64url characters) that works for 24 hours, and revokes any older invite of the room. Only the token's SHA-256 hash is stored, in `room_invites.token_hash`.
-- **Returns:** `{ token, expires_at }`. The QR code encodes `qd://join?invite=<token>` (`buildInviteLink` and `parseInviteLink` in `src/domain/invite-link.ts`). Universal links can come later.
+- **Returns:** `{ token, expires_at }`. The QR code encodes `qd://join?invite=<token>`, which opens the app's `/join` route (`buildInviteLink` and `parseInviteLink` in `src/domain/invite-link.ts`). Universal links can come later.
 - **Errors:** `not_authenticated`, `invalid_input` (`field: 'idempotency_key'`), `room_not_found`, `room_ended`, `not_member`, `not_host`, `idempotency_conflict`
 - **Replay:** the stored result holds the invite's id and expiry, never the token. A replay gives the same invite a fresh token (same row, same `expires_at`) and the token from the lost response stops working. If that invite is no longer live (replaced, expired, or its room ended), the key counts as new and goes through every check.
+- **Note:** the server keeps only a hash, so the host's phone keeps the token it got and reuses it while the app runs (DECISIONS 2026-11-25 · Invite / QR screen). The mock answers with deterministic `mock-…` tokens.
 
 #### `join_room_by_invite` (Added)
 

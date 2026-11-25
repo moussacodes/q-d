@@ -65,6 +65,7 @@ export function RoomRulesEditor({
             <Text variant="label">{ruleLabels[name]}</Text>
             <SegmentedControl
               fill
+              accessibilityLabel={ruleLabels[name]}
               options={choices}
               value={rules[name].who}
               onChange={(who) => onChange(setAudience(rules, name, who))}

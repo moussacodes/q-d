@@ -1,4 +1,3 @@
-import { router } from 'expo-router';
 import { act, fireEvent, renderRouter, screen } from 'expo-router/testing-library';
 
 import { fillEmailForm } from '@/test/emailForm';
@@ -35,9 +34,9 @@ describe('guests', () => {
     await screen.findByText('Start a room or jump into one.');
 
     await act(async () => {
-      router.push({ pathname: '/join', params: { code: '9M2XR4' } });
+      fireEvent.changeText(await screen.findByLabelText('Room code'), '9M2XR4');
     });
-    await pressLabel('Join Kitchen Disco');
+    await pressLabel('Join');
     expect(screen).toHavePathname('/room/QD-9M2XR4');
 
     await pressLabel('Add a song');

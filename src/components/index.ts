@@ -17,6 +17,7 @@ export {
   useScreenPalette,
 } from './layout';
 export { Avatar, Logo, ProviderBadge, SegmentedControl, Toggle } from './primitives';
+export { QR_QUIET_ZONE, QrCode, qrPath } from './QrCode';
 export { ListenerRow, MiniPlayer, QueueRow, ServiceCard } from './rows';
 export { Text, type TextProps } from './Text';
 export { useMeasuredHeight, type HeightProbe } from './useMeasuredHeight';

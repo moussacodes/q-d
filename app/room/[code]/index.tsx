@@ -3,12 +3,10 @@ import { useState } from 'react';
 import { StyleSheet, useWindowDimensions, View } from 'react-native';
 
 import {
-  Button,
   Cover,
   Icon,
   IconButton,
   Logo,
-  Panel,
   Screen,
   SCREEN_GAP,
   SectionLabel,
@@ -17,7 +15,6 @@ import {
   useScreenPalette,
 } from '@/components';
 import { useTheme } from '@/design';
-import { otherProvider, providerNames } from '@/domain/music-provider';
 import { roomPalette } from '@/features/playback/palette';
 import {
   EXPANDED_COVER_GAP,
@@ -34,6 +31,7 @@ import {
   TrackInfo,
   UpNextPeek,
 } from '@/features/room/RoomParts';
+import { UnavailableNotice } from '@/features/room/UnavailableNotice';
 import { roomParams, useRoom, type RoomView } from '@/features/room/useRoom';
 
 /**
@@ -54,6 +52,7 @@ export default function Room() {
   );
   const track = room.nowPlaying;
   // 4.3: the song isn't on the service the host's phone plays through.
+  // The host is asked to skip it; everyone else is told why it can't play.
   const missing = track?.unavailableOn === room.playsThrough;
   useScreenPalette(roomPalette(room));
 
@@ -149,28 +148,8 @@ export default function Room() {
             </View>
           )}
 
-          {missing && isHost ? (
-            <Panel style={[styles.notice, { borderColor: colors.statusWarn }]}>
-              <View style={styles.noticeRow}>
-                <Icon name="alert" size={18} color={colors.statusWarn} />
-                <View style={styles.flex}>
-                  <Text variant="bodyStrong">Not on {providerNames[room.playsThrough]}</Text>
-                  <Text variant="caption" color="text2">
-                    This song isn’t on the service your phone plays through. Skip it, or switch to{' '}
-                    {providerNames[otherProvider(room.playsThrough)]} for the next song.
-                  </Text>
-                </View>
-              </View>
-              <View style={styles.noticeActions}>
-                <Button
-                  size="small"
-                  label="Skip"
-                  accessibilityLabel="Skip this song"
-                  onPress={skip}
-                />
-                <Button size="small" kind="secondary" label="Switch for next song" />
-              </View>
-            </Panel>
+          {missing ? (
+            <UnavailableNotice playsThrough={room.playsThrough} isHost={isHost} onSkip={skip} />
           ) : null}
 
           {track ? (
@@ -197,7 +176,6 @@ export default function Room() {
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1, gap: 2 },
   gap6: { gap: 6 },
   // Same gap as Screen's, so wrapping content in a page doesn't move it.
   page: { gap: SCREEN_GAP },
@@ -219,9 +197,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  notice: { gap: 12 },
-  noticeRow: { flexDirection: 'row', gap: 10 },
-  noticeActions: { flexDirection: 'row', gap: 8 },
   emptyQueue: {
     borderRadius: 16,
     borderWidth: 1,

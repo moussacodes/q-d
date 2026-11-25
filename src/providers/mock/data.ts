@@ -226,6 +226,18 @@ export const mockRooms: MockRoom[] = [
 export const findRoom = (code: string | undefined) =>
   mockRooms.find((room) => room.code === code) ?? mockRooms[0];
 
+/**
+ * Codes the mock `join_room_by_code` answers with an error, so each error
+ * state can be tried on a phone. `QD-STALE2` stands for an expired code, which
+ * answers exactly like a wrong one (`code_invalid`). Every other code that
+ * isn't a sample room's is wrong.
+ */
+export const mockJoinErrorCodes: Record<string, 'room_full' | 'room_ended' | 'code_invalid'> = {
+  'QD-FULL22': 'room_full',
+  'QD-ENDED2': 'room_ended',
+  'QD-STALE2': 'code_invalid',
+};
+
 export const mockSearchResults = [
   { ...mockNowPlaying, status: 'playing' as const },
   { ...mockQueue[1], status: 'queued' as const },

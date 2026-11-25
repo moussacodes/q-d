@@ -53,7 +53,8 @@ A broadcast that never arrives costs freshness but never correctness, because th
 | Navigation | Expo Router with typed routes | Built |
 | Styling | React Native `StyleSheet` and tokens in `src/design`. No UI kit, no NativeWind. | Built |
 | Fonts | Geist and Geist Mono (`@expo-google-fonts/*`) | Built |
-| Visuals | expo-image, expo-blur, react-native-svg | Built |
+| Visuals | expo-image, expo-blur, react-native-svg, `qrcode` (pure-JS QR encoder drawn with react-native-svg) | Built |
+| Sharing | expo-clipboard and React Native `Share` (invite links) | Built |
 | Server state | TanStack Query | Built: `src/services/queryClient.ts`, provided by `features/server-state/ServerStateProvider` in `app/_layout.tsx`. No screen queries Supabase yet |
 | Ephemeral state | Zustand, only for small room and player state | Planned |
 | Runtime contracts | Zod for env, RPC results and realtime payloads | Built for env (`src/services/env.ts`), domain schemas and realtime payload parsers (`src/domain`). Planned: RPC results (RPC contracts card) |
@@ -119,7 +120,7 @@ Each boundary below says what belongs on each side, the rule, and the reason. Wh
 | `src/services/` | `domain` | `features`, `components`, `providers`, `app/` |
 | `src/test/` | anything | — (production code must not import it) |
 
-**Known exception.** Some screen shells still import sample data from `src/test/fixtures/mock-data.ts`. That file now only re-exports `src/providers/mock/data.ts`, the mock mode's sample data. It's temporary scaffolding: each screen card replaces the import with a feature hook backed by mock or real providers (the room screen, Up next and Add a song already read the room through `features/room/useRoom`, and Add a song searches through `features/search/useCatalogSearch`). New code shouldn't add more imports from `src/test`.
+**Known exception.** Some screen shells still import sample data from `src/test/fixtures/mock-data.ts`. That file now only re-exports `src/providers/mock/data.ts`, the mock mode's sample data. It's temporary scaffolding: each screen card replaces the import with a feature hook backed by mock or real providers (the room screen, Up next and Add a song already read the room through `features/room/useRoom`, Add a song searches through `features/search/useCatalogSearch`, and Home, Start a room, Invite and the invite link route create, join and invite through `useStartRoom`, `useJoinRoom`, `useRoomInvite` and `useJoinByInvite`, backed by the mock RPCs in `features/room/mockServer.ts`). New code shouldn't add more imports from `src/test`.
 
 ESLint enforces these rules (`no-restricted-imports` in `eslint.config.js`), so they don't depend on memory. The known exception is a fixed list of files there. Remove a file from that list once it stops importing `src/test`. ESLint doesn't catch one feature importing another feature's internals, so reviewers check that.
 
@@ -153,7 +154,7 @@ ESLint enforces these rules (`no-restricted-imports` in `eslint.config.js`), so 
 
 - **Rule:** pure TypeScript only. That means types (`MusicProvider`, `PlaybackMode`, `Room`, `QueueEntry`, `CanonicalRecording`, `TrackMatch` and so on), Zod schemas and pure functions such as matching scores, text normalization and room-code formatting. No React, no I/O.
 - **Why:** this is the contract that the app, the providers, the database and a future SwiftUI client all agree on. Pure code is easy to unit-test, and the matching rules in particular need exhaustive tests (ISRC, durations, explicit/clean, version markers).
-- Status: **Built** (domain types card): Zod schemas with inferred types for every shape in [API_CONTRACTS.md § 6](API_CONTRACTS.md#6-shared-domain-types) (`music-provider.ts`, `room.ts`, `recording.ts`, `queue.ts`, `playback.ts`, `primitives.ts`), and the versioned realtime payload parsers from [§ 4](API_CONTRACTS.md#4-realtime) (`realtime.ts`). Matching is built in `matching/` (matching card). `invite-link.ts` builds and parses QR invite links (Built · QR invitations card).
+- Status: **Built** (domain types card): Zod schemas with inferred types for every shape in [API_CONTRACTS.md § 6](API_CONTRACTS.md#6-shared-domain-types) (`music-provider.ts`, `room.ts`, `recording.ts`, `queue.ts`, `playback.ts`, `primitives.ts`), and the versioned realtime payload parsers from [§ 4](API_CONTRACTS.md#4-realtime) (`realtime.ts`). Matching is built in `matching/` (matching card). `invite-link.ts` builds and parses QR invite links (Built · QR invitations card). Also **Built** (room screens stack): `room-rules.ts`, `time.ts`, `room-code.ts` (the room-code alphabet, input normalization and display), `room-name.ts` (1–40 characters, trimmed), `rpc-error.ts` (the § 2 error codes) and `invite.ts` (the app's invite links).
 
 ### 4.6 Providers (`src/providers/`)
 
@@ -305,7 +306,7 @@ Built · RLS card (`supabase/migrations/20261124000300_row_level_security.sql`, 
 | **Development build** (EAS or `npx expo run:ios`) | Anything native: MusicKit, Spotify, background audio | Needs the EAS profiles. Building iOS locally needs the Mac. |
 | **TestFlight** | Internal testing, demo day, public beta | Apple review for external testers |
 
-The screen shells use only modules that ship inside Expo Go (expo-image, expo-blur, react-native-svg, expo-font). Keep it that way for UI code until the development build exists, so Baron can review in Expo Go.
+The screen shells use only modules that ship inside Expo Go (expo-image, expo-blur, react-native-svg, expo-font, expo-clipboard) plus pure-JavaScript packages (`qrcode`). Keep it that way for UI code until the development build exists, so Baron can review in Expo Go.
 
 ## 10. Testing strategy
 

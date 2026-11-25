@@ -171,6 +171,36 @@ Built, **untested on a device and against real Spotify.** Every test runs agains
 - **Honest copy** (`features/connections/connectionCopy.ts`). A Connect that didn't work says why on the service card: "Spotify Premium is needed to play rooms through Spotify.", "This Spotify account isn’t on q’d’s tester list yet. …", "Spotify isn’t connected yet. Tap Connect to try again.". Start room stays disabled.
 - **Redirect URI: open.** It's `Linking.createURL('spotify-auth')`: `qd://spotify-auth` in a development build, and an `exp://<computer's address>/--/spotify-auth` URL in Expo Go. Spotify only accepts redirect URIs listed in its dashboard, and **the Spotify developer app card isn't done**, so nothing is registered and no client ID exists yet. Whether testing in Expo Go is practical (its address changes) is for that card to decide.
 
+## 2026-11-25 · Invite / QR screen
+
+Figma audit of 3.5 Invite people. Figma wasn't re-checked: a person still compares it with `20 · Mobile`. Mock mode only.
+
+- **Layout (from `feat/invite-qr`, Baron's work in progress).** The code card sits centered under the header, the QR code fills the card's width up to 320 pt so a phone across the table can scan it, and Copy link and Share are pinned to the bottom of the sheet (`SheetScreen` gained `contentStyle` for this; it already had a footer slot). Figma 3.5 places them differently, so **a teammate should confirm** the layout.
+- **The QR code is real.** It's drawn with react-native-svg from the `qrcode` package's pure-JavaScript encoder (`src/components/QrCode.tsx`), error correction M and the standard four-module quiet zone, so it works in Expo Go and on the web with no native code. `expo-clipboard` copies the link and React Native's `Share` shares it; both ship in Expo Go.
+- **It encodes an invite link, never the room code.** The link is `qd://join?invite=<token>` (API_CONTRACTS.md, `create_room_invite`). Tests check that no drawn QR value is or contains the room code. The code is shown on its own for reading aloud, and screen readers spell it out ("Q D, 7 K 4 F 9 X").
+- **Mock tokens are deterministic and labeled.** They're `mock-` plus 32 hex characters (the length of a 128-bit token), made from the room and a counter, so unlike real tokens they aren't secret. The sheet shows a "Mock invite · not a working link" chip. Real tokens come from the server's random generator.
+- **The host's phone keeps the token.** The server stores only a hash (DECISIONS 2026-11-24 · Row level security, on the DB branches), so the app can't read a token back. Opening Invite again reuses the link this phone made; the first open calls `create_room_invite`. After an app restart (once tokens aren't mock), opening Invite would make a new link and the old QR code would stop working. **A teammate should confirm** that, or whether the token should be kept in SecureStore.
+- **"Make a new link"** calls `create_room_invite` again, which replaces the old token (the contract's "the host can replace it"). The sheet says the old QR code and link stop working and the room code stays the same. Figma has no control for this.
+- **Only the host invites** (PRODUCT_SPEC.md §4). Anyone else who reaches the sheet (the listener preview, a stale link) sees "Only <host> can invite people." with no code, QR code, link or Share, and no invite is made.
+- **The subtitle follows the rules.** It says guests can "join and add songs" only while everyone can add songs; otherwise just "join". Both say no music service is needed.
+- **Loading and errors.** While the invite is being made the QR area says "Making an invite link…" and Copy link and Share are disabled. An error shows in words with Try again. If "Make a new link" fails, the current QR code and link stay, and the line under the button says so ("The current link still works."). A kept invite that has expired isn't shown: opening Invite makes a new one. "Copy link" turns into "Link copied" for two seconds and is announced to screen readers.
+- **An invite link opens `/join`.** The contract's link needs a route, so `app/join.tsx` comes back, but only to handle `?invite=`: it calls `join_room_by_invite` and opens the room, or explains the error (`invite_invalid`: expired or replaced, plus `room_full`, `room_ended`, `rate_limited`) with Go to Home. Without a token it goes Home, so typing a code still happens only on Home. This reuses the path the 2026-11-20 entry removed, so **a teammate should confirm** it. Wrong tokens count toward the same mock attempt limit as wrong codes.
+- **Not done:** `qd://` links don't open Expo Go (it uses `exp://`), so scanning needs a development build. Someone signed out who opens a link lands on Welcome and the token is lost. Universal links and keeping the token through sign-in come later.
+
+## 2026-11-25 · Create room and join room screens
+
+Figma audit of 2.4 Start a room and of joining with a code, which now lives on Home (see "Join with a code on Home" below). Figma wasn't re-checked: a person still compares both with `20 · Mobile`. Mock mode only; the RPC cards wire the real `create_room` and `join_room_by_code`.
+
+- **Joining waits for the server's answer.** Home's arrow (or Go) calls `join_room_by_code` and opens the room only when it says yes. While it's out, the line under the field says "Joining QD-…", and the field and the arrow are disabled, so a second tap sends nothing. Every tap sends its own idempotency key.
+- **Every join error the contract names has its own line** under the field, and the code stays so it can be fixed: `code_invalid` ("doesn't match a room… mistyped or expired"), `room_full`, `room_ended`, `rate_limited` (with the wait from `retry_after_seconds`), `profile_incomplete` and `not_authenticated`. A wrong code and an expired one get the same words, as the contract requires, so codes can't be probed. Any other code reads "Couldn't join right now", never a raw code. Editing the code clears the line.
+- **Look-alike characters are pointed out, not changed.** Codes never use `0`, `O`, `1` or `I` (DECISIONS 2026-11-24 · create_room, on `feat/create-room-rpc`, which **a teammate still has to confirm**). A code with one says so under the field and keeps Join disabled, without calling the server. They can't be mapped to the right character, because both halves of each pair are left out.
+- **Mock join answers.** This replaces "Any other complete code opens Kitchen Disco" from the 2026-11-20 entry: the mock now answers like the contract, so the error states can be tried. A sample room's code opens that room. `QD-FULL22` is full, `QD-ENDED2` has ended, `QD-STALE2` stands for an expired code, and anything else is wrong. After five wrong codes in a row, joining pauses for 30 seconds (`rate_limited`), checked before the code, as the contract says. Those two numbers are mock values; the real attempt limits are still open (PRODUCT_SPEC.md § 13).
+- **Start a room checks the name:** trimmed, 1–40 characters, like `create_room`. The field stops at 40 characters, and a blank name says "Give the room a name." with Start room disabled. It still starts filled in with "Sunday Slow Burn".
+- **No mode choice.** Start a room sends `mode: 'aux'` and never mentions `sync`; a test checks it.
+- **Start room waits for `create_room`.** It reads "Starting…" and ignores more taps until the answer, then opens the room. An error (`provider_required`, `profile_incomplete`, `invalid_input`…) appears under the button in words. The screen still asks for a service before it lets you start, so a guest is never asked for one.
+- **The rule choices are labeled.** Each Everyone / Chosen / Only you row reads its rule ("Add songs", "Play, skip, reorder, remove") to screen readers.
+- **Code.** `src/domain/room-code.ts` holds the alphabet and code helpers, `src/domain/room-name.ts` the name rule and `src/domain/rpc-error.ts` the error codes. The mock RPCs are `src/features/room/mockServer.ts`, the copy is `errorCopy.ts`, and Home's field is `JoinWithCode.tsx`. Home and Start a room no longer import sample data from `src/test`, so they're off the lint exception list.
+
 ## 2026-11-24 · Supabase client and device storage
 
 - **The Supabase session lives in `expo-sqlite`'s `localStorage`,** which is what Supabase's Expo guide recommends now and ships in Expo Go. On the web it's the browser's own `localStorage`, or memory where storage is blocked. The session isn't encrypted at rest there; that's Supabase's standard setup, and the session is revocable from the server. Music-service tokens are a different case and go to SecureStore.
@@ -277,6 +307,35 @@ The rules are PRODUCT_SPEC.md §6. These are the numbers and edge cases the matc
 - **Idempotency keys get their own table** (`idempotency_keys`) instead of a column on each table, so every RPC uses the same machinery.
 - **Database tests run on PGlite inside Jest** (ARCHITECTURE.md § Database tests), because Windows has no Docker or Supabase CLI. A test-only shim provides Supabase's roles, `auth` and `realtime`. The same tests should also run against `supabase start` on the Mac.
 
+## 2026-11-24 · Settings: music services and account
+
+- **Settings can disconnect a service** (PRODUCT_SPEC.md §3: connect, change and disconnect). In Settings a connected service shows **Disconnect** where the other screens show the Connected chip. Onboarding step 2 and Start a room still only connect. Disconnecting the service rooms play through hands "Play rooms through" to the other one, or hides it when none is left, so Start a room asks for a service again. Mock only: the real flow also has to revoke the provider authorization and remove the `provider_connections` row, which `API_CONTRACTS.md` doesn't cover yet. That's for the provider and RPC cards.
+- **Only Apple Music and Spotify appear.** Figma's "YouTube Music · Ready" is illustrative copy, and tests check that no other service, "Ready" or "Soon" appears.
+- **"Change your color" works.** It opens onboarding step 1's six swatches, and a pick is saved at once. "Done" closes them.
+- **"Delete account" says it isn't available yet** instead of looking like a link that does nothing. Account deletion (PRODUCT_SPEC.md §7) needs Supabase and comes before the public beta.
+- **A blank display name shows "You"** in the header while you type. As before, it isn't saved.
+- A person still compares both tabs with Figma `20 · Mobile`.
+
+## 2026-11-24 · Empty queue and unavailable song states
+
+- **"Switch for next song" appears only when the host has connected the other service** (PRODUCT_SPEC.md §6). Without it, the 4.3 notice asks the host to skip ("Skip it to keep the room going.") and no longer offers a switch the host can't make. The button still does nothing; switching is the provider-switching card.
+- **Listeners see the unavailable song too.** Their notice says the song isn't on the room's service, so the host's phone can't play it, and that the host can skip it. It has no buttons. Before, only the host saw anything.
+- **An empty queue behind a playing song says so.** The Up next bar reads "Nothing queued yet" under "Up next · 0 songs", and the queue shows "The queue is empty". No autoplay is promised: the mock doesn't autoplay, and the real "Autoplay by …" label comes with the provider cards.
+- The notice moved to `src/features/room/UnavailableNotice.tsx`. A person still compares 4.2 and 4.3 with Figma `20 · Mobile`.
+
+## 2026-11-24 · Listeners: audit
+
+- **Listeners shows who's in the room** (Figma 3.6): everyone by name, you marked "(you)", the host first with "Host · plays the music" and a Host chip, and everyone else "In the room". The host edits the rules and picks chosen people there; listeners read the rules as text. A person still compares it with Figma `20 · Mobile`.
+- **The host's row names the service the room plays through.** It showed the host's sample service, so a room started through Apple Music still said Spotify.
+- **"1 person in the room",** not "1 people".
+
+## 2026-11-24 · Home: idle and live states
+
+- **Idle (2.1)** is Home with no room: the greeting, Start a room, the code field and Recent rooms, with no mini player and no Live row. **Live (2.2)** is Home while you're in a room: that room's row says Live and "N listening now", and while a song plays the mini player sits at the foot of the screen. A room with nothing playing is still Live, without a mini player.
+- **The Live row shows the room's name as it was started.** It showed the sample name, so a room started as "Friday Fade" read "Sunday Slow Burn" on Home while the mini player said "Friday Fade".
+- **The mini player's Play/Pause is disabled** when the room's control rule leaves you out. Before, it looked active and did nothing.
+- A person still compares both states with Figma `20 · Mobile`.
+
 ## 2026-11-20 · Room screen: expanded cover only
 
 - **A playing song always shows the expanded cover (Figma 3.2).** The resize button is gone, so the smaller-cover layout (3.1) no longer appears while a song plays. The cover is as big as it can be while the song info and playback controls still fit above the Up next bar. The full queue is below them.
@@ -294,6 +353,15 @@ The rules are PRODUCT_SPEC.md §6. These are the numbers and edge cases the matc
 - **Mock mode.** The room store holds the rules with the queue, and `src/domain/room-rules.ts` decides who's allowed. The listener preview (`?view=listener`) looks at the room as its first listener, Maya, so choosing Maya in Listeners shows what a chosen listener gets.
 - **Sample data fix.** "Late Drive Home" and "Study Hall" marked you as their host, although Priya and Theo host them, so you'd have had full control there. Their named hosts are the hosts now, and a test checks it.
 - **Still post-demo:** "Ask before people join" and automatic host transfer. `docs/PLAN.md` §2 still lists chosen people and guest skip as post-demo, so the team updates it.
+
+## 2026-11-20 · Join with a code on Home
+
+- **The Join with a code screen (Figma 2.3, `/join`) is gone.** Baron asked for it. It was pushed as work in progress (`feat/join-from-home`) and finished in "Create room and join room screens" (2026-11-25). PLAN.md §6 still lists a "Join room" screen, so **a teammate should confirm** the removal. People type the code in Home's "Join with a code" field. Once all six characters are in, the arrow (or the keyboard's Go key) opens the room. There's no "Room found" preview step before it. Back from the room goes to Home.
+- **Pasting a whole code works.** The field drops a pasted `QD-` prefix and anything that isn't a letter or digit (`src/domain/room-code.ts`), so `QD-7K4F9X` from a message lands as `7K4F9X`. The Join screen's "Paste from clipboard" chip went with the screen.
+- **Mock mode.** A sample room's code opens that room. Any other complete code opens Kitchen Disco, as the Join screen did. The real `join_room_by_code` will say when a code doesn't exist. *(Replaced on 2026-11-25: the mock answers wrong codes with `code_invalid`.)*
+- **Onboarding step 3.** "Join with a code" finishes onboarding on Home, where the code field is.
+- **Copy.** The Join screen said guests don't need a music service. Welcome and onboarding step 2 still say it.
+- **Figma** still has frame 2.3. It needs removing there too.
 
 ## 2026-11-19 · Search / add-song overlay
 
@@ -349,7 +417,7 @@ The rules are PRODUCT_SPEC.md §6. These are the numbers and edge cases the matc
 - **Three sign-in states.** Signed out, onboarding (signed in, profile not finished) and ready. They live in the mock session for now; Supabase Auth and the profile row decide them once the auth cards land.
 - **Route guards, not redirects in screens.** `app/_layout.tsx` puts every screen in one `Stack.Protected` group per state. Opening a screen from another state's group lands on that state's first screen: Welcome, onboarding step 1 or Home. Welcome stays at `/`.
 - **Mock sign-in.** "Continue with Apple" or "Google" on Welcome, and "Create account", start a new account and go to onboarding. Sign in (form, Apple or Google) is a returning user and goes to Home. Real auth decides new versus returning.
-- **Step 3 finishes onboarding.** "Start a room" and "Join with a code" open that screen with Home underneath, so Back goes Home. "I’ll do this later" goes Home.
+- **Step 3 finishes onboarding.** "Start a room" opens that screen with Home underneath, so Back goes Home. "Join with a code" and "I’ll do this later" go Home. *(Join with a code opened its own screen until 2026-11-20.)*
 - **Sign out** leaves the room and returns to Welcome.
 - **Every launch starts signed out** in mock mode. Nothing is persisted.
 - **`/dev` switches state.** Opening a screen from the screen index switches the mock session to the state that screen needs, so every screen can still be reviewed.
@@ -412,7 +480,7 @@ The Figma page `20 · Mobile` is an initial direction. Where it conflicts with p
   - Copy now says the host's phone plays the music, and that guests don't need a music service: Welcome, onboarding step 2, Join, Invite, empty room and Add a song.
   - **4.3 "Not on your service"** is shown from the host's side. The song isn't on the service the host's phone plays through, so the host can skip it or switch services for the next song (plan.md §2). A listener no longer "sits it out".
   - Settings no longer has "When a song isn't on your service" (Play via YouTube Music / Sit it out).
-- **Room codes have six characters** (QD-7K4F9X), not four. The Join screen has six code boxes.
+- **Room codes have six characters** (QD-7K4F9X), not four. The Join screen has six code boxes. *(The Join screen was removed on 2026-11-20; the code is entered on Home.)*
 - **Demo room rules are fixed.** *Replaced on 2026-11-20 by "Room rules the host chooses".*
   - Everyone can add songs. Only the host can play, skip, reorder or remove.
   - Start a room and Listeners show these rules as text. "Chosen people", "Ask before people join" and per-person skip chips are post-demo, so they're absent.

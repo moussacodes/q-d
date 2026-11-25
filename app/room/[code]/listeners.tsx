@@ -24,9 +24,13 @@ export default function ListenersSheet() {
   const { room, isHost, you, setRules } = useRoom(params.code, params.view);
   const { rules } = room;
   const picking = isHost && ruleNames.some((name) => rules[name].who === 'chosen');
+  const count = room.people.length;
   return (
     <SheetScreen>
-      <SheetHeader title="Listeners" subtitle={`${room.people.length} people in the room`} />
+      <SheetHeader
+        title="Listeners"
+        subtitle={count === 1 ? '1 person in the room' : `${count} people in the room`}
+      />
       {isHost ? (
         <View style={styles.group}>
           <SectionLabel>Room rules</SectionLabel>
@@ -43,8 +47,8 @@ export default function ListenersSheet() {
         </Panel>
       )}
       <View>
-        <SectionLabel right={`${room.people.length}`}>People</SectionLabel>
-        {picking && room.people.length <= 1 ? (
+        <SectionLabel right={`${count}`}>People</SectionLabel>
+        {picking && count <= 1 ? (
           <Text variant="caption" color="text2">
             Nobody else is here yet. Invite people, then choose them here.
           </Text>
@@ -56,7 +60,8 @@ export default function ListenersSheet() {
             initial={person.name[0]}
             avatarColor={person.color}
             status={person.isHost ? 'Host · plays the music' : 'In the room'}
-            provider={person.isHost ? person.provider : undefined}
+            // The service the room plays through, which the host chose for it.
+            provider={person.isHost ? room.playsThrough : undefined}
             trailing={
               person.isHost ? (
                 <Chip label="Host" />

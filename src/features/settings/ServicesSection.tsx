@@ -35,10 +35,18 @@ function describe(
 
 /**
  * Music-service cards plus the "Play rooms through" choice. Shared by
- * onboarding step 2, Start a room and Settings → Music services.
+ * onboarding step 2, Start a room and Settings → Music services. With
+ * `manage` (Settings), a connected service can be disconnected
+ * (PRODUCT_SPEC.md §3).
  */
-export function ServicesSection({ showPicker = true }: { showPicker?: boolean }) {
-  const { connections, problems, connect } = useProviderConnections();
+export function ServicesSection({
+  showPicker = true,
+  manage = false,
+}: {
+  showPicker?: boolean;
+  manage?: boolean;
+}) {
+  const { connections, problems, connect, disconnect } = useProviderConnections();
   return (
     <View style={styles.group}>
       {supportedProviders.map((provider) => (
@@ -49,6 +57,7 @@ export function ServicesSection({ showPicker = true }: { showPicker?: boolean })
           description={describe(provider, connections[provider], problems[provider])}
           state={connections[provider] ? 'connected' : 'connect'}
           onConnect={() => connect(provider)}
+          onDisconnect={manage ? () => disconnect(provider) : undefined}
         />
       ))}
       {showPicker ? <PlaysThroughPicker /> : null}

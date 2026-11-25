@@ -346,7 +346,11 @@ export function UpNextPeek({ room, canAdd }: { room: LiveRoom; canAdd: boolean }
             <Text variant="label" numberOfLines={1}>
               {next.title} · {next.artist}
             </Text>
-          ) : null}
+          ) : (
+            <Text variant="label" color="text2" numberOfLines={1}>
+              Nothing queued yet
+            </Text>
+          )}
         </View>
         <Icon name="chevron-up" size={18} color={colors.text2} />
       </Pressable>

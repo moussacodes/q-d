@@ -151,6 +151,7 @@ type MiniPlayerProps = {
   /** 0–1 */
   progress: number;
   onPress?: () => void;
+  /** Without it (the room's rules leave you out), Play/Pause is disabled. */
   onTogglePlay?: () => void;
 };
 
@@ -193,9 +194,14 @@ export function MiniPlayer({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={playing ? 'Pause' : 'Play'}
+          disabled={!onTogglePlay}
           onPress={onTogglePlay}
           hitSlop={6}
-          style={[styles.playButton, { backgroundColor: colors.accent }]}
+          style={[
+            styles.playButton,
+            { backgroundColor: colors.accent },
+            !onTogglePlay && styles.playDisabled,
+          ]}
         >
           <Icon name={playing ? 'pause' : 'play'} size={20} color={colors.onAccent} />
         </Pressable>
@@ -221,10 +227,19 @@ type ServiceCardProps = {
   description: string;
   state: 'connected' | 'connect' | 'ready';
   onConnect?: () => void;
+  /** Settings only: a connected service gets a Disconnect button. */
+  onDisconnect?: () => void;
 };
 
 /** Figma "Service Card": a music service with its connection state. */
-export function ServiceCard({ provider, name, description, state, onConnect }: ServiceCardProps) {
+export function ServiceCard({
+  provider,
+  name,
+  description,
+  state,
+  onConnect,
+  onDisconnect,
+}: ServiceCardProps) {
   const { colors } = useTheme();
   return (
     <View
@@ -245,7 +260,18 @@ export function ServiceCard({ provider, name, description, state, onConnect }: S
           {description}
         </Text>
       </View>
-      {state === 'connected' ? <Chip tone="ok" icon="check" label="Connected" /> : null}
+      {state === 'connected' && !onDisconnect ? (
+        <Chip tone="ok" icon="check" label="Connected" />
+      ) : null}
+      {state === 'connected' && onDisconnect ? (
+        <Button
+          size="small"
+          kind="secondary"
+          label="Disconnect"
+          accessibilityLabel={`Disconnect ${name}`}
+          onPress={onDisconnect}
+        />
+      ) : null}
       {state === 'connect' ? <Button size="small" label="Connect" onPress={onConnect} /> : null}
       {state === 'ready' ? <Chip label="Ready" /> : null}
     </View>
@@ -297,6 +323,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  playDisabled: { opacity: 0.4 },
   progressTrack: {
     position: 'absolute',
     left: 9,

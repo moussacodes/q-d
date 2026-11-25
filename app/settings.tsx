@@ -1,6 +1,6 @@
 import { useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import {
   Avatar,
@@ -25,6 +25,7 @@ import {
   useMockSession,
   type SignInMethod,
 } from '@/features/session/MockSession';
+import { AvatarColorPicker } from '@/features/settings/AvatarColorPicker';
 import { ServicesSection } from '@/features/settings/ServicesSection';
 
 type Tab = 'services' | 'account';
@@ -43,6 +44,7 @@ export default function Settings() {
   const params = useLocalSearchParams<{ tab?: Tab }>();
   const [tab, setTab] = useState<Tab>(params.tab === 'account' ? 'account' : 'services');
   const [name, setName] = useState(user.name);
+  const [pickingColor, setPickingColor] = useState(false);
 
   return (
     <Screen
@@ -69,19 +71,32 @@ export default function Settings() {
             Connect a service to host rooms from this phone. Joining a friend’s room works without
             one.
           </Text>
-          <ServicesSection />
+          <ServicesSection manage />
         </>
       ) : (
         <>
           <View style={styles.profile}>
-            <Avatar initial={name[0] ?? 'Y'} color={user.color} size={40} />
+            <Avatar initial={name.trim()[0] ?? 'Y'} color={user.color} size={40} />
             <View>
-              <Text variant="heading">{name || 'You'}</Text>
-              <Text variant="caption" color="text2">
-                Change your color
-              </Text>
+              <Text variant="heading">{name.trim() || 'You'}</Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ expanded: pickingColor }}
+                onPress={() => setPickingColor((open) => !open)}
+                hitSlop={8}
+              >
+                <Text variant="caption" color="text2">
+                  {pickingColor ? 'Done' : 'Change your color'}
+                </Text>
+              </Pressable>
             </View>
           </View>
+          {pickingColor ? (
+            <AvatarColorPicker
+              value={user.color}
+              onChange={(color) => saveProfile({ name: user.name, color })}
+            />
+          ) : null}
           <TextField
             label="Display name"
             value={name}
@@ -101,9 +116,15 @@ export default function Settings() {
             </Panel>
           </View>
           <Button block kind="secondary" icon="log-out" label="Sign out" onPress={signOut} />
-          <Text variant="caption" color="danger" style={styles.center}>
-            Delete account
-          </Text>
+          {/* Account deletion (PRODUCT_SPEC.md §7) needs the real backend. */}
+          <View style={styles.delete} accessibilityState={{ disabled: true }} accessible>
+            <Text variant="caption" color="danger" style={styles.dim}>
+              Delete account
+            </Text>
+            <Text variant="caption" color="text3">
+              Not available in this preview yet.
+            </Text>
+          </View>
         </>
       )}
     </Screen>
@@ -114,5 +135,6 @@ const styles = StyleSheet.create({
   profile: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   group: { gap: 10 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 14 },
-  center: { alignSelf: 'center' },
+  delete: { alignItems: 'center', gap: 2 },
+  dim: { opacity: 0.5 },
 });

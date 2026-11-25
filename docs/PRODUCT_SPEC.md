@@ -78,6 +78,7 @@ These are out of scope for the demo and the beta. Don't build them without a dec
 - A room holds up to **15 signed-in participants**, including the host.
 - **Room codes** have six characters and are shown as `QD-7K4F9X`.
   - Joining by code requires sign-in.
+  - The code is entered on Home. A complete code opens the room; there's no separate join screen.
   - Codes expire, are checked for collisions, and have strict attempt limits per user and per IP address.
 - **QR invitations** use a separate high-entropy token, never the short room code, so a QR code can't be guessed from the room code or the other way round.
 - Ended-room history is kept for 90 days.
@@ -233,12 +234,12 @@ Numbers match the Figma page and the in-app screen index at `/dev`.
 | 1.4 | Onboarding 2 · Music services | `/onboarding/services` |
 | 1.5 | Onboarding 3 · Start or join | `/onboarding/start` |
 | 2.1 / 2.2 | Home · nothing playing / room playing | `/home` |
-| 2.3 | Join with a code | `/join` |
 | 2.4 | Start a room | `/create-room` |
 | 3.1 | Room | `/room/[code]` |
 | 3.3 | Up next | `/room/[code]/queue` |
 | 3.4 | Add a song | `/room/[code]/add-song` |
 | 3.5 | Invite people | `/room/[code]/invite` |
+| — | Invite link (scanned QR or shared link) | `/join?invite=…` |
 | 3.6 | Listeners | `/room/[code]/listeners` |
 | 4.1–4.3 | Listener view, empty queue, song not on host's service | `/room/[code]?view=…` |
 | 5.1 / 5.2 | Settings · music services / account | `/settings` |
