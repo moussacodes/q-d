@@ -15,6 +15,7 @@ import {
 } from '@/domain/auth';
 
 import { log } from './logger';
+import { providerCredentials, type ProviderCredentialStore } from './providerCredentials';
 import { getSupabase } from './supabase';
 
 /**
@@ -324,6 +325,23 @@ export async function signOut(client: SupabaseClient | null = getSupabase()): Pr
     return { ok: true, data: undefined };
   } catch (error) {
     return report('sign_out', error);
+  }
+}
+
+/**
+ * Removes every music-service credential saved on this device. Called
+ * whenever the device returns to signed out (Sign out, or Supabase ending the
+ * session), so the next person to sign in here never inherits someone
+ * else's Apple Music or Spotify tokens. Never throws; a failure is logged
+ * without the credentials.
+ */
+export async function clearProviderCredentials(
+  store: Pick<ProviderCredentialStore, 'clearAll'> = providerCredentials,
+): Promise<void> {
+  try {
+    await store.clearAll();
+  } catch (error) {
+    authLog.warn('Could not clear provider credentials', failureContext(error, 'unknown'));
   }
 }
 

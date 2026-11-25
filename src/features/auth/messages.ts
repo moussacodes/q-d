@@ -35,7 +35,7 @@ export const fieldErrorMessages: Record<EmailFieldError | PasswordFieldError, st
   email_invalid: 'Enter an email address like you@example.com.',
   password_missing: 'Enter your password.',
   password_short: `Use at least ${MIN_PASSWORD_LENGTH} characters.`,
-  password_long: `Use at most ${MAX_PASSWORD_LENGTH} characters.`,
+  password_long: `Use a shorter password: at most ${MAX_PASSWORD_LENGTH} characters, fewer with emoji or accented letters.`,
 };
 
 const methodNames: Record<SignInMethod, string> = {

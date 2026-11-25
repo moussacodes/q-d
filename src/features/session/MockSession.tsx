@@ -4,7 +4,7 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import type { AuthStatus, SignInMethod } from '@/domain/auth';
 import type { MusicProvider } from '@/domain/music-provider';
 import { findRoom, mockUser, type MockRoom } from '@/providers/mock/data';
-import { signOut as signOutOfSupabase } from '@/services/auth';
+import { clearProviderCredentials, signOut as signOutOfSupabase } from '@/services/auth';
 import { isLiveAuth } from '@/services/dataMode';
 
 /**
@@ -145,6 +145,8 @@ export function MockSessionProvider({ children }: { children: ReactNode }) {
       setHosted(null);
       switchAccount({ returning: false, method: 'email', profile: null });
       go('signedOut');
+      // Music-service tokens belong to the account that saved them.
+      void clearProviderCredentials();
     };
     // Dev previews can open Home without onboarding; they show the sample profile.
     const profile = account.profile ?? { name: mockUser.name, color: mockUser.color };
