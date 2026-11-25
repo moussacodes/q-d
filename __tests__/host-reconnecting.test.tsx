@@ -181,6 +181,56 @@ describe('the grace period', () => {
   });
 });
 
+describe('the countdown', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('counts down every second for listeners, then pauses at 30 s', async () => {
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate', 'queueMicrotask'] });
+    await signIn();
+    await openRoom('QD-7K4F9X', 'reconnecting');
+    expect(await screen.findByText(/back in 30 s/)).toBeVisible();
+
+    await act(async () => {
+      jest.advanceTimersByTime(10_000);
+    });
+    expect(await screen.findByText(/back in 20 s/)).toBeVisible();
+
+    await act(async () => {
+      jest.advanceTimersByTime(19_000);
+    });
+    expect(await screen.findByText(/back in 1 s/)).toBeVisible();
+    expect(screen.queryByText('Paused')).toBeNull();
+
+    await act(async () => {
+      jest.advanceTimersByTime(1_000);
+    });
+    expect(await screen.findByText('Paused')).toBeVisible();
+    expect(screen.queryByText('Host reconnecting')).toBeNull();
+    expect(screen.getByText('7 songs')).toBeVisible();
+  });
+});
+
+describe('queue edits', () => {
+  it('stay on while the host’s phone is away: they go to the room, not the phone', async () => {
+    await signIn();
+    await openRoom('QD-7K4F9X');
+    await screen.findByLabelText('Pause');
+    await hostPhone('leaves');
+    expect(await screen.findByText('Reconnecting')).toBeVisible();
+    expect(screen.getByLabelText('Skip')).toBeDisabled();
+
+    await press('Reorder or remove Always');
+    await press('Move Always up');
+    await press('Reorder or remove Lovers Rock');
+    await press('Remove Lovers Rock');
+    expect(screen.getByText('6 songs')).toBeVisible();
+    expect(screen.queryByText('Lovers Rock')).toBeNull();
+    expect(screen.getByLabelText('Add a song')).toBeEnabled();
+  });
+});
+
 describe('the mini player', () => {
   it('turns Pause off while the host’s phone is away', async () => {
     await signIn();

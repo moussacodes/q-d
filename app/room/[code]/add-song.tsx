@@ -16,6 +16,7 @@ import {
   TextField,
 } from '@/components';
 import { useTheme } from '@/design';
+import { canPlayOnHostPhone } from '@/domain/availability';
 import { providerNames, type MusicProvider } from '@/domain/music-provider';
 import { formatArtists } from '@/domain/recording';
 import { formatDuration } from '@/domain/time';
@@ -42,6 +43,8 @@ type Added = {
   trackId: string;
   title: string;
   playingNow: boolean;
+  /** The host's phone can play it: not missing from, or unmatched on, the room's service. */
+  playable: boolean;
   queueLength: number;
 };
 
@@ -88,6 +91,7 @@ export default function AddSongSheet() {
       trackId: result.track.providerTrackId,
       title: result.track.title,
       playingNow: outcome.playingNow,
+      playable: canPlayOnHostPhone(resultAvailability(result, room.playsThrough)),
       queueLength: outcome.queueLength,
     });
     setAddedIds((ids) => [...ids, result.track.providerTrackId]);
@@ -113,7 +117,11 @@ export default function AddSongSheet() {
             <Icon name="check" size={16} color={colors.bg} />
             <Text variant="label" color={colors.bg} style={styles.flex}>
               {added.title} added ·{' '}
-              {added.playingNow ? 'playing now' : `${ordinal(added.queueLength)} in line`}
+              {added.playingNow
+                ? added.playable
+                  ? 'playing now'
+                  : `up now · not on ${service}`
+                : `${ordinal(added.queueLength)} in line`}
             </Text>
             {canUndo ? (
               <Pressable
