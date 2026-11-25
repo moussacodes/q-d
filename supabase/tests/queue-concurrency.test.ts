@@ -9,8 +9,11 @@
  * arrive in, interleaved across members and operations, the queue stays
  * correct (one playing entry, queued positions 1..n, every success applied
  * exactly once, replays identical). A structural test checks that every queue
- * RPC takes the room lock before it writes. On a Supabase local stack
- * (`supabase start`, Mac) the same file runs against real parallel backends.
+ * RPC takes the room lock before it reads or writes the queue. The harness
+ * only targets PGlite today; running this file against real parallel backends
+ * (a Supabase local stack, `supabase start` on the Mac) needs a harness that
+ * connects there, which doesn't exist yet. Until then, parallel blocking is
+ * unproven here.
  */
 import { createTestDb, newKey, type DbError, type TestDb, type TestUser } from './harness/db';
 import {
@@ -176,6 +179,29 @@ describe('retries at the same moment', () => {
     expect(outcomes.filter((o) => o.ok)).toHaveLength(1);
     expect(outcomes.find((o) => !o.ok)).toEqual({ ok: false, code: 'idempotency_conflict' });
     expect(await queueRows(db, roomId)).toHaveLength(1);
+  });
+
+  it('one key reused by one person for two operations is two requests', async () => {
+    const { roomId, members } = await roomWithMembers(1);
+    const key = newKey();
+    await db
+      .as(members[0])
+      .rpc('enqueue_recording', enqueueArgs(roomId, await insertRecording(db)));
+    const added = await db
+      .as(members[0])
+      .rpc<EnqueueResult>(
+        'enqueue_recording',
+        enqueueArgs(roomId, await insertRecording(db), { idempotency_key: key }),
+      );
+    const outcomes = await together([
+      db.as(members[0]).rpc('remove_queue_entry', {
+        room_id: roomId,
+        entry_id: added.entry_id,
+        idempotency_key: key,
+      }),
+    ]);
+    expect(outcomes).toEqual([{ ok: true, value: { entry_id: added.entry_id, queue_length: 0 } }]);
+    await expectQueueInvariants(db, roomId);
   });
 
   it('the same key from two people is two requests', async () => {
@@ -425,7 +451,14 @@ describe('the room lock', () => {
       const src = row.src.slice(row.src.search(/^begin$/m));
       const lock = src.indexOf('private.lock_room(');
       const firstQueueTouch = Math.min(
-        ...['public.queue_entries', 'private.append_queue_entry(', 'private.renumber_queue(']
+        ...[
+          'public.queue_entries',
+          'public.playlist_import_batches',
+          'private.append_queue_entry(',
+          'private.renumber_queue(',
+          'private.require_queued_entry(',
+          'private.queued_count(',
+        ]
           .map((needle) => src.indexOf(needle))
           .filter((at) => at >= 0),
       );
@@ -451,5 +484,11 @@ describe('the room lock', () => {
       ).rows;
     });
     expect(rows).toEqual([{ mine: true }]);
+    // xmax is set by any row lock, so check the mode too: FOR UPDATE, not a share lock.
+    const [fn] = await db.query<{ src: string }>(
+      `select prosrc as src from pg_proc where oid = 'private.lock_room(uuid)'::regprocedure`,
+    );
+    expect(fn.src).toMatch(/\bfor update\b/i);
+    expect(fn.src).not.toMatch(/\bfor (no key update|share|key share)\b/i);
   });
 });
