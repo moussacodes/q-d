@@ -191,6 +191,7 @@ ESLint enforces these rules (`no-restricted-imports` in `eslint.config.js`), so 
 - **Realtime is a notification layer, not a data layer.** Broadcast events tell clients what changed so they refetch. Presence shows who's here and whether the host is connected. If an event is lost, a refetch fixes it.
 - Broadcasts are sent by the database, from inside the RPC that made the change (`private.broadcast_room_event()`), not by the client. That way no client can announce a change that didn't happen, and a rolled-back change announces nothing.
 - Built (RPC contracts card): the shared checks, the error convention and the idempotency machinery live in the `private` schema (`supabase/migrations/20261124000200_rpc_foundation.sql`). Each RPC is a `security definer` function in `public` with a pinned `search_path`, and `anon` can't execute any of them.
+- Built (join by code card): `join_room_by_code` (`supabase/migrations/20261125001000_join_room_by_code.sql`), with the attempt limits in `private.join_attempts` and `private.join_room()`, which every way of joining shares. Failed guesses are answered with `private.error_response()` so they're kept ([API_CONTRACTS.md § 1](API_CONTRACTS.md#1-conventions)).
 
 ### 4.11 q’d sign-in vs. music-service authorization
 
@@ -309,6 +310,7 @@ There's no Docker or Supabase CLI on Windows, so the database tests run on [PGli
 - The shim stands in for what Supabase provides: the `anon`, `authenticated` and `service_role` roles with Supabase's default grants, `auth.users`, `auth.uid()` (read from `request.jwt.claim.sub`), and `realtime.messages`/`realtime.send()`. It's test-only and never applied to a project.
 - `db.as(user)` runs SQL or an RPC the way PostgREST does, as `authenticated` with the user's id in the JWT settings, so RLS and `security definer` functions run for real. `db.asAnon()` and `db.asServiceRole()` cover the other roles, and `db.query()` runs as the superuser for setup and checks.
 - `harness/pglite-transform.js` lets PGlite load inside Jest without `--experimental-vm-modules`. `supabase/tests/tsconfig.json` gives the tests Node types; the app's `tsconfig.json` leaves `supabase/tests` and `supabase/functions` out, and `npm run typecheck` checks both.
+- Like PostgREST, the harness commits an RPC that sets `response.status` to 400 or more and returns normally, then throws a `DbError` built from the body it returned (`private.error_response()`).
 - PGlite runs one connection, so true concurrency can't be tested here. Tests cover sequential replays and conflicting keys. The same tests should also run against a Supabase local stack (`supabase start`) on a machine with Docker. PGlite is Postgres 18; `config.toml` asks the CLI for 17.
 
 ## Sync (beta) research

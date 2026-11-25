@@ -2,6 +2,20 @@
 
 Product and technical decisions that are not obvious from the code. Newest first.
 
+## 2026-11-25 · join_room_by_code
+
+- **Attempt limits: 5 wrong codes per user and 20 per IP address in any 10 minutes.** The next try fails with `rate_limited` and `retry_after_seconds` until the oldest failure is ten minutes old. With a billion codes, five guesses per ten minutes can't find a room. This answers the last part of PRODUCT_SPEC.md § 13 "Room codes"; **a teammate should confirm the numbers.**
+- **The limits are checked before the code is looked up,** so a locked-out caller can't join even with the right code, and a locked-out call isn't counted again.
+- **A successful join doesn't reset the count.** Otherwise anyone could clear it between guesses with their own room's code. The count resets only as failures age out of the window.
+- **Only wrong codes count.** Input that can't be a code (wrong length, or a character outside the code alphabet such as `0`, `O`, `1` or `I`) answers `code_invalid` too, but isn't counted: it can't match a room, so it tells nobody anything, and a typo shouldn't use up a guess. Look-alikes aren't mapped to other characters, because none of them is ever in a code.
+- **Input is forgiving:** case doesn't matter, and spaces, dashes and the `QD-` prefix are optional. A code can itself start with `QD`, so the prefix is dropped only from eight characters.
+- **A wrong guess is kept although the call fails.** A raised error rolls everything back, the record of the guess included. So `code_invalid` is answered by `private.error_response()`: the function returns normally, the failed attempt commits, and PostgREST answers HTTP 400 with the same body a raised error has (`message: 'code_invalid'`, `hint: 'qd'`). supabase-js reports it as `error` like any other. This is the one exception to "RPCs raise their errors", and only for errors whose side effect must survive. PostgREST commits every transaction that doesn't fail, whatever `response.status` says.
+- **Failed attempts live in `private.join_attempts`,** which no API role can read or write. It never holds the code that was tried, and holds the IP address only as a SHA-256 hash. `private.purge_join_attempts()` deletes rows older than a day; a scheduled job should call it.
+- **The IP address is the first `X-Forwarded-For` entry** PostgREST passes in `request.headers`. A client can put its own entries in front, so the per-user limit is the one that can't be dodged. **Check on a real Supabase project** which entry the gateway sets.
+- **An ended room's code is a wrong code,** not `room_ended`: ending a room frees its code (2026-11-24), so the code no longer names that room, and saying otherwise would tell a guesser which codes were in use. `room_ended` still comes back if the room ends between the lookup and the join.
+- **Someone already in the room succeeds without a change,** the host included, and no broadcast is sent. A new member makes the RPC broadcast `members.changed`.
+- **`room_full` is checked by the RPC** under the room lock, so it comes back as a q’d error (`hint: 'qd'`). The trigger on `room_members` still backs it up.
+
 ## 2026-11-24 · create_room
 
 - **Room codes leave out look-alike characters.** Codes use `23456789ABCDEFGHJKLMNPQRSTUVWXYZ` (no `0`, `O`, `1` or `I`), so a code read aloud or typed from a screen can't be misread. Six characters still give about a billion codes. This answers part of PRODUCT_SPEC.md § 13; **a teammate should confirm it**.

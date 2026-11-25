@@ -18,6 +18,10 @@
  * `db.asAnon()` uses the `anon` role. `db.query()` runs as the superuser, for
  * setup and for reading what the RPCs wrote.
  *
+ * Like PostgREST, an RPC that sets `response.status` to 400 or more and returns
+ * normally still commits, and the caller gets an error built from the body it
+ * returned (private.error_response, used where a failed attempt must be kept).
+ *
  * The same tests should also pass against a real Supabase local stack
  * (`supabase start` on a machine with Docker); PGlite is what runs in CI here.
  */
@@ -135,13 +139,19 @@ type Role = {
   settings?: Record<string, string>;
 };
 
+/** PostgREST's answer when a function set `response.status` to an error. */
+class ErrorResponse {
+  constructor(readonly body: unknown) {}
+}
+
 function session(pg: PGlite, who: Role | null): Session {
   const run = async <T>(sql: string, params: unknown[] = []): Promise<T[]> => {
+    let result: T[] | ErrorResponse;
     try {
       if (who === null) {
         return (await pg.query<T>(sql, params)).rows;
       }
-      return await pg.transaction(async (tx) => {
+      result = await pg.transaction(async (tx) => {
         const claims = JSON.stringify(
           who.sub ? { sub: who.sub, role: who.role } : { role: who.role },
         );
@@ -155,11 +165,28 @@ function session(pg: PGlite, who: Role | null): Session {
           await tx.query('select set_config($1, $2, true)', [name, value]);
         }
         await tx.exec(`set local role ${who.role}`);
-        return (await tx.query<T>(sql, params)).rows;
+        const rows = (await tx.query<T>(sql, params)).rows;
+        const [{ status }] = (
+          await tx.query<{ status: string | null }>(
+            `select nullif(current_setting('response.status', true), '') as status`,
+          )
+        ).rows;
+        if (status !== null && Number(status) >= 400) {
+          const first = rows[0] as Record<string, unknown> | undefined;
+          return new ErrorResponse(first ? Object.values(first)[0] : null);
+        }
+        return rows;
       });
     } catch (cause) {
       throw new DbError(cause);
     }
+    if (result instanceof ErrorResponse) {
+      // Committed, like PostgREST: only the response is an error. The body has
+      // PostgREST's error shape ({ code, message, details, hint }).
+      const body = (result.body ?? {}) as { details?: string | null };
+      throw new DbError({ ...body, detail: body.details ?? undefined });
+    }
+    return result;
   };
   return {
     query: run,

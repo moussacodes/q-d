@@ -30,6 +30,7 @@ Why it's shaped this way: [ARCHITECTURE.md § 4.10](ARCHITECTURE.md#410-client-v
 - **Errors** carry a stable string `code` from [§ 2](#2-error-codes). The app maps codes to copy and never shows raw database messages.
   - The database raises them with `private.raise_error(code, details)`: SQLSTATE `P0001`, the code as the message, extra fields as JSON in the detail, and the hint `qd`. Through `supabase-js` that's `error.message === 'room_full'`, `error.hint === 'qd'` and `JSON.parse(error.details)` for fields like `retry_after_seconds`. Anything without the `qd` hint is unexpected and maps to generic copy.
   - Edge Functions answer with the same codes as JSON: `{ "code": "not_authenticated" }`.
+  - **Errors that must keep a side effect** (a failed join attempt, which the attempt limits count) are answered with `private.error_response(code, details)` instead: the function sets PostgREST's `response.status` to 400 and returns `{ code: 'P0001', message: <code>, details, hint: 'qd' }`. PostgREST commits a transaction that didn't fail, and supabase-js reports the same `error` a raise would. Used only for a code or invite token that matched nothing.
   - `private.raise_error` refuses a code that isn't in § 2, and a test checks the list matches the table.
 - **Validation on the way in.** The app parses every RPC result and realtime payload with a Zod schema from `src/domain`. Anything that doesn't parse is logged (redacted) and treated as "refetch".
 - IDs are UUIDs. Times are `timestamptz` from the server clock. Durations and positions are integer milliseconds.
@@ -77,12 +78,15 @@ Why it's shaped this way: [ARCHITECTURE.md § 4.10](ARCHITECTURE.md#410-client-v
 
 #### `join_room_by_code`
 
-- **Caller:** any signed-in user.
-- **Input:** `code text`, `idempotency_key uuid`. The code is case-insensitive, and the `QD-` prefix and spaces are optional.
-- **Checks:** strict attempt limits per user and per IP address, applied before looking up the code.
-- **Effect:** adds the caller as a member. If they're already a member, it succeeds without a change.
+**Built** (`supabase/migrations/20261125001000_join_room_by_code.sql`).
+
+- **Caller:** any signed-in user with a finished profile. No music service needed.
+- **Input:** `code text`, `idempotency_key uuid`. The code is case-insensitive, and the `QD-` prefix, spaces and dashes are optional.
+- **Checks:** sign-in, replay, finished profile, then the attempt limits (§ 7) per user and per IP address, applied before looking up the code. The code must belong to a room that hasn't ended, and `code_expires_at` must be later than now.
+- **Effect:** adds the caller as a member and broadcasts `members.changed`. If they're already a member (the host included), it succeeds without a change or a broadcast.
 - **Returns:** `{ room_id }`
-- **Errors:** `code_invalid`, `rate_limited`, `room_full`, `room_ended`, `profile_incomplete`
+- **Errors:** `not_authenticated`, `profile_incomplete`, `invalid_input` (`field: 'idempotency_key'`), `rate_limited` (`retry_after_seconds`), `code_invalid`, `room_full`, `room_ended` (only if the room ends between the lookup and the join; an ended room's code is `code_invalid`), `idempotency_conflict`
+- **Note:** `code_invalid` is answered with `private.error_response()` instead of being raised, so the failed attempt is kept (§ 1, Errors). The client sees the same `error`.
 
 #### `update_room_rules` (Added)
 
@@ -418,7 +422,7 @@ type PlaybackSlot = {             // sync (beta) only
 
 - **Room code character set (decided 2026-11-24):** `23456789ABCDEFGHJKLMNPQRSTUVWXYZ`, 32 characters without `0`, `O`, `1` or `I`, so about 1.07 billion codes. Drawn from `gen_random_uuid()`'s random bytes.
 - **Room code lifetime (decided 2026-11-24):** 24 hours from creation. The room keeps going after its code expires; only joining by code stops. A code is unique among rooms that haven't ended, and an ended room's code can be drawn again.
-- The attempt limits are still open (see [PRODUCT_SPEC.md § 13](PRODUCT_SPEC.md#13-open-questions)).
+- **Attempt limits (decided 2026-11-25):** at most 5 wrong codes per user and 20 per IP address (the first `X-Forwarded-For` entry) in any 10 minutes. Past that, `rate_limited` with `retry_after_seconds` until the oldest failure leaves the window. A success doesn't reset the count. Input that can't be a code isn't counted. Failed attempts are kept in `private.join_attempts`, without the code that was tried and with the IP address hashed.
 
 ## 8. Changing a contract
 
