@@ -3,9 +3,11 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { Icon, Panel, ServiceCard, Text } from '@/components';
 import { providerColors, useTheme } from '@/design';
 import { providerNames, type MusicProvider } from '@/domain/music-provider';
+import { connectionProblemCopy } from '@/features/connections/connectionCopy';
 import {
   supportedProviders,
   useProviderConnections,
+  type ConnectionProblem,
 } from '@/features/connections/ProviderConnections';
 import type { ConnectionState } from '@/providers';
 
@@ -14,12 +16,19 @@ const hints: Record<MusicProvider, string> = {
   apple_music: 'Subscription needed for full tracks',
 };
 
-/** A mock connection says so, so it's never mistaken for a real account. */
+/**
+ * A mock connection says so, so it's never mistaken for a real account. A
+ * Connect that didn't work says why (e.g. Premium needed, not on the
+ * development-mode tester list).
+ */
 function describe(
   provider: MusicProvider,
   connection: Extract<ConnectionState, { status: 'connected' }> | undefined,
+  problem: ConnectionProblem | undefined,
 ) {
-  if (!connection) return hints[provider];
+  if (!connection) {
+    return (problem && connectionProblemCopy(provider, problem)) ?? hints[provider];
+  }
   if (connection.isMock) return `Mock connection · no ${providerNames[provider]} account used`;
   return connection.accountLabel ?? 'Connected';
 }
@@ -29,7 +38,7 @@ function describe(
  * onboarding step 2, Start a room and Settings → Music services.
  */
 export function ServicesSection({ showPicker = true }: { showPicker?: boolean }) {
-  const { connections, connect } = useProviderConnections();
+  const { connections, problems, connect } = useProviderConnections();
   return (
     <View style={styles.group}>
       {supportedProviders.map((provider) => (
@@ -37,7 +46,7 @@ export function ServicesSection({ showPicker = true }: { showPicker?: boolean })
           key={provider}
           provider={provider}
           name={providerNames[provider]}
-          description={describe(provider, connections[provider])}
+          description={describe(provider, connections[provider], problems[provider])}
           state={connections[provider] ? 'connected' : 'connect'}
           onConnect={() => connect(provider)}
         />

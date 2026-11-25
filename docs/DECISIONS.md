@@ -39,37 +39,6 @@ Product and technical decisions that are not obvious from the code. Newest first
 - **Logs carry codes, never input.** Failures log the step, our code, Supabase's code and the HTTP status. The email, password, tokens and user id are never passed to the logger.
 - **Still open:** saving the onboarding profile to `profiles` (the onboarding/Supabase profile card). Until then, a live account that finishes onboarding goes back to onboarding on its next sign-in. "Forgot password?" still does nothing; password reset needs its own card.
 
-## 2026-11-24 · Supabase client and device storage
-
-- **The Supabase session lives in `expo-sqlite`'s `localStorage`,** which is what Supabase's Expo guide recommends now and ships in Expo Go. On the web it's the browser's own `localStorage`, or memory where storage is blocked. The session isn't encrypted at rest there; that's Supabase's standard setup, and the session is revocable from the server. Music-service tokens are a different case and go to SecureStore.
-- **Provider credentials use the Keychain with `AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY`.** The host's phone can refresh a Spotify token while it plays with the screen locked, and the token never moves to another device through a backup. Unreadable entries are deleted, so the person reconnects instead of the app crashing.
-- **On the web, provider credentials stay in memory.** The web has no secure storage, and any script on the page can read browser storage. The web build is for mock mode and guests, who never connect a service.
-- **No client without a valid env.** `getSupabase()` returns null until both Supabase variables validate, so mock mode needs no `.env` and makes no network calls.
-- **Zustand isn't added yet.** Nothing needs it: the mock room store is React context and moves to TanStack Query with the Supabase cards. It comes in when a small transient player or room state needs it (ARCHITECTURE.md §4.12).
-- **Session refresh follows the app state** on devices (start in the foreground, stop in the background), as Supabase recommends for React Native.
-
-## 2026-11-24 · Structured logging and crash-report filtering
-
-- **Redaction happens inside the logger,** before any sink, so no sink (console, crash reporter, a future service) can leak. It removes credentials, emails, room codes, invite tokens and listening history, in nested objects, arrays, Maps, Sets, Errors and their causes, and inside strings.
-- **Redaction errs toward removing too much.** Whole values under keys like `code`, `title`, `name`, `url`, `query` and anything containing `token`, `email`, `track`, `queue` or `artist` are replaced, even when they'd help debugging. Ids (`roomId`, `userId`) and error codes stay.
-- **Log messages are fixed strings.** A song title in free text can't be told apart from other words, so data goes in the context object, where its key decides.
-- **No crash-reporting service yet.** None is planned in the docs, so none was added. `crashReporting.ts` holds the privacy filter (`beforeSend`), manual breadcrumbs and a global error handler, and sends nothing until a transport is set. Whatever service is picked later must keep `crashReportingPolicy`: no session replay, no automatic breadcrumbs or event capture, no default PII, no screenshots.
-- **Failed crash uploads are dropped,** not retried, so a report can't be sent after the person signs out.
-
-## 2026-11-24 · Environment validation and feature flags
-
-- **Nothing in `.env` is required.** Mock mode must keep working on any machine, so a missing or invalid variable never stops the app. It's reported by name in a development warning and falls back to a safe default. This is how ARCHITECTURE.md's "fail fast with a clear message" applies while mock mode is the default.
-- **Supabase's key variable is `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`.** It accepts a publishable key (`sb_publishable_…`) or the legacy `anon` JWT. Secret keys (`sb_secret_…`) and `service_role` JWTs are rejected, because every `EXPO_PUBLIC_*` value ships inside the app.
-- **`live` still falls back to mock.** Asking for `live` without valid Supabase values, or before the live data layer exists, keeps mock data and its label. Otherwise `live` would show sample data without the "Mock data" strip.
-- **`sync` is locked off in code,** not just off by default. `EXPO_PUBLIC_FLAG_SYNC=true` is ignored with a warning, and the list of modes a host can pick is always just `aux`.
-- **Flags are read from `EXPO_PUBLIC_FLAG_*` at build time.** They're public and per build, not remote config. Remote flags can come later if the beta needs them.
-
-## 2026-11-24 · Welcome, sign-in and account-creation audit
-
-- **Audited against the card, not Figma.** Welcome, Sign in and Create account offer all three entry points: Apple, Google and email. Welcome's email button opens Create account; Sign in and Create account each have the email form plus Apple and Google. A person still has to compare them with Figma `20 · Mobile`.
-- **The wordmark says q’d with the curly apostrophe.** The Logo drew `q'd` with a straight one, although its accessibility label was already curly (PRODUCT_SPEC.md §9).
-- **Still mock:** the email form accepts any input, and "Forgot password?" does nothing. Validation and password reset come with the email auth card.
-
 ## 2026-11-25 · Demo account reset
 
 - **Operator scripts live in `supabase/scripts/`.** ARCHITECTURE.md named no place for them, and the runbook asked for the reset "as a script in `supabase/`". The reset script is plain CommonJS JavaScript with no dependencies (`fetch` only), so it runs with `node` on any supported Node, Windows included, without a build step. A `.d.ts` beside it types it for the tests.
@@ -163,6 +132,76 @@ Product and technical decisions that are not obvious from the code. Newest first
 - **Add a song shows search errors** as plain copy ("Too many searches. Try again in 12 seconds.", "Search isn’t working right now…") and "Searching…" while a first search loads. Figma has no frame for these; Figma not re-checked.
 - **Track and link lookups aren't built.** The live Apple catalog adapter's `getTrack` and `resolveLink` still say "not in this build".
 
+## 2026-11-25 · Spotify playback adapter (aux)
+
+Built, **untested on a device and against real Spotify.** It runs the shared PlaybackAdapter contract suite against a fake Spotify player (`installFakePlayer` in `src/test/fakeSpotify.ts`). The `realSpotify` flag stays off, so the app keeps the labeled mock.
+
+- **A remote control over the Web API.** `SpotifyPlaybackAdapter` (`src/providers/spotify/playback.ts`) tells the Spotify app that's open on the host's phone what to play. The Spotify app plays the audio. q’d never streams, relays or rebroadcasts it. The Web API needs no native code, so this runs in Expo Go. The iOS SDK's App Remote, which PROVIDER_FEASIBILITY.md also names, isn't used here. **Open question for the team:** whether the demo needs App Remote too, for example to wake the Spotify app. That needs a development build and the Mac.
+- **Endpoints:** `GET /me/player` (state), `GET /me/player/devices`, `PUT /me/player` (transfer), `PUT /me/player/play` (a track URI with `position_ms`, or a resume), `PUT /me/player/pause`, `PUT /me/player/seek` and `POST /me/player/queue`. None has been checked against Spotify's reduced development-mode endpoint set yet. Check them when the Spotify developer app exists.
+- **`prepare` sends nothing.** Spotify can't load a track without playing it, and starting then pausing would play audio. So `prepare` remembers the track and position, `getState` reports it as paused, and `play` starts it at that position.
+- **No active Spotify app.** `play` reads the device list and moves playback (`play: false`) to the active device, else to this phone's Spotify (`Smartphone`), else to the only device there is. It never guesses between several devices, because that could start music on someone else's speaker. Restricted devices are skipped. With none, `play` fails with `no_active_device` ("Open Spotify on this phone, then try again."), and the track stays ready.
+- **Already paused or already playing isn't an error** (`ALREADY_PAUSED`, `ALREADY_PLAYING`). Pausing when no Spotify app is left isn't either, because nothing plays.
+- **Errors:** 401 refreshes once, then asks to reconnect (`needs_authorization`). 403 `PREMIUM_REQUIRED` is `premium_required`. Other 403s are `playback_refused`, or `not_approved_user` for the development-mode refusal. 404 on a player endpoint is `no_active_device`. 400 is `invalid_argument`.
+- **429 waits for `Retry-After`** (whole seconds, 1 s if missing or unreadable) up to 3 times. A wait longer than 10 s isn't made: the call fails with `rate_limited` so the UI can say so. A **5xx** is retried after 500 ms and 1 s, then fails with `provider_unavailable`. A **failed queue add is never retried**, because it may have worked and the song would be queued twice.
+- **`enqueue` uses Spotify's queue.** The Web API can't reorder or clear it, so the room player should only enqueue what plays next. The room queue stays in Postgres. Tracks enqueued before `play` are held and sent once the first track starts.
+- **`getState` reads Spotify every time.** The caller polls. If someone changes the song in the Spotify app, q’d reports what Spotify actually plays. A podcast episode or an unreadable item reads as idle. Tracks q’d started or queued come back as q’d's own objects, so matched metadata is kept.
+- **`disconnect` lets go but keeps the account.** It pauses only what q’d started, and then sends nothing until `connect` or `prepare`. Tracks enqueued meanwhile are held and sent after the next `play`. `pause` still reaches Spotify when the next track is prepared, because the current one is still playing in the Spotify app. Forgetting the tokens is Disconnect in Settings (`disconnectProvider`, Spotify connection card).
+- **Capabilities claim nothing untested:** `requiresExternalApp: true`. In-app audio, background playback and autoplay are all false. Spotify's autoplay is an account setting q’d can't read.
+- **Spotify track metadata.** ISRCs come back in compact uppercase form, and a malformed one is dropped without hiding the track. `artworkBackgroundColor` is always null (ARCHITECTURE.md §4.2).
+
+## 2026-11-25 · Spotify connection (OAuth)
+
+Built, **untested on a device and against real Spotify.** Every test runs against a fake Spotify (`src/test/fakeSpotify.ts`). The `realSpotify` flag stays off by default, so the app keeps the labeled mock.
+
+- **Authorization Code with PKCE, no client secret.** The app makes a random 86-character verifier and sends only its SHA-256 challenge (`S256`) and a random `state` to Spotify's authorize page, in the system sign-in sheet (`expo-web-browser` `openAuthSessionAsync`). The code is exchanged with the verifier. `expo-crypto` supplies the randomness and the hash. Both ship in Expo Go. `expo-auth-session` wasn't added: `expo-linking` already builds the redirect URL, and the PKCE code is small and tested against the RFC 7636 example.
+- **The client ID is public** (`EXPO_PUBLIC_SPOTIFY_CLIENT_ID`, 32 hex characters, validated in `env.ts`). `.env.example` lists the name only. A Spotify client secret never goes in the app.
+- **Three scopes, the least remote control needs:**
+  - `user-read-playback-state`: read the player and the device list (what plays, where, and whether a Spotify app is open).
+  - `user-modify-playback-state`: play a track, pause, resume, seek, add to Spotify's queue, move playback to this phone.
+  - `user-read-currently-playing`: the playing track for Now playing.
+  - **Not asked for:** `streaming` (q’d never plays Spotify audio itself), `user-read-private` and `user-read-email` (q’d doesn't need the profile; Premium shows up as Spotify's `PREMIUM_REQUIRED` refusal of the first play), library and playlist scopes (playlist import is post-demo and adds its own). A grant missing one of the three is refused.
+- **Tokens live only in SecureStore** (`providerCredentials`, Keychain, this device only). No credentials in Postgres: when the Supabase cards add `provider_connections`, its row holds the provider and timestamps only. This branch writes no row, because no table exists here yet.
+- **Nothing secret is logged.** Log entries carry an HTTP status, Spotify's error code word or player reason, and the endpoint path. Tests replace the logger to check that the raw arguments, before redaction, never contain a token, code, verifier or state.
+- **`state` is checked first.** A redirect whose `state` doesn't match is `auth_failed`, even if it says `access_denied`, and its code is never exchanged. Closing the sheet or tapping Cancel on Spotify's page is not an error: the service just stays not connected.
+- **Refresh.** A token is refreshed 60 seconds before it expires. Concurrent callers share one refresh. A rotated refresh token replaces the old one, and the old one is kept when Spotify sends none. A refused refresh (`invalid_grant`) clears the tokens and asks to reconnect. A refresh that fails on Spotify's side (5xx, 429, offline) keeps them. A refresh still in flight when the person taps Disconnect doesn't save its new tokens.
+- **A 401 refreshes once and retries.** A second 401 clears the tokens and asks to reconnect (`needs_authorization`).
+- **Connect checks the account** by reading the player (`GET /me/player`). Spotify's development mode refuses a user who isn't on the app's user list with a 403 whose wording isn't documented, so q’d matches it loosely ("not registered", "developer dashboard"), and only on a 403 without a player `reason`, so a player refusal can never drop the tokens. That's `not_approved_user`, and its tokens are dropped. Premium isn't known at connect, so Settings keeps the hint "Premium needed to play rooms".
+- **Disconnect clears the tokens.** With the flag on, Connect runs the real flow and Disconnect forgets the tokens on this phone. With it off, both stay mock.
+- **New error codes** in `ProviderErrorCode`: `not_configured`, `needs_authorization`, `auth_failed`, `premium_required`, `not_approved_user`, `no_active_device`, `playback_refused`, `rate_limited`, `provider_unavailable` (API_CONTRACTS.md §5).
+- **Honest copy** (`features/connections/connectionCopy.ts`). A Connect that didn't work says why on the service card: "Spotify Premium is needed to play rooms through Spotify.", "This Spotify account isn’t on q’d’s tester list yet. …", "Spotify isn’t connected yet. Tap Connect to try again.". Start room stays disabled.
+- **Redirect URI: open.** It's `Linking.createURL('spotify-auth')`: `qd://spotify-auth` in a development build, and an `exp://<computer's address>/--/spotify-auth` URL in Expo Go. Spotify only accepts redirect URIs listed in its dashboard, and **the Spotify developer app card isn't done**, so nothing is registered and no client ID exists yet. Whether testing in Expo Go is practical (its address changes) is for that card to decide.
+
+## 2026-11-24 · Supabase client and device storage
+
+- **The Supabase session lives in `expo-sqlite`'s `localStorage`,** which is what Supabase's Expo guide recommends now and ships in Expo Go. On the web it's the browser's own `localStorage`, or memory where storage is blocked. The session isn't encrypted at rest there; that's Supabase's standard setup, and the session is revocable from the server. Music-service tokens are a different case and go to SecureStore.
+- **Provider credentials use the Keychain with `AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY`.** The host's phone can refresh a Spotify token while it plays with the screen locked, and the token never moves to another device through a backup. Unreadable entries are deleted, so the person reconnects instead of the app crashing.
+- **On the web, provider credentials stay in memory.** The web has no secure storage, and any script on the page can read browser storage. The web build is for mock mode and guests, who never connect a service.
+- **No client without a valid env.** `getSupabase()` returns null until both Supabase variables validate, so mock mode needs no `.env` and makes no network calls.
+- **Zustand isn't added yet.** Nothing needs it: the mock room store is React context and moves to TanStack Query with the Supabase cards. It comes in when a small transient player or room state needs it (ARCHITECTURE.md §4.12).
+- **Session refresh follows the app state** on devices (start in the foreground, stop in the background), as Supabase recommends for React Native.
+
+## 2026-11-24 · Structured logging and crash-report filtering
+
+- **Redaction happens inside the logger,** before any sink, so no sink (console, crash reporter, a future service) can leak. It removes credentials, emails, room codes, invite tokens and listening history, in nested objects, arrays, Maps, Sets, Errors and their causes, and inside strings.
+- **Redaction errs toward removing too much.** Whole values under keys like `code`, `title`, `name`, `url`, `query` and anything containing `token`, `email`, `track`, `queue` or `artist` are replaced, even when they'd help debugging. Ids (`roomId`, `userId`) and error codes stay.
+- **Log messages are fixed strings.** A song title in free text can't be told apart from other words, so data goes in the context object, where its key decides.
+- **No crash-reporting service yet.** None is planned in the docs, so none was added. `crashReporting.ts` holds the privacy filter (`beforeSend`), manual breadcrumbs and a global error handler, and sends nothing until a transport is set. Whatever service is picked later must keep `crashReportingPolicy`: no session replay, no automatic breadcrumbs or event capture, no default PII, no screenshots.
+- **Failed crash uploads are dropped,** not retried, so a report can't be sent after the person signs out.
+
+## 2026-11-24 · Environment validation and feature flags
+
+- **Nothing in `.env` is required.** Mock mode must keep working on any machine, so a missing or invalid variable never stops the app. It's reported by name in a development warning and falls back to a safe default. This is how ARCHITECTURE.md's "fail fast with a clear message" applies while mock mode is the default.
+- **Supabase's key variable is `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`.** It accepts a publishable key (`sb_publishable_…`) or the legacy `anon` JWT. Secret keys (`sb_secret_…`) and `service_role` JWTs are rejected, because every `EXPO_PUBLIC_*` value ships inside the app.
+- **`live` still falls back to mock.** Asking for `live` without valid Supabase values, or before the live data layer exists, keeps mock data and its label. Otherwise `live` would show sample data without the "Mock data" strip.
+- **`sync` is locked off in code,** not just off by default. `EXPO_PUBLIC_FLAG_SYNC=true` is ignored with a warning, and the list of modes a host can pick is always just `aux`.
+- **Flags are read from `EXPO_PUBLIC_FLAG_*` at build time.** They're public and per build, not remote config. Remote flags can come later if the beta needs them.
+
+## 2026-11-24 · Welcome, sign-in and account-creation audit
+
+- **Audited against the card, not Figma.** Welcome, Sign in and Create account offer all three entry points: Apple, Google and email. Welcome's email button opens Create account; Sign in and Create account each have the email form plus Apple and Google. A person still has to compare them with Figma `20 · Mobile`.
+- **The wordmark says q’d with the curly apostrophe.** The Logo drew `q'd` with a straight one, although its accessibility label was already curly (PRODUCT_SPEC.md §9).
+- **Still mock:** the email form accepts any input, and "Forgot password?" does nothing. Validation and password reset come with the email auth card.
+
 ## 2026-11-24 · Track matching
 
 The rules are PRODUCT_SPEC.md §6. These are the numbers and edge cases the matching card had to pick. All of it is in `src/domain/matching`, pure and deterministic.
@@ -196,6 +235,7 @@ The rules are PRODUCT_SPEC.md §6. These are the numbers and edge cases the matc
 - **Schemas strip unknown fields** instead of rejecting them, so a new column or event field is additive and older clients keep working.
 - **The card's "ProviderCapabilities" is `PlaybackCapabilities`** from API_CONTRACTS.md §5, with `ProviderCapabilities` as an alias. It lives in `src/domain` because the UI reads it.
 - **Two `ProviderTrack` types exist for one branch.** `src/domain/recording.ts` has the contract's shape (`artists[]`, nullable ISRC). `src/providers/types.ts` still has the mocks' older shape; the provider adapters card moves the providers onto the domain type.
+
 ## 2026-11-24 · create_room
 
 - **Room codes leave out look-alike characters.** Codes use `23456789ABCDEFGHJKLMNPQRSTUVWXYZ` (no `0`, `O`, `1` or `I`), so a code read aloud or typed from a screen can't be misread. Six characters still give about a billion codes. This answers part of PRODUCT_SPEC.md § 13; **a teammate should confirm it**.

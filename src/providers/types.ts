@@ -104,7 +104,21 @@ export type ProviderErrorCode =
   | 'wrong_provider'
   /** An argument is out of range, e.g. a negative seek position. */
   | 'invalid_argument'
+  /** This build has no client ID (or other setup) for the provider. */
+  | 'not_configured'
+  /** Not connected, or the provider revoked access: the person reconnects. */
+  | 'needs_authorization'
+  /** Authorization didn't finish: state mismatch, a refused code exchange. */
+  | 'auth_failed'
+  /** The account needs Premium (Spotify) or a subscription for this. */
+  | 'premium_required'
+  /** Spotify development mode: the account isn't on the app's user list. */
+  | 'not_approved_user'
+  /** Spotify: no Spotify app is open and active to control. */
+  | 'no_active_device'
+  /** The provider refused the command, e.g. a device that can't be controlled. */
+  | 'playback_refused'
   /** Too many requests. `ProviderError.retryAfterSeconds` says when to try again. */
   | 'rate_limited'
-  /** The service (or q’d's server in front of it) couldn't answer right now. */
+  /** The service (or q’d's server in front of it) couldn't be reached or failed (network, 5xx). */
   | 'provider_unavailable';

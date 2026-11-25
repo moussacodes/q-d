@@ -20,6 +20,7 @@ export const envNames = {
   dataMode: 'EXPO_PUBLIC_DATA_MODE',
   supabaseUrl: 'EXPO_PUBLIC_SUPABASE_URL',
   supabaseKey: 'EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY',
+  spotifyClientId: 'EXPO_PUBLIC_SPOTIFY_CLIENT_ID',
   flagRealAppleMusic: 'EXPO_PUBLIC_FLAG_REAL_APPLE_MUSIC',
   flagRealSpotify: 'EXPO_PUBLIC_FLAG_REAL_SPOTIFY',
   flagSync: 'EXPO_PUBLIC_FLAG_SYNC',
@@ -40,6 +41,7 @@ export function readRawEnv(): RawEnv {
     EXPO_PUBLIC_DATA_MODE: process.env.EXPO_PUBLIC_DATA_MODE,
     EXPO_PUBLIC_SUPABASE_URL: process.env.EXPO_PUBLIC_SUPABASE_URL,
     EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+    EXPO_PUBLIC_SPOTIFY_CLIENT_ID: process.env.EXPO_PUBLIC_SPOTIFY_CLIENT_ID,
     EXPO_PUBLIC_FLAG_REAL_APPLE_MUSIC: process.env.EXPO_PUBLIC_FLAG_REAL_APPLE_MUSIC,
     EXPO_PUBLIC_FLAG_REAL_SPOTIFY: process.env.EXPO_PUBLIC_FLAG_REAL_SPOTIFY,
     EXPO_PUBLIC_FLAG_SYNC: process.env.EXPO_PUBLIC_FLAG_SYNC,
@@ -91,6 +93,15 @@ const supabaseKeySchema = optional(
   }),
 );
 
+/**
+ * A Spotify client ID: 32 hexadecimal characters. It's public by design
+ * (Authorization Code with PKCE has no client secret), so it may ship in the
+ * app. A client secret never does.
+ */
+const spotifyClientIdSchema = optional(
+  z.string().regex(/^[0-9a-f]{32}$/i, { message: 'is not a Spotify client ID' }),
+);
+
 /** Flags accept true/false, 1/0, on/off and yes/no, in any case. */
 const flagSchema = optional(
   z
@@ -136,6 +147,8 @@ export interface AppEnv {
   requestedDataMode: 'mock' | 'live';
   /** Present only when both Supabase variables are set and valid. */
   supabase: SupabaseEnv | null;
+  /** The Spotify app's client ID, or null when it isn't set or isn't valid. */
+  spotifyClientId: string | null;
   /** Flags as the environment set them. `flags.ts` applies what this build allows. */
   requestedFlags: RequestedFlags;
 }
@@ -184,11 +197,13 @@ export function parseEnv(raw: RawEnv): EnvResult {
     problems.push(`${missing} is missing or invalid, so Supabase is off.`);
   }
 
+  const spotifyClientId = field(envNames.spotifyClientId, spotifyClientIdSchema, undefined) ?? null;
+
   const requestedFlags = Object.fromEntries(
     Object.entries(flagKeys).map(([flag, name]) => [flag, field(name, flagSchema, false) ?? false]),
   ) as unknown as RequestedFlags;
 
-  return { env: { requestedDataMode, supabase, requestedFlags }, problems };
+  return { env: { requestedDataMode, supabase, spotifyClientId, requestedFlags }, problems };
 }
 
 /** The validated environment for this run of the app. */

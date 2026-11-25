@@ -21,7 +21,12 @@ const allOff = {
 describe('parseEnv', () => {
   it('runs on mock with nothing set, and reports no problems', () => {
     expect(parseEnv({})).toEqual({
-      env: { requestedDataMode: 'mock', supabase: null, requestedFlags: allOff },
+      env: {
+        requestedDataMode: 'mock',
+        supabase: null,
+        spotifyClientId: null,
+        requestedFlags: allOff,
+      },
       problems: [],
     });
   });
@@ -197,4 +202,31 @@ describe('readRawEnv', () => {
       }
     }
   });
+});
+
+describe('EXPO_PUBLIC_SPOTIFY_CLIENT_ID', () => {
+  const ID = '0123456789abcdef0123456789ABCDEF';
+
+  it('accepts a 32-character hexadecimal client ID', () => {
+    const { env, problems } = parseEnv({ EXPO_PUBLIC_SPOTIFY_CLIENT_ID: ` ${ID} ` });
+    expect(env.spotifyClientId).toBe(ID);
+    expect(problems).toEqual([]);
+  });
+
+  it('is null when unset or blank', () => {
+    expect(parseEnv({}).env.spotifyClientId).toBeNull();
+    expect(parseEnv({ EXPO_PUBLIC_SPOTIFY_CLIENT_ID: '  ' }).env.spotifyClientId).toBeNull();
+  });
+
+  it.each(['abc', `${ID}0`, 'g123456789abcdef0123456789abcdef', 'not a client id'])(
+    'rejects %p by name, never echoing the value',
+    (value) => {
+      const { env, problems } = parseEnv({ EXPO_PUBLIC_SPOTIFY_CLIENT_ID: value });
+      expect(env.spotifyClientId).toBeNull();
+      expect(problems).toEqual([
+        'EXPO_PUBLIC_SPOTIFY_CLIENT_ID is not a Spotify client ID. It was ignored.',
+      ]);
+      expect(problems.join(' ')).not.toContain(value);
+    },
+  );
 });
