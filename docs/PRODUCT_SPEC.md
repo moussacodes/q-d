@@ -239,6 +239,7 @@ Numbers match the Figma page and the in-app screen index at `/dev`.
 | 3.3 | Up next | `/room/[code]/queue` |
 | 3.4 | Add a song | `/room/[code]/add-song` |
 | 3.5 | Invite people | `/room/[code]/invite` |
+| — | Invite link (scanned QR or shared link) | `/join?invite=…` |
 | 3.6 | Listeners | `/room/[code]/listeners` |
 | 4.1–4.3 | Listener view, empty queue, song not on host's service | `/room/[code]?view=…` |
 | 5.1 / 5.2 | Settings · music services / account | `/settings` |

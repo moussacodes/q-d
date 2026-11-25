@@ -85,7 +85,8 @@ Why it's shaped this way: [ARCHITECTURE.md § 4.10](ARCHITECTURE.md#410-client-v
 - **Caller:** host. QR invites need a token separate from the room code, and something has to create it.
 - **Input:** `room_id uuid`, `idempotency_key uuid`
 - **Effect:** creates a high-entropy (at least 128-bit, URL-safe) token with an expiry, which replaces any older one.
-- **Returns:** `{ token, expires_at }`. The QR code encodes `qd://join?invite=<token>`. Universal links can come later.
+- **Returns:** `{ token, expires_at }`. The QR code encodes `qd://join?invite=<token>`, which opens the app's `/join` route. Universal links can come later.
+- **Note:** the server keeps only a hash, so the host's phone keeps the token it got and reuses it while the app runs (DECISIONS 2026-11-25 · Invite / QR screen). The mock answers with deterministic `mock-…` tokens.
 
 #### `join_room_by_invite` (Added)
 

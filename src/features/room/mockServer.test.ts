@@ -2,9 +2,11 @@ import { defaultRoomRules } from '@/domain/room-rules';
 
 import {
   MOCK_HOSTED_CODE,
+  MOCK_INVITE_HOURS,
   MOCK_JOIN_ATTEMPTS,
   MOCK_RETRY_AFTER_SECONDS,
   MockRoomServer,
+  mockInviteToken,
   newIdempotencyKey,
   type CreateRoomInput,
 } from './mockServer';
@@ -169,6 +171,85 @@ describe('create_room (mock)', () => {
     expect(await server.createRoom(input({ idempotencyKey: 'tap', name: 'Other' }))).toEqual({
       ok: false,
       error: { code: 'idempotency_conflict' },
+    });
+  });
+});
+
+describe('create_room_invite and join_room_by_invite (mock)', () => {
+  const invite = (server: MockRoomServer, asHost = true, idempotencyKey = key()) =>
+    server.createRoomInvite({ roomCode: 'QD-7K4F9X', asHost, idempotencyKey });
+  const joinInvite = (server: MockRoomServer, token: string) =>
+    server.joinRoomByInvite({ token, idempotencyKey: key() });
+  const tokenOf = (result: Awaited<ReturnType<typeof invite>>) => {
+    if (!result.ok) throw new Error('expected an invite');
+    return result.value.token;
+  };
+
+  it('makes a labeled, 128-bit-long token that isn’t the room code', async () => {
+    const { server } = serverAt();
+    const result = await invite(server);
+    const token = tokenOf(result);
+    expect(token).toMatch(/^mock-[0-9a-f]{32}$/);
+    expect(token).not.toContain('7K4F9X');
+    expect(result).toMatchObject({
+      value: { expiresAt: new Date(1_000_000 + MOCK_INVITE_HOURS * 3_600_000).toISOString() },
+    });
+  });
+
+  it('is deterministic', async () => {
+    expect(await invite(serverAt().server)).toEqual(await invite(serverAt().server));
+    expect(mockInviteToken('QD-7K4F9X', 1)).not.toBe(mockInviteToken('QD-9M2XR4', 1));
+    expect(mockInviteToken('QD-7K4F9X', 1)).not.toBe(mockInviteToken('QD-7K4F9X', 2));
+  });
+
+  it('is only for the host', async () => {
+    const { server } = serverAt();
+    expect(await invite(server, false)).toEqual({ ok: false, error: { code: 'not_host' } });
+  });
+
+  it('answers a replay with the same token', async () => {
+    const { server } = serverAt();
+    expect(await invite(server, true, 'tap')).toEqual(await invite(server, true, 'tap'));
+  });
+
+  it('opens the room for the current token', async () => {
+    const { server } = serverAt();
+    const token = tokenOf(await invite(server));
+    expect(await joinInvite(server, token)).toEqual({ ok: true, value: { code: 'QD-7K4F9X' } });
+  });
+
+  it('stops the old token working once a new one is made', async () => {
+    const { server } = serverAt();
+    const first = tokenOf(await invite(server));
+    const second = tokenOf(await invite(server));
+    expect(second).not.toBe(first);
+    expect(await joinInvite(server, first)).toEqual({
+      ok: false,
+      error: { code: 'invite_invalid' },
+    });
+    expect(await joinInvite(server, second)).toMatchObject({ ok: true });
+  });
+
+  it('refuses a wrong or expired token', async () => {
+    const { server, clock } = serverAt();
+    const token = tokenOf(await invite(server));
+    expect(await joinInvite(server, 'mock-nope')).toEqual({
+      ok: false,
+      error: { code: 'invite_invalid' },
+    });
+    clock.now += MOCK_INVITE_HOURS * 3_600_000;
+    expect(await joinInvite(server, token)).toEqual({
+      ok: false,
+      error: { code: 'invite_invalid' },
+    });
+  });
+
+  it('counts wrong tokens toward the same attempt limit as wrong codes', async () => {
+    const { server } = serverAt();
+    for (let i = 0; i < MOCK_JOIN_ATTEMPTS; i++) await joinInvite(server, `mock-${i}`);
+    expect(await join(server, '9M2XR4')).toMatchObject({
+      ok: false,
+      error: { code: 'rate_limited' },
     });
   });
 });

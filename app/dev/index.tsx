@@ -25,6 +25,10 @@ const sections: { title: string; links: { label: string; href: Href; enter?: boo
       { label: '2.1 Home · nothing playing', href: '/home' },
       { label: '2.2 Home · room playing (mini player)', href: '/home', enter: true },
       { label: '2.4 Start a room', href: '/create-room' },
+      {
+        label: 'Invite link · replaced or wrong token',
+        href: { pathname: '/join', params: { invite: 'mock-0000' } },
+      },
     ],
   },
   {

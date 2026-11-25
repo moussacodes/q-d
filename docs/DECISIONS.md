@@ -2,6 +2,22 @@
 
 Product and technical decisions that are not obvious from the code. Newest first.
 
+## 2026-11-25 · Invite / QR screen
+
+Figma audit of 3.5 Invite people. Figma wasn't re-checked: a person still compares it with `20 · Mobile`. Mock mode only.
+
+- **Layout (from `feat/invite-qr`, Baron's work in progress).** The code card sits centered under the header, the QR code fills the card's width up to 320 pt so a phone across the table can scan it, and Copy link and Share are pinned to the bottom of the sheet (`SheetScreen` gained `contentStyle` for this; it already had a footer slot). Figma 3.5 places them differently, so **a teammate should confirm** the layout.
+- **The QR code is real.** It's drawn with react-native-svg from the `qrcode` package's pure-JavaScript encoder (`src/components/QrCode.tsx`), error correction M and the standard four-module quiet zone, so it works in Expo Go and on the web with no native code. `expo-clipboard` copies the link and React Native's `Share` shares it; both ship in Expo Go.
+- **It encodes an invite link, never the room code.** The link is `qd://join?invite=<token>` (API_CONTRACTS.md, `create_room_invite`). Tests check that no drawn QR value is or contains the room code. The code is shown on its own for reading aloud, and screen readers spell it out ("Q D, 7 K 4 F 9 X").
+- **Mock tokens are deterministic and labeled.** They're `mock-` plus 32 hex characters (the length of a 128-bit token), made from the room and a counter, so unlike real tokens they aren't secret. The sheet shows a "Mock invite · not a working link" chip. Real tokens come from the server's random generator.
+- **The host's phone keeps the token.** The server stores only a hash (DECISIONS 2026-11-24 · Row level security, on the DB branches), so the app can't read a token back. Opening Invite again reuses the link this phone made; the first open calls `create_room_invite`. After an app restart (once tokens aren't mock), opening Invite would make a new link and the old QR code would stop working. **A teammate should confirm** that, or whether the token should be kept in SecureStore.
+- **"Make a new link"** calls `create_room_invite` again, which replaces the old token (the contract's "the host can replace it"). The sheet says the old QR code and link stop working and the room code stays the same. Figma has no control for this.
+- **Only the host invites** (PRODUCT_SPEC.md §4). Anyone else who reaches the sheet (the listener preview, a stale link) sees "Only <host> can invite people." with no code, QR code, link or Share, and no invite is made.
+- **The subtitle follows the rules.** It says guests can "join and add songs" only while everyone can add songs; otherwise just "join". Both say no music service is needed.
+- **Loading and errors.** While the invite is being made the QR area says "Making an invite link…" and Copy link and Share are disabled. An error shows in words with Try again. "Copy link" turns into "Link copied" for two seconds and is announced to screen readers.
+- **An invite link opens `/join`.** The contract's link needs a route, so `app/join.tsx` comes back, but only to handle `?invite=`: it calls `join_room_by_invite` and opens the room, or explains the error (`invite_invalid`: expired or replaced, plus `room_full`, `room_ended`, `rate_limited`) with Go to Home. Without a token it goes Home, so typing a code still happens only on Home. This reuses the path the 2026-11-20 entry removed, so **a teammate should confirm** it. Wrong tokens count toward the same mock attempt limit as wrong codes.
+- **Not done:** `qd://` links don't open Expo Go (it uses `exp://`), so scanning needs a development build. Someone signed out who opens a link lands on Welcome and the token is lost. Universal links and keeping the token through sign-in come later.
+
 ## 2026-11-25 · Create room and join room screens
 
 Figma audit of 2.4 Start a room and of joining with a code, which now lives on Home (see "Join with a code on Home" below). Figma wasn't re-checked: a person still compares both with `20 · Mobile`. Mock mode only; the RPC cards wire the real `create_room` and `join_room_by_code`.

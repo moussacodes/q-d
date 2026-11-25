@@ -52,3 +52,26 @@ export function roomNameMessage(problem: RoomNameProblem): string {
 
 /** Under the code field when it holds characters no code uses. */
 export const lookalikeMessage = 'Room codes don’t use 0, O, 1 or I. Check the code with the host.';
+
+/** What the invite link screen says when `join_room_by_invite` fails. */
+export function inviteJoinErrorMessage(error: RpcError): string {
+  switch (error.code) {
+    case 'invite_invalid':
+      return 'This invite doesn’t work anymore. It may have expired, or the host made a new one. Ask the host for a new link or the room code.';
+    case 'room_full':
+    case 'room_ended':
+    case 'rate_limited':
+    case 'profile_incomplete':
+    case 'not_authenticated':
+      return joinErrorMessage(error);
+    default:
+      return 'Couldn’t join right now. Try again.';
+  }
+}
+
+/** What Invite says when `create_room_invite` fails. */
+export function createInviteErrorMessage(error: RpcError): string {
+  return error.code === 'not_host'
+    ? 'Only the host can invite people.'
+    : 'Couldn’t make an invite link. Try again.';
+}

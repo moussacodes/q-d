@@ -11,6 +11,7 @@ import {
 } from 'react';
 
 import type { MusicProvider } from '@/domain/music-provider';
+import { inviteLink } from '@/domain/invite';
 import { allows, type RoomRules } from '@/domain/room-rules';
 import type { RpcError } from '@/domain/rpc-error';
 import { formatDuration, parseDuration } from '@/domain/time';
@@ -26,7 +27,7 @@ import {
   type MockTrack,
 } from '@/providers/mock/data';
 
-import { MockRoomServer, newIdempotencyKey } from './mockServer';
+import { MockRoomServer, newIdempotencyKey, type RoomInvite } from './mockServer';
 import { RoomPlayer } from './RoomPlayer';
 import {
   createRoomStore,
@@ -75,7 +76,17 @@ export function trackFromResult(
   };
 }
 
-type Rooms = { store: RoomStore; players: Map<string, RoomPlayer>; server: MockRoomServer };
+type Rooms = {
+  store: RoomStore;
+  players: Map<string, RoomPlayer>;
+  server: MockRoomServer;
+  /**
+   * The invite this phone made for each room it hosts. The server keeps only
+   * a hash of the token, so the host's phone is the one place it can be read
+   * again.
+   */
+  invites: Map<string, RoomInvite>;
+};
 
 const RoomsContext = createContext<Rooms | null>(null);
 
@@ -89,6 +100,7 @@ export function RoomsProvider({ children }: { children: ReactNode }) {
     store: createRoomStore(),
     players: new Map(),
     server: new MockRoomServer(),
+    invites: new Map(),
   }));
   return <RoomsContext.Provider value={rooms}>{children}</RoomsContext.Provider>;
 }
@@ -335,4 +347,60 @@ export function useStartRoom() {
   );
   const { state, run } = useCall(call);
   return { state, start: run };
+}
+
+/**
+ * `join_room_by_invite`, for a scanned QR code or a shared link. On success
+ * you're in the room and `join` returns `{ code }`.
+ */
+export function useJoinByInvite() {
+  const { server } = useRooms();
+  const { enterRoom } = useMockSession();
+  const call = useCallback(
+    async (token: string, idempotencyKey: string) => {
+      const result = await server.joinRoomByInvite({ token, idempotencyKey });
+      if (result.ok) enterRoom(result.value.code);
+      return result;
+    },
+    [server, enterRoom],
+  );
+  const { state, run } = useCall(call);
+  return { state, join: run };
+}
+
+/**
+ * The host's invite for a room: the link the QR code encodes, Copy link
+ * copies and Share sends. Opening Invite reuses the link this phone already
+ * made; the first time, it calls `create_room_invite`. `replace` makes a new
+ * one, and the old link and QR code stop working. Nothing happens for
+ * someone who isn't the host.
+ */
+export function useRoomInvite(roomCode: string, isHost: boolean) {
+  const { server, invites } = useRooms();
+  const [invite, setInvite] = useState<RoomInvite | null>(() => invites.get(roomCode) ?? null);
+  const call = useCallback(
+    async (_: void, idempotencyKey: string) => {
+      const result = await server.createRoomInvite({ roomCode, asHost: isHost, idempotencyKey });
+      if (result.ok) {
+        invites.set(roomCode, result.value);
+        setInvite(result.value);
+      }
+      return result;
+    },
+    [server, invites, roomCode, isHost],
+  );
+  const { state, run } = useCall(call);
+
+  useEffect(() => {
+    if (isHost && !invites.has(roomCode)) run();
+  }, [isHost, invites, roomCode, run]);
+
+  return {
+    /** Null until the first invite exists. */
+    link: invite ? inviteLink(invite.token) : null,
+    token: invite?.token ?? null,
+    state,
+    /** Try again after an error, or make a new link that replaces the old one. */
+    replace: () => run(),
+  };
 }
