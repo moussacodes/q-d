@@ -167,6 +167,77 @@ describe('useCatalogSearch', () => {
   });
 });
 
+describe('useCatalogSearch · answers that arrive late (review)', () => {
+  it('drops an error for a query that changed before it arrived', async () => {
+    const { catalog, pending } = controlledCatalog();
+    const { result: hook, rerender } = await renderHook(
+      ({ query }: { query: string }) => useCatalogSearch(query, { catalog }),
+      { initialProps: { query: 'first' } },
+    );
+    await rerender({ query: 'second' });
+    await act(async () =>
+      pending[0].reject(new ProviderError('rate_limited', 'apple_music', 'x', 5)),
+    );
+    expect(hook.current).toEqual({ results: [], status: 'loading', error: null });
+    await act(async () => pending[1].resolve([result('2')]));
+    expect(hook.current).toEqual({ results: [result('2')], status: 'done', error: null });
+  });
+
+  it('ignores an older answer that arrives after a newer one', async () => {
+    const { catalog, pending } = controlledCatalog();
+    const { result: hook, rerender } = await renderHook(
+      ({ query }: { query: string }) => useCatalogSearch(query, { catalog }),
+      { initialProps: { query: 'first' } },
+    );
+    await rerender({ query: 'second' });
+    await act(async () => pending[1].resolve([result('2')]));
+    await act(async () => pending[0].resolve([result('1')]));
+    expect(hook.current).toEqual({ results: [result('2')], status: 'done', error: null });
+  });
+
+  it('does nothing when an answer arrives after the sheet closed', async () => {
+    const { catalog, pending } = controlledCatalog();
+    const spy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    const { unmount } = await renderHook(() => useCatalogSearch('paper', { catalog }));
+    await act(async () => unmount());
+    await act(async () => pending[0].resolve([result('1')]));
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it('keeps the retry time off any error but rate_limited', async () => {
+    const { catalog, pending } = controlledCatalog();
+    const { result: hook } = await renderHook(() => useCatalogSearch('paper', { catalog }));
+    await act(async () =>
+      pending[0].reject(new ProviderError('provider_unavailable', 'apple_music')),
+    );
+    expect(hook.current.error).toEqual({ code: 'provider_unavailable' });
+  });
+
+  describe('with a debounce', () => {
+    beforeEach(() => jest.useFakeTimers());
+    afterEach(() => jest.useRealTimers());
+
+    it('says loading, not the old error, while it waits to search again', async () => {
+      const { catalog, pending } = controlledCatalog();
+      const { result: hook, rerender } = await renderHook(
+        ({ query }: { query: string }) => useCatalogSearch(query, { catalog, debounceMs: 300 }),
+        { initialProps: { query: 'first' } },
+      );
+      await act(async () => jest.advanceTimersByTime(300));
+      await act(async () =>
+        pending[0].reject(new ProviderError('rate_limited', 'apple_music', 'x', 12)),
+      );
+      expect(hook.current.error).toEqual({ code: 'rate_limited', retryAfterSeconds: 12 });
+      await rerender({ query: 'firsts' });
+      expect(hook.current).toEqual({ results: [], status: 'loading', error: null });
+      expect(pending).toHaveLength(1);
+      await act(async () => jest.advanceTimersByTime(300));
+      expect(pending.map((p) => p.query)).toEqual(['first', 'firsts']);
+    });
+  });
+});
+
 describe('searchErrorMessage', () => {
   it.each([
     [
