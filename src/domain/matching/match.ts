@@ -11,8 +11,9 @@ import { normalizeIsrc, normalizeText, parseTitle, similarity, splitArtists } fr
  *    when the titles' version markers differ.
  * 2. Otherwise candidates are scored out of 100 on title, primary artist,
  *    duration, album, explicit status and version markers (see `scoreCandidate`).
- * 3. A different version (live, remix, sped up, …) is a different recording,
- *    so it's never chosen without an ISRC; it's only listed for "Wrong version?".
+ * 3. A different version (live, remix, sped up, …) or a different artist (a
+ *    cover, or another song with the same name) is a different recording, so
+ *    it's never chosen without an ISRC; it's only listed for "Wrong version?".
  * 4. An automatic match needs at least `MATCH_THRESHOLD` and a lead of at least
  *    `MIN_LEAD` over the next same-version candidate.
  * 5. An explicit/clean conflict never matches automatically.
@@ -27,6 +28,11 @@ export const MATCH_THRESHOLD = 90;
 export const MIN_LEAD = 5;
 /** Below this, a candidate isn't kept as a low-confidence mapping. */
 export const MIN_SCORE = 50;
+/**
+ * Fewer artist points than this means the primary artist isn't credited and
+ * doesn't look alike: a different recording, never chosen without an ISRC.
+ */
+export const MIN_ARTIST_POINTS = 10;
 /** An ISRC match whose duration is further off than this is suspicious and needs review. */
 export const ISRC_DURATION_TOLERANCE_MS = 10_000;
 
@@ -63,6 +69,8 @@ export type ScoredCandidate = {
   explicitConflict: boolean;
   /** The version markers differ (live, remix, remastered, …). */
   versionMismatch: boolean;
+  /** The primary artist isn't credited and doesn't look alike (`MIN_ARTIST_POINTS`). */
+  artistMismatch: boolean;
   durationDeltaMs: number | null;
 };
 
@@ -75,6 +83,7 @@ export type MatchReason =
   | 'no_clear_lead'
   | 'explicit_conflict'
   | 'version_mismatch'
+  | 'artist_mismatch'
   | 'no_candidates';
 
 export type MatchResult = {
@@ -214,6 +223,7 @@ function score(recording: Features, track: ProviderTrack): ScoredCandidate {
     isrcMatch: recording.isrc !== null && recording.isrc === candidate.isrc,
     explicitConflict,
     versionMismatch,
+    artistMismatch: breakdown.artist < MIN_ARTIST_POINTS,
     durationDeltaMs,
   };
 }
@@ -232,7 +242,7 @@ function compareText(a: string, b: string): number {
 
 /**
  * A total order, so ties always break the same way: ISRC matches, then
- * no explicit conflict, then same version, then score, then closer duration,
+ * no explicit conflict, then same version, then same artist, then score, then closer duration,
  * then provider track id.
  */
 function compareCandidates(a: ScoredCandidate, b: ScoredCandidate): number {
@@ -240,6 +250,7 @@ function compareCandidates(a: ScoredCandidate, b: ScoredCandidate): number {
     Number(b.isrcMatch) - Number(a.isrcMatch) ||
     Number(a.explicitConflict) - Number(b.explicitConflict) ||
     Number(a.versionMismatch) - Number(b.versionMismatch) ||
+    Number(a.artistMismatch) - Number(b.artistMismatch) ||
     b.score - a.score ||
     (a.durationDeltaMs ?? Number.MAX_SAFE_INTEGER) -
       (b.durationDeltaMs ?? Number.MAX_SAFE_INTEGER) ||
@@ -352,7 +363,8 @@ export function matchRecording(
   }
 
   // 2–4. Score the candidates that are the same version and the same explicit status.
-  const same = ranked.filter((c) => !c.versionMismatch && !c.explicitConflict);
+  const sameRecording = (c: ScoredCandidate) => !c.versionMismatch && !c.artistMismatch;
+  const same = ranked.filter((c) => sameRecording(c) && !c.explicitConflict);
   const [best, second] = same;
   if (best && best.score >= MIN_SCORE) {
     const lead = second ? best.score - second.score : Number.POSITIVE_INFINITY;
@@ -372,7 +384,7 @@ export function matchRecording(
   }
 
   // 5. Only the other explicit status is close: keep it, with the conflict shown.
-  const conflict = ranked.find((c) => !c.versionMismatch && c.explicitConflict);
+  const conflict = ranked.find((c) => sameRecording(c) && c.explicitConflict);
   if (conflict && conflict.score >= MIN_SCORE) {
     return done(
       'needs_review',
@@ -383,9 +395,10 @@ export function matchRecording(
     );
   }
 
-  // 3. Different versions are different recordings: listed in `ranked`, never chosen.
-  const reasons: MatchReason[] = ranked.some((c) => c.versionMismatch)
-    ? ['version_mismatch']
-    : ['below_threshold'];
+  // 3. Other versions and other artists are different recordings: listed in `ranked`, never chosen.
+  const reasons: MatchReason[] = [];
+  if (ranked.some((c) => c.versionMismatch)) reasons.push('version_mismatch');
+  if (ranked.some((c) => !c.versionMismatch && c.artistMismatch)) reasons.push('artist_mismatch');
+  if (ranked.some(sameRecording)) reasons.push('below_threshold');
   return done('unavailable', null, 'score', null, reasons);
 }
