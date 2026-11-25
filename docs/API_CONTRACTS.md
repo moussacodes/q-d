@@ -126,7 +126,7 @@ Why it's shaped this way: [ARCHITECTURE.md § 4.10](ARCHITECTURE.md#410-client-v
 
 - **Caller:** host. `delete_account` also calls it.
 - **Input:** `room_id uuid`, `idempotency_key uuid`
-- **Built** (`supabase/migrations/20261125001200_end_room.sql`).
+- **Built** (`supabase/migrations/20261125001200_end_room.sql`). Since the demo reset card, it ends the room through `private.close_room()` (`20261125005000_reset_demo_accounts.sql`), which `reset_demo_accounts` shares.
 - **Effect:** marks the room ended (`state = 'ended'`, `ended_at`), stops playback (`playback_states.status = 'stopped'`), expires its code (`code_expires_at` no later than `ended_at`; the code is free for new rooms) and revokes its live invite. Broadcasts `room.ended`. Members and the queue are kept as history that members can still read; the 90-day cleanup is a later card.
 - **Returns:** `{ room_id, ended_at }`
 - **Errors:** `not_authenticated`, `invalid_input` (`field: 'idempotency_key'`), `room_not_found`, `room_ended` (with a new key), `not_member`, `not_host`, `idempotency_conflict`
@@ -247,6 +247,21 @@ Runs as an Edge Function, not a database function, because it needs the service 
 
 - **Caller:** the user, after signing in again recently.
 - **Effect:** the steps in [PRODUCT_SPEC.md § 7](PRODUCT_SPEC.md#account-deletion). It ends hosted rooms through `end_room`, replaces attribution with "Deleted user", and retries until cleanup finishes (within 24 hours).
+
+### Operations
+
+Functions for the team, not the app. The app never calls them, and neither `anon` nor `authenticated` can execute them.
+
+#### `reset_demo_accounts` (operator only)
+
+**Built** (`supabase/migrations/20261125005000_reset_demo_accounts.sql`, tests in `supabase/tests/reset-demo-accounts.test.ts`). Called by `supabase/scripts/reset-demo-accounts.js` ([DEMO_RUNBOOK.md § Reset between rehearsals](DEMO_RUNBOOK.md#reset-between-rehearsals)).
+
+- **Caller:** the service role only. Execute is granted to `service_role` alone, and a call that carries a signed-in user fails with `not_allowed` even if a grant is added by mistake. It runs only while the server flag `demo_reset` (`private.feature_flags`) is on, which only the demo project turns on.
+- **Input:** `user_ids uuid[]` (the demo accounts, 1 to 10, repeats count once), `apply boolean` (default `false`: a dry run that changes nothing).
+- **Effect** (when `apply`), for those users only: every room they host that hasn't ended is ended exactly like `end_room` (shared `private.close_room()`: ended, code expired and freed, playback stopped, live invites revoked, one `room.ended` broadcast). The queue entries, import batches and memberships of every room they host are deleted; the ended room rows stay. Their idempotency keys and failed join attempts are deleted. Profiles and provider connections are never changed, and rooms other people host are never touched.
+- **No idempotency key:** the reset is idempotent by itself. A second run finds nothing to do, changes nothing and broadcasts nothing.
+- **Returns:** the same counts for a dry run and a real one, taken before any change: `{ applied, users, rooms_ended, invites_revoked, queue_entries_deleted, import_batches_deleted, memberships_deleted, idempotency_keys_deleted, join_attempts_deleted, memberships_elsewhere, profiles_incomplete, users_without_service }`. The last three are informational: memberships in live rooms other people host (left alone), listed accounts without a finished profile, and listed accounts with no music service connected. No ids, emails or codes.
+- **Errors:** `not_allowed` (a signed-in caller), `feature_disabled` (`details.flag = 'demo_reset'`), `invalid_input` (`details.field = 'user_ids'` with `reason` `empty`, `null_id`, or `unknown_user` with a `count`; or `details.field = 'apply'`), `limit_exceeded` (`details.limit = 10`).
 
 ## 4. Realtime
 

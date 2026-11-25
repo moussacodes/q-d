@@ -2,7 +2,7 @@
 
 How to run the December 4, 2026 demo, prepare for it, and recover when something breaks.
 
-> **Draft.** The flow and the fallbacks are set. Device names, accounts and the reset steps get filled in during the Dec 1–3 rehearsals. Anything marked **TBD** must be resolved by Dec 3.
+> **Draft.** The flow, the fallbacks and the account reset are set. Device names and accounts get filled in during the Dec 1–3 rehearsals. Anything marked **TBD** must be resolved by Dec 3.
 
 ## The demo
 
@@ -50,7 +50,7 @@ Cut beat 5 first if time runs short. Never cut beat 4.
 - [ ] Demo accounts are signed in. The host's service is connected and the authorization hasn't expired.
 - [ ] Spotify: the host account is still one of the five development users, and the app owner's Premium is active.
 - [ ] Apple Music: the host's subscription is active, and a test song plays with the screen locked.
-- [ ] Demo data is reset (see below). No rooms are left over from rehearsal.
+- [ ] Demo data is reset with the script (see below), and a second dry run shows nothing left to do.
 - [ ] The backup video is on the laptop, available offline.
 - [ ] The hotspot phone is charged, and both demo phones have connected to it once.
 
@@ -64,13 +64,34 @@ Cut beat 5 first if time runs short. Never cut beat 4.
 
 ### Reset between rehearsals
 
-**TBD.** Write the exact steps by Dec 3. They need to cover:
+The reset is a script: [`supabase/scripts/reset-demo-accounts.js`](../supabase/scripts/reset-demo-accounts.js). It calls the operator-only `reset_demo_accounts` function ([API_CONTRACTS.md § reset_demo_accounts](API_CONTRACTS.md#reset_demo_accounts-operator-only)). Run it from the laptop that holds the demo project's service-role key, never from a phone.
 
-- ending every open demo room,
-- clearing queues and history for the demo accounts in the demo Supabase project,
-- confirming both accounts are still signed in with the service connected.
+For the demo accounts, and nobody else, it:
 
-If the reset turns into SQL, keep it as a script in `supabase/` and link it here.
+- ends every room they host that's still open, the same way **End room** does: the code expires and is free again, playback stops, the QR invite stops working, and any phone still in the room gets `room.ended`,
+- deletes those rooms' queues, playlist imports and memberships, so Home shows no leftover rooms,
+- deletes the accounts' idempotency keys and failed join attempts, so a rehearsal's wrong codes can't lock the guest out.
+
+It doesn't touch profiles or music-service connections, and it never touches a room someone else hosts. It reports how many of those the accounts are in, and how many accounts aren't onboarded or have no service connected.
+
+**Once, before the first rehearsal (Moussa or Baron, whoever holds the key):**
+
+1. In the **demo** Supabase project's SQL editor, turn the reset on. It's off in every other project, production included, so the script can't reset anything there:
+   `update private.feature_flags set enabled = true where flag = 'demo_reset';`
+2. Create `.env.demo.local` in the repo root (git ignores it). Fill in the four names from `.env.example`: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and the two demo accounts in `QD_DEMO_EMAILS` (or their ids in `QD_DEMO_USER_IDS`). Never commit it, never paste the key into chat, and never give it an `EXPO_PUBLIC_` name.
+
+**Each reset (between rehearsals, the night before, and after the 30-minute run-through):**
+
+1. Dry run. It changes nothing and prints counts only:
+   `node --env-file=.env.demo.local supabase/scripts/reset-demo-accounts.js`
+2. Check the first line names the demo project (`Project: <ref>.supabase.co`), and the counts look right.
+3. Apply it:
+   `node --env-file=.env.demo.local supabase/scripts/reset-demo-accounts.js --yes`
+4. Run the dry run again. Every "to end", "to revoke" and "to delete" line must say 0. Running it twice is safe.
+5. Act on any `note:` line: a demo account still in someone else's room (leave it from the app), an account without a finished profile, or the host with no service connected.
+6. On both phones, confirm the account is still signed in and the host's service is still connected. Pull to refresh Home: no rooms are left.
+
+If the script says the `demo_reset` flag is off, you're pointed at the wrong project, or step 1 of the setup wasn't done. Don't turn the flag on anywhere but the demo project.
 
 ## If something breaks
 

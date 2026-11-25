@@ -2,6 +2,18 @@
 
 Product and technical decisions that are not obvious from the code. Newest first.
 
+## 2026-11-25 · Demo account reset
+
+- **Operator scripts live in `supabase/scripts/`.** ARCHITECTURE.md named no place for them, and the runbook asked for the reset "as a script in `supabase/`". The reset script is plain CommonJS JavaScript with no dependencies (`fetch` only), so it runs with `node` on any supported Node, Windows included, without a build step. A `.d.ts` beside it types it for the tests.
+- **The reset is a database function, not a series of queries from the script,** so it runs in one transaction under the room locks and reuses `end_room`'s steps. Both now go through `private.close_room()`; `end_room`'s contract and checks are unchanged.
+- **Only the service role can run it, and only in the demo project.** Execute is granted to `service_role` alone, a call carrying a signed-in user is refused, and it needs the server flag `demo_reset`, which ships off. Someone turns it on by hand in the demo project once. Production never does, so a mix-up of keys can't reset anyone there.
+- **It touches only the ids it's given:** 1 to 10 accounts, every one a real account, never an empty list. Rooms other people host stay as they are, even when a demo account is a member; the result counts those memberships so the operator can leave from the app.
+- **What "clean" means.** The demo accounts' open rooms are ended like End room. The queues, import batches and memberships of every room they host are deleted, so Home has no leftovers and the code is free; the ended room rows stay. Their idempotency keys and failed join attempts are deleted, so a rehearsal's wrong codes can't lock the guest out on stage. **Profiles and music-service connections are kept:** the runbook needs both accounts signed in, onboarded and the host connected. The result counts accounts that aren't, and the runbook says what to do. A teammate should confirm that keeping profiles is the "known state" they want.
+- **Dry run by default, at both ends.** The function's `apply` defaults to `false`, and the script sends `true` only with `--yes`. Both print or return counts only: no emails, ids, room codes, tokens or keys. Server error text isn't printed either, only q’d codes and HTTP statuses.
+- **No idempotency key.** The reset is idempotent by itself: a second run finds nothing to do and broadcasts nothing.
+- **The key lives in `.env.demo.local`,** which git ignores, never in the app's `.env` and never under an `EXPO_PUBLIC_` name. `.env.example` lists the names.
+- **Not run against the real demo project yet.** It's tested on PGlite only. The first real run (dry run first) is part of the Dec 1 setup.
+
 ## 2026-11-25 · end_room
 
 - **`end_room` returns `{ room_id, ended_at }`.** The contract listed no result. A replay returns the same values.

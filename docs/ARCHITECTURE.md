@@ -94,6 +94,7 @@ supabase/
   migrations/             Schema, RPC functions, triggers, RLS                   (schema built)
   functions/              Edge Functions                    (delete-account placeholder built)
   tests/                  Database and RLS tests on PGlite, plus the harness      (built)
+  scripts/                Operator scripts run from a laptop, never the app      (demo reset built)
 assets/icons/             The 34 Figma icons, unmodified SVG
 docs/                     These documents and the pitch deck
 ```
@@ -197,6 +198,7 @@ ESLint enforces these rules (`no-restricted-imports` in `eslint.config.js`), so 
 - Built (join by code card): `join_room_by_code` (`supabase/migrations/20261125001000_join_room_by_code.sql`), with the attempt limits in `private.join_attempts` and `private.join_room()`, which every way of joining shares. Failed guesses are answered with `private.error_response()` so they're kept ([API_CONTRACTS.md § 1](API_CONTRACTS.md#1-conventions)).
 - Built (QR invitations card): `create_room_invite` and `join_room_by_invite` (`supabase/migrations/20261125001100_room_invites.sql`). Tokens are generated in Postgres and stored only as hashes. The pure link helper is `src/domain/invite-link.ts`; the QR screen isn't built yet.
 - Built (end_room card): `end_room` (`supabase/migrations/20261125001200_end_room.sql`). Host only. It ends the room, stops playback, frees and expires the code, revokes the invite and broadcasts `room.ended`.
+- Built (demo account reset card): `reset_demo_accounts` (`supabase/migrations/20261125005000_reset_demo_accounts.sql`), operator only: `service_role` alone may execute it, and only where the `demo_reset` server flag is on. It ends the demo accounts' rooms through `private.close_room()`, the helper `end_room` now uses too, then clears those rooms' queues and memberships and the accounts' idempotency keys and join attempts. The script that calls it is `supabase/scripts/reset-demo-accounts.js`.
 
 ### 4.11 q’d sign-in vs. music-service authorization
 
@@ -282,6 +284,7 @@ Built · RLS card (`supabase/migrations/20261124000300_row_level_security.sql`, 
 | Playlist import | off | Post-demo feature. Server side: `private.feature_flags` row `playlist_import` (enqueue_batch card) |
 | Moderation | off for the demo, on for the beta | Beta gate |
 | Analytics | off, and opt-in when on | Privacy |
+| Demo reset | off; on only in the demo project | Server only: `private.feature_flags` row `demo_reset` lets `reset_demo_accounts` run (demo account reset card), so the same migration can't reset anyone in production |
 
 ## 9. Where the app runs
 
