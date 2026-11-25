@@ -2,6 +2,12 @@
 
 Product and technical decisions that are not obvious from the code. Newest first.
 
+## 2026-11-24 · Welcome, sign-in and account-creation audit
+
+- **Audited against the card, not Figma.** Welcome, Sign in and Create account offer all three entry points: Apple, Google and email. Welcome's email button opens Create account; Sign in and Create account each have the email form plus Apple and Google. A person still has to compare them with Figma `20 · Mobile`.
+- **The wordmark says q’d with the curly apostrophe.** The Logo drew `q'd` with a straight one, although its accessibility label was already curly (PRODUCT_SPEC.md §9).
+- **Still mock:** the email form accepts any input, and "Forgot password?" does nothing. Validation and password reset come with the email auth card.
+
 ## 2026-11-20 · Room screen: expanded cover only
 
 - **A playing song always shows the expanded cover (Figma 3.2).** The resize button is gone, so the smaller-cover layout (3.1) no longer appears while a song plays. The cover is as big as it can be while the song info and playback controls still fit above the Up next bar. The full queue is below them.
