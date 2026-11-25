@@ -6,6 +6,7 @@ import {
   createFakeSupabase,
   fakeSession,
   fakeUser,
+  flushAuthEvents,
   type FakeSupabase,
 } from '@/test/fakeSupabase';
 
@@ -70,6 +71,7 @@ describe('signing in', () => {
   it('lands on Home with the saved profile when onboarding is done', async () => {
     mockSupabase.setProfile(completeProfile);
     await renderRouter('./app', { initialUrl: '/sign-in' });
+    await flushAuthEvents();
     expect(await screen.findByText('Mock data · only sign-in is live')).toBeVisible();
     await fill();
     await press('Sign in');
@@ -86,6 +88,7 @@ describe('signing in', () => {
   it('goes to onboarding when the profile isn’t finished, with no sample name', async () => {
     mockSupabase.setProfile(null);
     await renderRouter('./app', { initialUrl: '/sign-in' });
+    await flushAuthEvents();
     await fill();
     await press('Sign in');
 
@@ -100,6 +103,7 @@ describe('signing in', () => {
       () => new Promise((resolve) => (finish = resolve)) as never,
     );
     await renderRouter('./app', { initialUrl: '/sign-in' });
+    await flushAuthEvents();
     await fill();
     await press('Sign in');
 
@@ -145,6 +149,7 @@ describe('signing in', () => {
       error,
     } as never);
     await renderRouter('./app', { initialUrl: '/sign-in' });
+    await flushAuthEvents();
     await fill();
     await press('Sign in');
 
@@ -159,6 +164,7 @@ describe('signing in', () => {
 
   it('checks the form before sending anything', async () => {
     await renderRouter('./app', { initialUrl: '/sign-in' });
+    await flushAuthEvents();
     await type('Email', 'someone@');
     await press('Sign in');
     expect(await screen.findByText('Enter an email address like you@example.com.')).toBeVisible();
@@ -170,6 +176,7 @@ describe('signing in', () => {
 describe('creating an account', () => {
   it('starts onboarding once the account exists', async () => {
     await renderRouter('./app', { initialUrl: '/create-account' });
+    await flushAuthEvents();
     await fill();
     await press('Create account');
 
@@ -186,6 +193,7 @@ describe('creating an account', () => {
       error: null,
     });
     await renderRouter('./app', { initialUrl: '/create-account' });
+    await flushAuthEvents();
     await fill();
     await press('Create account');
 
@@ -228,6 +236,7 @@ describe('creating an account', () => {
   ])('explains a refusal (%#)', async (reply, message) => {
     mockSupabase.auth.signUp.mockResolvedValueOnce(reply as never);
     await renderRouter('./app', { initialUrl: '/create-account' });
+    await flushAuthEvents();
     await fill();
     await press('Create account');
     expect(await screen.findByText(message)).toBeVisible();
@@ -236,6 +245,7 @@ describe('creating an account', () => {
 
   it('needs a password of at least 8 characters', async () => {
     await renderRouter('./app', { initialUrl: '/create-account' });
+    await flushAuthEvents();
     await fill('someone@example.com', 'short');
     await press('Create account');
     expect(await screen.findByText('Use at least 8 characters.')).toBeVisible();
@@ -246,6 +256,7 @@ describe('creating an account', () => {
 describe('Apple', () => {
   it('says it isn’t available yet instead of pretending to sign in', async () => {
     await renderRouter('./app', { initialUrl: '/sign-in' });
+    await flushAuthEvents();
     await press('Continue with Apple');
     expect(
       await screen.findByText('Sign in with Apple isn’t available yet. Use email instead.'),
@@ -258,6 +269,7 @@ describe('once signed in', () => {
   const signInToHome = async () => {
     mockSupabase.setProfile(completeProfile);
     await renderRouter('./app', { initialUrl: '/sign-in' });
+    await flushAuthEvents();
     await fill();
     await press('Sign in');
     await screen.findByText('Start a room or jump into one.');

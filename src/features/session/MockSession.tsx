@@ -88,6 +88,11 @@ type MockSessionValue = {
   applyAuth: (next: LiveAccount | null) => void;
   /** Live auth: the signed-in Supabase user's id, or null. */
   liveUserId: string | null;
+  /**
+   * Live auth: true until the stored session has been read at startup, so
+   * the app doesn't flash Welcome before restoring a signed-in person.
+   */
+  restoring: boolean;
   /** Development screen index: open a screen in the state it needs. */
   previewAs: (auth: AuthStatus, href: Href) => void;
   enterRoom: (code: string) => void;
@@ -104,8 +109,15 @@ type Trip = { mode: 'replace' | 'push'; hrefs: Href[] };
 
 const MockSessionContext = createContext<MockSessionValue | null>(null);
 
-export function MockSessionProvider({ children }: { children: ReactNode }) {
+export function MockSessionProvider({
+  children,
+  liveAuth = isLiveAuth,
+}: {
+  children: ReactNode;
+  liveAuth?: boolean;
+}) {
   const [auth, setAuth] = useState<AuthStatus>('signedOut');
+  const [restoring, setRestoring] = useState(liveAuth);
   const [account, setAccount] = useState<Account>({
     id: 0,
     returning: false,
@@ -182,9 +194,26 @@ export function MockSessionProvider({ children }: { children: ReactNode }) {
         resetToSignedOut();
         // The local session is removed before the network call, so this
         // can't leave the device signed in (services/auth.ts).
-        if (isLiveAuth) void signOutOfSupabase();
+        if (liveAuth) void signOutOfSupabase();
       },
       applyAuth: (next) => {
+        if (restoring) {
+          // Startup: nothing is on screen yet, so set the state and let the
+          // route guards send the first screen to the right place.
+          setRestoring(false);
+          setAuth(next?.status ?? 'signedOut');
+          if (next) {
+            switchAccount({
+              returning: next.status === 'ready',
+              method: next.method,
+              profile: next.profile,
+              userId: next.userId,
+              email: next.email,
+              suggestedName: next.suggestedName,
+            });
+          }
+          return;
+        }
         if (!next) {
           if (auth !== 'signedOut' || account.userId) resetToSignedOut();
           return;
@@ -203,6 +232,7 @@ export function MockSessionProvider({ children }: { children: ReactNode }) {
         go(next.status);
       },
       liveUserId: account.userId ?? null,
+      restoring,
       previewAs: (next, href) => {
         setAuth(next);
         setTrip({ mode: 'push', hrefs: [href] });
@@ -214,7 +244,7 @@ export function MockSessionProvider({ children }: { children: ReactNode }) {
       },
       leaveRoom: () => setActiveCode(null),
     };
-  }, [auth, account, activeCode, hosted]);
+  }, [auth, account, activeCode, hosted, restoring, liveAuth]);
 
   return <MockSessionContext.Provider value={value}>{children}</MockSessionContext.Provider>;
 }

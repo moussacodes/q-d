@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { act } from 'expo-router/testing-library';
 
 /**
  * A stand-in for the Supabase client at the service boundary: just the auth
@@ -118,3 +119,20 @@ export function createFakeSupabase() {
 }
 
 export type FakeSupabase = ReturnType<typeof createFakeSupabase>;
+
+/**
+ * Lets queued auth events reach the app inside `act`. The service hands each
+ * event over on a timer (see `onAuthChange`), and the startup restore waits
+ * for the first one, so route tests call this after rendering. Works with
+ * the fake timers `renderRouter` turns on, and with real ones.
+ */
+export async function flushAuthEvents(rounds = 3) {
+  const fakeTimers = 'clock' in setTimeout;
+  for (let i = 0; i < rounds; i += 1) {
+    await act(async () => {
+      if (fakeTimers) jest.advanceTimersByTime(1);
+      else await new Promise((resolve) => setTimeout(resolve, 0));
+      await Promise.resolve();
+    });
+  }
+}

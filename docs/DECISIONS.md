@@ -2,6 +2,17 @@
 
 Product and technical decisions that are not obvious from the code. Newest first.
 
+## 2026-11-25 · Auth callback and session refresh
+
+- **`/auth/callback` is open in every sign-in state.** Google and email links land there (`app/auth/callback.tsx`, thin; logic in `features/auth/useAuthCallback`). It exchanges the PKCE `code` once, then moves on to onboarding or Home. If the link is opened again after signing in, it still ends up there.
+- **Every failure has its own words** and a way back ("Back to sign in", "Go to Welcome"): an expired link (`otp_expired`, `flow_state_expired`), one that can't be used (used already, opened on another device, bad state, nothing in it), a cancelled sign-in, and a failed exchange. In mock auth mode it says sign-in isn't set up in this build instead of pretending.
+- **Email confirmation links open the callback.** Sign-up passes `emailRedirectTo` = `authRedirectUrl()`.
+- **Startup waits for the stored session.** In live auth mode the session starts as `restoring`; the splash stays up and the navigator stays hidden until Supabase reports the stored session (`INITIAL_SESSION`) and the profile is read. A signed-in person never sees Welcome on restart; the route guards then send each start URL to the right group. Mock mode doesn't wait.
+- **The session is restored from `expo-sqlite`'s `localStorage`**, not SecureStore, per "Supabase client and device storage" (2026-11-24). The card's "SecureStore" wording predates that decision.
+- **An expired or revoked refresh token signs out.** supabase-js drops a session it can't refresh and reports `SIGNED_OUT`; `AuthSync` returns to Welcome, at startup or while the app is open. A network failure keeps the session, as supabase-js does.
+- **Refresh follows the app state** (unchanged from the Supabase client card): `startAutoRefresh` in the foreground, `stopAutoRefresh` in the background, tested in `src/services/supabase.test.ts`.
+- **Known risk:** a profile read that fails at startup (offline) sends a finished account to onboarding, because a failed read counts as unfinished.
+
 ## 2026-11-25 · Sign in with Google
 
 - **Supabase's Expo flow, nothing native.** `signInWithGoogle` (`src/services/auth.ts`) asks Supabase for Google's address with `skipBrowserRedirect` (PKCE, set on the client), opens it with `expo-web-browser`'s `openAuthSessionAsync`, and exchanges the `code` in the returned URL with `exchangeCodeForSession`. `expo-web-browser` ships in Expo Go and was added with `npx expo install`. No Google client ID lives in the app or `.env`: Google's client ID and secret are set on the Supabase project.

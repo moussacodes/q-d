@@ -7,7 +7,7 @@ import {
   type EmailFormErrors,
 } from '@/domain/auth';
 import { useMockSession } from '@/features/session/MockSession';
-import { signInWithEmail, signUpWithEmail } from '@/services/auth';
+import { authRedirectUrl, signInWithEmail, signUpWithEmail } from '@/services/auth';
 import { isLiveAuth } from '@/services/dataMode';
 
 import { authErrorMessages, checkEmailMessage, fieldErrorMessages } from './messages';
@@ -29,7 +29,7 @@ export interface EmailAuthOptions {
  * screen replaces this one.
  */
 export function useEmailAuth(mode: EmailAuthMode, options: EmailAuthOptions = {}) {
-  const { live = isLiveAuth, emailRedirectTo } = options;
+  const { live = isLiveAuth, emailRedirectTo = authRedirectUrl } = options;
   const { signIn, createAccount } = useMockSession();
   const [email, setEmailValue] = useState('');
   const [password, setPasswordValue] = useState('');
@@ -74,7 +74,7 @@ export function useEmailAuth(mode: EmailAuthMode, options: EmailAuthOptions = {}
     }
     const result = await signUpWithEmail(
       { email, password },
-      { emailRedirectTo: emailRedirectTo?.() },
+      { emailRedirectTo: emailRedirectTo() },
     );
     if (!result.ok) {
       setFormError(result.code);

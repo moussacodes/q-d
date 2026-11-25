@@ -2,7 +2,13 @@ import { AuthApiError } from '@supabase/supabase-js';
 import * as WebBrowser from 'expo-web-browser';
 import { act, fireEvent, renderRouter, screen } from 'expo-router/testing-library';
 
-import { createFakeSupabase, fakeSession, fakeUser, type FakeSupabase } from '@/test/fakeSupabase';
+import {
+  createFakeSupabase,
+  fakeSession,
+  fakeUser,
+  flushAuthEvents,
+  type FakeSupabase,
+} from '@/test/fakeSupabase';
 
 // Sign in with Google (Forge card "Sign in with Google"), live auth mode.
 // Supabase and the system sign-in sheet are faked; everything between the
@@ -61,6 +67,7 @@ const press = async (label: string) => {
 
 it('a new Google account starts onboarding with the name Google shared', async () => {
   await renderRouter('./app', { initialUrl: '/' });
+  await flushAuthEvents();
   await press('Continue with Google');
 
   expect(await screen.findByText('What should we call you?')).toBeVisible();
@@ -79,6 +86,7 @@ it('a returning Google account with a finished profile goes Home', async () => {
     adult_confirmed_at: '2026-11-20T12:00:00Z',
   });
   await renderRouter('./app', { initialUrl: '/sign-in' });
+  await flushAuthEvents();
   await press('Continue with Google');
   expect(await screen.findByText('Start a room or jump into one.')).toBeVisible();
   expect(screen).toHavePathname('/home');
@@ -87,6 +95,7 @@ it('a returning Google account with a finished profile goes Home', async () => {
 it('closing the sheet leaves you where you were, with no error', async () => {
   openSheet.mockResolvedValueOnce({ type: 'cancel' });
   await renderRouter('./app', { initialUrl: '/' });
+  await flushAuthEvents();
   await press('Continue with Google');
 
   expect(await screen.findByLabelText('Continue with Google')).toBeEnabled();
@@ -99,6 +108,7 @@ it('says so while the sheet is open, and allows one sign-in at a time', async ()
   let close: (value: unknown) => void = () => {};
   openSheet.mockImplementationOnce(() => new Promise((resolve) => (close = resolve)));
   await renderRouter('./app', { initialUrl: '/sign-in' });
+  await flushAuthEvents();
   await press('Continue with Google');
 
   expect(await screen.findByLabelText('Opening Google…')).toBeDisabled();
@@ -124,6 +134,7 @@ it.each([
     error,
   } as never);
   await renderRouter('./app', { initialUrl: '/' });
+  await flushAuthEvents();
   await press('Continue with Google');
   expect(await screen.findByText(message)).toBeVisible();
   expect(openSheet).not.toHaveBeenCalled();
@@ -135,6 +146,7 @@ it('explains a link that can’t be used', async () => {
     error: new AuthApiError('Bad verifier', 400, 'bad_code_verifier'),
   } as never);
   await renderRouter('./app', { initialUrl: '/sign-in' });
+  await flushAuthEvents();
   await press('Continue with Google');
   expect(
     await screen.findByText(
