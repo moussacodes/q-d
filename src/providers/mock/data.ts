@@ -1,4 +1,7 @@
 import type { MusicProvider } from '@/domain/music-provider';
+import type { TrackMatch } from '@/domain/recording';
+
+import { mockMatches, type MockUncertainty } from './matches';
 
 /**
  * Deterministic sample data for mock mode (see services/dataMode): rooms,
@@ -25,6 +28,13 @@ export type MockTrack = {
   artworkColor: string;
   /** Set when the song is not on the host's service. */
   unavailableOn?: MusicProvider;
+  /** Set when a service's closest track is kept with a warning (see `./matches`). */
+  uncertainOn?: MockUncertainty;
+  /**
+   * The stored track match per service (`track_matches`), as the matcher
+   * decides it for the fixture. Absent until a match is resolved.
+   */
+  matches?: Partial<Record<MusicProvider, TrackMatch>>;
 };
 
 export type MockPerson = {
@@ -79,9 +89,12 @@ const hostedBy = (hostId: string, provider: MusicProvider, ids: string[]): MockP
       provider: p.id === hostId ? provider : undefined,
     }));
 
-const track = (t: Omit<MockTrack, 'artworkColor'> & { artworkColor?: string }): MockTrack => ({
+const track = (
+  t: Omit<MockTrack, 'artworkColor' | 'matches'> & { artworkColor?: string },
+): MockTrack => ({
   artworkColor: '#c41e2a', // Figma "Son of Spergy" hue
   ...t,
+  matches: mockMatches(t),
 });
 
 export const mockQueue: MockTrack[] = [
@@ -133,6 +146,8 @@ export const mockQueue: MockTrack[] = [
     duration: '3:16',
     provider: 'spotify',
     addedBy: 'Maya',
+    // Spotify's closest track is on another album and 7 s longer.
+    uncertainOn: { provider: 'spotify', because: 'low_confidence' },
   }),
   track({
     id: 'q6',
@@ -256,6 +271,8 @@ export const mockSearchResults = [
     duration: '2:33',
     provider: 'spotify',
     addedBy: '',
+    // Spotify only has the explicit version of this clean recording.
+    uncertainOn: { provider: 'spotify', because: 'explicit_conflict' },
   }),
   track({
     id: 's6',

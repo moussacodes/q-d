@@ -31,6 +31,7 @@ import {
   TrackInfo,
   UpNextPeek,
 } from '@/features/room/RoomParts';
+import { MatchNotice } from '@/features/room/MatchNotice';
 import { UnavailableNotice } from '@/features/room/UnavailableNotice';
 import { roomParams, useRoom, type RoomView } from '@/features/room/useRoom';
 
@@ -46,14 +47,24 @@ import { roomParams, useRoom, type RoomView } from '@/features/room/useRoom';
  */
 export default function Room() {
   const params = useLocalSearchParams<{ code: string; view?: RoomView }>();
-  const { room, playback, isHost, canAdd, canControl, skip, moveUp, moveDown, remove } = useRoom(
-    params.code,
-    params.view,
-  );
+  const {
+    room,
+    playback,
+    isHost,
+    canAdd,
+    canControl,
+    nowPlayingAvailability: availability,
+    skip,
+    moveUp,
+    moveDown,
+    remove,
+  } = useRoom(params.code, params.view);
   const track = room.nowPlaying;
   // 4.3: the song isn't on the service the host's phone plays through.
   // The host is asked to skip it; everyone else is told why it can't play.
-  const missing = track?.unavailableOn === room.playsThrough;
+  const missing = availability?.kind === 'unavailable';
+  // The host's phone doesn't play a song it can't find, so only Skip works.
+  const playable = availability?.kind === 'playable' || availability?.kind === 'uncertain';
   useScreenPalette(roomPalette(room));
 
   const { colors } = useTheme();
@@ -151,12 +162,22 @@ export default function Room() {
           {missing ? (
             <UnavailableNotice playsThrough={room.playsThrough} isHost={isHost} onSkip={skip} />
           ) : null}
+          {availability?.kind === 'uncertain' || availability?.kind === 'unknown' ? (
+            // "Wrong version?" (onWrongVersion) comes with the override card.
+            <MatchNotice
+              availability={availability}
+              playsThrough={room.playsThrough}
+              isHost={isHost}
+              onSkip={skip}
+            />
+          ) : null}
 
           {track ? (
             <>
               <Timeline positionMs={playback.positionMs} durationMs={playback.durationMs} />
               <Controls
                 canControl={canControl}
+                canPlay={playable}
                 playing={playback.playing}
                 repeat={repeat}
                 onTogglePlay={playback.togglePlay}

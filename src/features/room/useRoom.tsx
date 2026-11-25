@@ -24,6 +24,7 @@ import {
   type MockTrack,
 } from '@/providers/mock/data';
 
+import { entryAvailability } from './availability';
 import { RoomPlayer } from './RoomPlayer';
 import {
   createRoomStore,
@@ -36,6 +37,12 @@ import {
 } from './roomStore';
 
 export type { EnqueueResult, RoomEntry, RoomView } from './roomStore';
+export {
+  availabilityLabel,
+  entryAvailability,
+  queueNote,
+  resultAvailability,
+} from './availability';
 
 /** A room as everyone in it sees it right now. */
 export type LiveRoom = Omit<MockRoom, 'nowPlaying' | 'queue'> & {
@@ -54,7 +61,7 @@ export function roomParams(room: Pick<LiveRoom, 'code' | 'view'>) {
 
 /** A catalog search result as a queue song, played through the room's service. */
 export function trackFromResult(
-  { track, availableOn }: CatalogResult,
+  { track, availableOn, matches }: CatalogResult,
   playsThrough: MusicProvider,
 ): Omit<MockTrack, 'addedBy'> {
   const missing = (['apple_music', 'spotify'] as const).find((p) => !availableOn.includes(p));
@@ -68,6 +75,7 @@ export function trackFromResult(
     // Mock catalog songs always carry Apple's color; grey is the Figma "Rebel" fallback.
     artworkColor: track.artworkBackgroundColor ?? '#5a5a5a',
     ...(missing ? { unavailableOn: missing } : {}),
+    ...(matches ? { matches } : {}),
   };
 }
 
@@ -192,6 +200,13 @@ export function useRoom(code: string | undefined, view?: RoomView) {
     you,
     canAdd,
     canControl,
+    /**
+     * How the playing song stands on the room's service: playable, an
+     * uncertain match (plays with a warning), unavailable or unresolved.
+     */
+    nowPlayingAvailability: live.nowPlaying
+      ? entryAvailability(live.nowPlaying, live.playsThrough)
+      : null,
     /** `update_room_rules`. Only the host sees the controls for it. */
     setRules: (rules: RoomRules) => store.setRules(at, rules),
     skip: () => {

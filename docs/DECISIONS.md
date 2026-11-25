@@ -2,6 +2,16 @@
 
 Product and technical decisions that are not obvious from the code. Newest first.
 
+## 2026-11-25 · Availability and low-confidence states
+
+- **The stored match decides, not the screen.** Every screen reads a song's `TrackMatch` for the room's service through `availabilityOf` (`src/domain/availability.ts`): `playable`, `uncertain` (a warning is set), `unavailable` (no track) or `unknown` (nothing stored yet). Mock fixtures get their matches from the real matcher run against made-up candidates, so "Way Bigger" is a low-confidence match on Spotify (81/100) and "Ocho Rios" an explicit/clean conflict (95/100).
+- **A low-confidence match plays, never silently** (PRODUCT_SPEC.md §6, rule 7). The spec keeps the mapping with a warning; it doesn't say to hold the song. So it plays, and everyone sees "Might be a different version" with the confidence. The host gets Skip; listeners are told the host can skip it. An explicit/clean conflict shows "Explicit/clean version differs". **Open question for a teammate:** should the host instead confirm before an uncertain match starts? Nothing in the spec or decisions asks for that, so it isn't built.
+- **An unavailable song never plays.** The 4.3 notice was already honest, but the mock player still "played" the song Spotify doesn't have, and the room moved on when it ended. Now the host's player stops, the timeline stays at 0:00, Play, Previous and Repeat are disabled (on the mini player too), and only Skip works. The room-screen test that relied on the old behavior checks this instead; songs moving on by themselves are still covered in `RoomPlayer.test.ts`.
+- **A song with no stored match doesn't play either.** Mappings are resolved when playback needs them (PRODUCT_SPEC.md §6), so the host's phone waits rather than guess, and the room says "Not matched on Spotify yet". Mock mode always has a match, so this state appears only once real matching lands.
+- **Search results and queue rows warn ahead.** Add a song shows "Closest match on Spotify · may be another version" or "Explicit/clean version differs on Spotify" next to "On"/"Not on Spotify"; queue rows show "May be another version on Spotify". `CatalogResult.matches` is proposed in API_CONTRACTS.md for the canonical search card.
+- **"Wrong version?" is left to its own card.** `MatchNotice` takes an `onWrongVersion` prop and shows the button only when it's passed, so nothing offers a correction that doesn't work yet.
+- **Preview:** `/room/QD-7K4F9X?view=uncertain` (listed in `/dev`). A person still compares the notice with Figma `20 · Mobile`, which has no frame for it; it reuses the 4.3 notice's look.
+
 ## 2026-11-24 · Settings: music services and account
 
 - **Settings can disconnect a service** (PRODUCT_SPEC.md §3: connect, change and disconnect). In Settings a connected service shows **Disconnect** where the other screens show the Connected chip. Onboarding step 2 and Start a room still only connect. Disconnecting the service rooms play through hands "Play rooms through" to the other one, or hides it when none is left, so Start a room asks for a service again. Mock only: the real flow also has to revoke the provider authorization and remove the `provider_connections` row, which `API_CONTRACTS.md` doesn't cover yet. That's for the provider and RPC cards.

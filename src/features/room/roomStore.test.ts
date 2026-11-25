@@ -210,6 +210,7 @@ describe('room store', () => {
     it('keep queue-changing previews apart from the real room', () => {
       expect(roomKey({ code: room.code, view: 'empty' })).not.toBe(roomKey(room));
       expect(roomKey({ code: room.code, view: 'unavailable' })).not.toBe(roomKey(room));
+      expect(roomKey({ code: room.code, view: 'uncertain' })).not.toBe(roomKey(room));
       expect(roomKey({ code: room.code, view: 'listener' })).toBe(roomKey(room));
       expect(roomKey({ code: room.code, view: 'apple' })).toBe(roomKey(room));
 
@@ -223,6 +224,14 @@ describe('room store', () => {
     it('show a song that isn’t on the host’s service for 4.3', () => {
       const shown = previewRoom(findRoom(room.code), 'unavailable');
       expect(shown.nowPlaying?.unavailableOn).toBe(shown.playsThrough);
+      expect(shown.nowPlaying?.matches?.spotify?.providerTrackId).toBeNull();
+    });
+
+    it('show a song whose match on the host’s service is uncertain', () => {
+      const shown = previewRoom(findRoom(room.code), 'uncertain');
+      expect(shown.nowPlaying?.title).toBe('Way Bigger');
+      expect(shown.nowPlaying?.matches?.spotify?.warning).toBe('low_confidence');
+      expect(shown.queue.map((t) => t.title)).toEqual(['Butterflies', 'Heartbreak Anniversary']);
     });
   });
 });

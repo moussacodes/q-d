@@ -66,6 +66,10 @@ const sections: { title: string; links: { label: string; href: Href; enter?: boo
         label: '4.3 Song not on host’s service',
         href: { pathname: '/room/[code]', params: { code: room, view: 'unavailable' } },
       },
+      {
+        label: 'Song with a low-confidence match',
+        href: { pathname: '/room/[code]', params: { code: room, view: 'uncertain' } },
+      },
     ],
   },
   {

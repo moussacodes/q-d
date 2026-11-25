@@ -25,10 +25,10 @@ export type RoomState = {
 
 /**
  * Development previews of the room (docs/PRODUCT_SPEC.md §12, 4.1–4.3, plus
- * the Apple Music colors). `listener` and `apple` only change who's looking
+ * a low-confidence match and the Apple Music colors). `listener` and `apple` only change who's looking
  * or the service, so they share the real room's queue.
  */
-export type RoomView = 'listener' | 'empty' | 'unavailable' | 'apple';
+export type RoomView = 'listener' | 'empty' | 'unavailable' | 'uncertain' | 'apple';
 
 export type RoomRef = { code: string; view?: RoomView };
 
@@ -44,7 +44,9 @@ export const MOCK_START_MS = 100_000;
 
 /** Previews that change the queue get their own state, so trying them leaves the real room alone. */
 export function roomKey({ code, view }: RoomRef): string {
-  return view === 'empty' || view === 'unavailable' ? `${code}~${view}` : code;
+  return view === 'empty' || view === 'unavailable' || view === 'uncertain'
+    ? `${code}~${view}`
+    : code;
 }
 
 /** The sample room as a development preview shows it. */
@@ -55,6 +57,9 @@ export function previewRoom(room: MockRoom, view?: RoomView): MockRoom {
     case 'unavailable':
       // "Phantom" isn't on Spotify, the service the sample room plays through.
       return { ...room, nowPlaying: mockQueue[2], queue: room.queue.slice(3) };
+    case 'uncertain':
+      // Spotify's closest "Way Bigger" is a low-confidence match.
+      return { ...room, nowPlaying: mockQueue[4], queue: room.queue.slice(5) };
     case 'apple':
       return { ...room, playsThrough: 'apple_music' };
     default:

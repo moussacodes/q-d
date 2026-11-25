@@ -1,6 +1,6 @@
 import type { MusicProvider } from '@/domain/music-provider';
 import type { PlaybackCapabilities } from '@/domain/playback';
-import type { ProviderTrack } from '@/domain/recording';
+import type { ProviderTrack, TrackMatch } from '@/domain/recording';
 
 /**
  * The provider adapter contracts (docs/API_CONTRACTS.md §5). Apple Music,
@@ -16,6 +16,12 @@ export type CatalogResult = {
   track: ProviderTrack;
   /** Services the recording is available on. */
   availableOn: MusicProvider[];
+  /**
+   * The stored track match per service, where one is resolved
+   * (`track_matches`, PRODUCT_SPEC.md §6). A missing service hasn't been
+   * matched yet; mappings are resolved when playback needs them.
+   */
+  matches?: Partial<Record<MusicProvider, TrackMatch>>;
 };
 
 /** What a pasted Apple Music or Spotify link points at. */

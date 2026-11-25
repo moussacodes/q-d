@@ -19,7 +19,12 @@ import { useTheme } from '@/design';
 import { providerNames, type MusicProvider } from '@/domain/music-provider';
 import { formatArtists } from '@/domain/recording';
 import { formatDuration } from '@/domain/time';
-import { useRoom, type RoomView } from '@/features/room/useRoom';
+import {
+  availabilityLabel,
+  resultAvailability,
+  useRoom,
+  type RoomView,
+} from '@/features/room/useRoom';
 import { useCatalogSearch, type SearchResult } from '@/features/search/useCatalogSearch';
 
 type Filter = 'all' | MusicProvider;
@@ -155,7 +160,9 @@ export default function AddSongSheet() {
           const { track } = result;
           const id = track.providerTrackId;
           const status = statusOf(id);
-          const missing = !result.availableOn.includes(room.playsThrough);
+          const availability = resultAvailability(result, room.playsThrough);
+          // Not on the room's service, or only a match that might be wrong.
+          const warn = availability.kind === 'unavailable' || availability.kind === 'uncertain';
           return (
             <View key={id}>
               <View style={styles.result}>
@@ -173,11 +180,11 @@ export default function AddSongSheet() {
                     <View
                       style={[
                         styles.dot,
-                        { backgroundColor: missing ? colors.statusWarn : colors.statusOk },
+                        { backgroundColor: warn ? colors.statusWarn : colors.statusOk },
                       ]}
                     />
-                    <Text variant="caption" color={missing ? 'statusWarn' : 'text3'}>
-                      {missing ? `Not on ${service}` : `On ${service}`}
+                    <Text variant="caption" color={warn ? 'statusWarn' : 'text3'}>
+                      {availabilityLabel(availability, room.playsThrough)}
                     </Text>
                   </View>
                 </View>

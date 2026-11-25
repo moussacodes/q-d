@@ -188,6 +188,8 @@ Moves the room to the next song when the current one ends, is skipped, or isn't 
 
 **Built (matching card):** the server stores what `matchRecording` in `src/domain/matching` decides. Its `match` is a `TrackMatch` (§6): `method: 'isrc' | 'score' | 'override'`, `confidence` 0–100, and `warning` set whenever the match isn't automatic. An unavailable recording has `providerTrackId: null` and `confidence: 0`.
 
+**Built (availability and low-confidence states card):** clients never rematch. They read the stored `TrackMatch` through `availabilityOf` in `src/domain/availability.ts`, which returns `playable` (automatic or override), `uncertain` (`warning` set: plays with the warning shown), `unavailable` (`providerTrackId: null`: never plays) or `unknown` (nothing stored yet: the host's phone waits). `canPlayOnHostPhone` is true only for the first two. Proposed for the canonical search card: search results carry the matches already stored for each service (`CatalogResult.matches`, §5), so Add a song can warn before a song is queued.
+
 ### Account
 
 #### `delete_account` (Edge Function)
@@ -296,7 +298,11 @@ type ConnectionState = { isMock: boolean } & (  // isMock: the UI labels mock co
   | { status: 'error'; code: ProviderErrorCode }
 );
 
-type CatalogResult = { track: ProviderTrack; availableOn: MusicProvider[] };
+type CatalogResult = {
+  track: ProviderTrack;
+  availableOn: MusicProvider[];
+  matches?: Partial<Record<MusicProvider, TrackMatch>>;  // Added (availability card): stored matches, where resolved
+};
 type ProviderEntity =
   | { kind: 'track'; track: ProviderTrack }
   | { kind: 'playlist'; provider: MusicProvider; playlistId: string };
