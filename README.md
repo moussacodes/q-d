@@ -59,7 +59,7 @@ npm ci
 npm start
 ```
 
-- **On a phone:** scan the QR code from `npm start`. On iPhone, use the Camera app. On Android, use the scanner in Expo Go. The phone and the computer must be on the same Wi‑Fi. If they can't reach each other, run `npx expo start --tunnel`.
+- **On a phone:** scan the QR code from `npm start`. On iPhone, use the Camera app. On Android, use the scanner in Expo Go. The phone and the computer must be on the same Wi‑Fi. If they can't reach each other, run `npx expo start --go --tunnel`.
 - **In a browser:** `npm run web`.
 - **Every screen at once:** in development, the Welcome screen has a **Screens** button. It opens `/dev`, which lists every screen and state with its Figma number. `/dev/components` is the component gallery.
 - **Checks before every push:** `npm run check` runs the typecheck, lint, format check and tests. `npm ci` installs a Git pre-push hook that runs the whole CI job (`npm run check` plus Expo Doctor) before every push. CI runs the same job on every pull request. `npm run format` fixes formatting.
@@ -75,7 +75,7 @@ npm start
 
 - Install Node with Homebrew or nvm, and install Xcode 27.2. The Xcode 27.3 beta can sit beside it for beta-iOS testing. Open Xcode once to accept the license and install the iOS Simulator.
 - `npm run ios` opens the app in Expo Go in the iOS Simulator.
-- MusicKit and the Spotify SDK need a **development build** on a **physical iPhone**. Expo Go can't load them. That workflow starts with the EAS profiles and `qd-music-kit` cards. Until then there's nothing native to build.
+- MusicKit and the Spotify SDK need a **development build** on a **physical iPhone**. Expo Go can't load them. Build one with `eas build --profile development --platform ios` (profiles in `eas.json`), then run `npm run start:dev-client`. `npm start` keeps opening Expo Go.
 - Never commit the generated `ios/` folder. Native settings live in `app.config.ts` and config plugins.
 
 ## Docs

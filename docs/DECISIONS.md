@@ -2,6 +2,14 @@
 
 Product and technical decisions that are not obvious from the code. Newest first.
 
+## 2026-11-24 · EAS build profiles
+
+- **Three iOS-only profiles in `eas.json`.** `development` is a dev-client build for internal distribution (registered iPhones), `preview` is an internal release build, and `production` is a store build for TestFlight that bumps the build number on EAS (`appVersionSource: remote`). They share a `base` profile that pins Node 22.13.0, the same version as CI. There are no Android settings; build with `--platform ios`.
+- **Profile env is public only.** Each profile sets `EXPO_PUBLIC_APP_ENV` to its own name and `EXPO_PUBLIC_DATA_MODE=mock`, because the live data mode doesn't exist yet. Real secrets go in EAS environment variables or Edge Function secrets, never in `eas.json`. A Jest test (`__tests__/eas-profiles.test.ts`) fails on secret-looking names or values, credential-file settings or Apple account details.
+- **`expo-dev-client` is installed** for the development profile. With it installed, a bare `expo start` targets the dev client, so `npm start` and `npm run ios` now pass `--go` and keep opening Expo Go. `npm run start:dev-client` serves a development build. Expo Go itself is unaffected, and Expo Doctor passes.
+- **EAS local credentials are ignored** (`credentials.json`, `credentials/`), next to `/ios` and `/android`.
+- **Not done here:** `eas init` (it adds `owner` and the project ID to `app.config.ts`), the first `eas build` and the App Store Connect app for `eas submit`. They need a teammate logged in to EAS and the Apple Developer account.
+
 ## 2026-11-20 · Room screen: expanded cover only
 
 - **A playing song always shows the expanded cover (Figma 3.2).** The resize button is gone, so the smaller-cover layout (3.1) no longer appears while a song plays. The cover is as big as it can be while the song info and playback controls still fit above the Up next bar. The full queue is below them.

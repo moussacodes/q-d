@@ -65,7 +65,7 @@ A broadcast that never arrives costs freshness but never correctness, because th
 | Spotify playback | Spotify iOS SDK (App Remote) and the Web API | Planned · Spotify cards |
 | Tests | Jest/jest-expo, React Native Testing Library, Supabase integration tests, Maestro | Built: Jest, React Native Testing Library, `.maestro/` smoke flow (first runs with a development build). Planned: Supabase tests · Supabase cards |
 | Quality gates | ESLint, Prettier, `tsc`, Jest, Expo Doctor, GitHub Actions, Git pre-push hook | Built · `npm run check`, `.github/workflows/ci.yml`, `.githooks/pre-push` (every push) |
-| Builds | EAS development, preview (internal) and production (TestFlight) profiles | Planned · EAS card |
+| Builds | EAS development, preview (internal) and production (TestFlight) profiles | Built · `eas.json`, iOS only. The first `eas build` needs a teammate logged in to EAS. |
 | Observability | Redacting structured logger, privacy-filtered crash reports, opt-in analytics | Planned · Logging card |
 
 **Why this stack.** Two students, one fixed demo date and one Windows machine. Expo gives one codebase for iOS, the web and later Android, and the web build lets Baron work without a Mac. Supabase provides auth, a relational database with row-level security, realtime and serverless functions in one managed service, so there's no backend to operate. Both are mainstream enough to learn from, which is half the point of the project (see [LEARNING_PATH.md](LEARNING_PATH.md)).
