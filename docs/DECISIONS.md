@@ -35,6 +35,46 @@ The rules are PRODUCT_SPEC.md §6. These are the numbers and edge cases the matc
 - **Schemas strip unknown fields** instead of rejecting them, so a new column or event field is additive and older clients keep working.
 - **The card's "ProviderCapabilities" is `PlaybackCapabilities`** from API_CONTRACTS.md §5, with `ProviderCapabilities` as an alias. It lives in `src/domain` because the UI reads it.
 - **Two `ProviderTrack` types exist for one branch.** `src/domain/recording.ts` has the contract's shape (`artists[]`, nullable ISRC). `src/providers/types.ts` still has the mocks' older shape; the provider adapters card moves the providers onto the domain type.
+## 2026-11-24 · create_room
+
+- **Room codes leave out look-alike characters.** Codes use `23456789ABCDEFGHJKLMNPQRSTUVWXYZ` (no `0`, `O`, `1` or `I`), so a code read aloud or typed from a screen can't be misread. Six characters still give about a billion codes. This answers part of PRODUCT_SPEC.md § 13; **a teammate should confirm it**.
+- **A room code works for 24 hours.** Long enough for an evening, short enough that old codes stop working. The room itself keeps going; only joining by code stops. A way to refresh the code can come with the join card if hosts need it. **A teammate should confirm the length.**
+- **A collision draws again,** up to ten times, then fails with an internal error. With a billion codes that should never happen.
+- **`create_room` takes an optional `mode`** (default `aux`). `sync` fails with `feature_disabled`, as the contract says, without needing a flag table yet.
+- **The name is trimmed** and must be 1–40 characters (`invalid_input` otherwise).
+- **One host may run several live rooms.** Nothing in the product rules limits it.
+
+## 2026-11-24 · Row level security
+
+- **Clients only read.** Direct inserts, updates and deletes on room, queue, playback, catalog and system tables fail with permission denied for everyone, the host included. Play, pause, skip, reorder and remove go through RPCs that check the control rule; by default only the host passes it.
+- **Three things a user writes directly:** their own profile's onboarding fields (`display_name`, `color`, `adult_confirmed_at`), their own `provider_connections` rows, and their own `blocks`. Onboarding and Settings need these, and none of them is shared room state.
+- **`create_room` trusts `provider_connections`.** The server can't verify a connection, because provider tokens stay on the device. A modified client could claim one, but it still couldn't play anything without a real provider account.
+- **Members see each other's profiles,** so Listeners and the queue can show names and colors. Outsiders see only their own.
+- **Only the host reads the invite row.** It holds a hash, never the token.
+- **`anon` gets nothing,** not even empty results: every table read fails with permission denied.
+- **Guard tests** fail when a new table keeps Supabase's default grants, so the next migrations can't expose a table by accident.
+
+## 2026-11-24 · RPC contracts
+
+- **The proposals are confirmed.** Every operation marked Added in API_CONTRACTS.md (`update_room_rules`, `create_room_invite`, `join_room_by_invite`, `leave_room`, `undo_batch`, `report_playback_state`, `request_playback`, `advance_queue`, `override_track_match`) stays. Two smaller proposals are confirmed too: adding to an empty room starts that song, and the person who added a queued entry may remove it (the Undo on the "added" toast).
+- **One error transport.** RPCs raise SQLSTATE `P0001` with the code as the message, extra fields as JSON in the detail, and the hint `qd`. Edge Functions return `{ "code": … }`. An unknown code can't be raised, and a test keeps the code list and API_CONTRACTS.md § 2 identical.
+- **New code `invalid_input`** for a missing or out-of-range argument (a blank room name, no idempotency key). The contract had no code for it.
+- **A replay is answered before the other checks,** right after sign-in. Otherwise retrying `end_room` after it succeeded would fail with `room_ended`. A new key goes through every check.
+- **The RPC sends the broadcast** (open decision 2), from inside its transaction with `realtime.send()`, so a rolled-back change announces nothing.
+- **Shared checks live in a `private` schema** the API doesn't expose. Nothing there is executable by `anon` or `authenticated`; public RPCs are `security definer` with a pinned `search_path`. A test fails if any q’d function lacks a pinned `search_path` or is executable by `anon`.
+- **`claim_playback_slot` and `release_playback_slot` exist** and fail with `feature_disabled` while `sync` is off. The `delete-account` Edge Function exists as a placeholder that answers `feature_disabled`.
+
+## 2026-11-24 · Initial Supabase migrations
+
+- **The schema follows ARCHITECTURE.md §5 names**: `recordings`, `provider_tracks` and `track_matches`, not "canonical recordings" or "mappings". `track_matches` and `track_match_overrides` point at a provider track by `(provider, provider_track_id)`, the provider's own id, like the `TrackMatch` domain type.
+- **Row level security is on for every table from the first migration,** with no policies. Everything is denied until the RLS migration opens reads, so there's never a window where Supabase's default grants expose a table.
+- **No credentials in Postgres.** `provider_connections` holds the provider, when it was connected or last checked, and a storefront. A test fails if any public column is named like a token, secret, password or credential, except the invite's `token_hash`.
+- **Every auth user gets an empty profile row** from a trigger on `auth.users`. The profile is complete when `display_name`, `color` and `adult_confirmed_at` are set. `color` has no default, because the first swatch belongs to the design tokens, not the database.
+- **The 15-person cap is a trigger on `room_members`,** under a lock on the room row, so it holds however a member is added. It raises `room_full`.
+- **A room code is unique among rooms that haven't ended.** Ending a room frees its code.
+- **The queue is batch-ready.** `queue_entries.batch_id` points at `playlist_import_batches`, which allows one running import per room. `blocks`, `reports` and `analytics_events` are placeholders for the beta.
+- **Idempotency keys get their own table** (`idempotency_keys`) instead of a column on each table, so every RPC uses the same machinery.
+- **Database tests run on PGlite inside Jest** (ARCHITECTURE.md § Database tests), because Windows has no Docker or Supabase CLI. A test-only shim provides Supabase's roles, `auth` and `realtime`. The same tests should also run against `supabase start` on the Mac.
 
 ## 2026-11-20 · Room screen: expanded cover only
 
