@@ -611,3 +611,132 @@ describe('renumber_queue', () => {
     ).rejects.toMatchObject({ sqlstate: '42501' });
   });
 });
+
+describe('review: flag table, grants and batch lifecycle', () => {
+  it('API roles have no privilege on private.feature_flags or the batch helpers', async () => {
+    // authenticated has usage on the private schema (the RLS migration grants it
+    // for policy helpers), so table and function grants are what keep this closed.
+    const [row] = await db.query<Record<string, boolean>>(
+      `select has_table_privilege('anon', 'private.feature_flags', 'select') as anon_select,
+              has_table_privilege('authenticated', 'private.feature_flags', 'select') as auth_select,
+              has_table_privilege('authenticated', 'private.feature_flags', 'update') as auth_update,
+              has_function_privilege('authenticated', 'private.require_feature(text)', 'execute') as require_feature,
+              has_function_privilege('authenticated', 'private.batch_limit()', 'execute') as batch_limit`,
+    );
+    expect(row).toEqual({
+      anon_select: false,
+      auth_select: false,
+      auth_update: false,
+      require_feature: false,
+      batch_limit: false,
+    });
+  });
+
+  it('both RPCs are security definer with a pinned search_path, for authenticated only', async () => {
+    const rows = await db.query<{ definer: boolean; config: string; anon: boolean; auth: boolean }>(
+      `select p.prosecdef as definer, array_to_string(p.proconfig, ',') as config,
+              has_function_privilege('anon', p.oid, 'execute') as anon,
+              has_function_privilege('authenticated', p.oid, 'execute') as auth
+         from pg_proc p
+        where p.oid in ('public.enqueue_batch(uuid, uuid, uuid[], uuid)'::regprocedure,
+                        'public.undo_batch(uuid, uuid, uuid)'::regprocedure)`,
+    );
+    expect(rows).toEqual([
+      { definer: true, config: 'search_path=""', anon: false, auth: true },
+      { definer: true, config: 'search_path=""', anon: false, auth: true },
+    ]);
+  });
+
+  describe('with the flag on', () => {
+    beforeAll(() => setFlag(true));
+    afterAll(() => setFlag(false));
+
+    it('an undone batch cannot be imported again (stale_state, status undone)', async () => {
+      const { host, roomId } = await startRoom(db);
+      const batchId = await previewBatch(roomId, host);
+      await importBatch(host, {
+        room_id: roomId,
+        batch_id: batchId,
+        recording_ids: await insertRecordings(db, 3),
+      });
+      await undo(host, { room_id: roomId, batch_id: batchId });
+      await expect(
+        importBatch(host, {
+          room_id: roomId,
+          batch_id: batchId,
+          recording_ids: await insertRecordings(db, 1),
+        }),
+      ).rejects.toMatchObject({ code: 'stale_state', details: { status: 'undone' } });
+      await expectQueueInvariants(db, roomId);
+    });
+
+    it('a rejected import leaves the batch previewing and sends nothing', async () => {
+      const { host, roomId } = await startRoom(db);
+      const batchId = await previewBatch(roomId, host);
+      await expect(
+        importBatch(host, {
+          room_id: roomId,
+          batch_id: batchId,
+          recording_ids: [await insertRecording(db), '00000000-0000-0000-0000-000000000000'],
+        }),
+      ).rejects.toMatchObject({ code: 'invalid_input' });
+      expect(await batchRow(batchId)).toMatchObject({ status: 'previewing', added_count: 0 });
+      expect(await db.broadcasts(roomId)).toEqual([]);
+    });
+
+    it('Chosen add-songs rule: a chosen member imports, an unchosen one gets not_allowed', async () => {
+      const { roomId } = await startRoom(db, { add_songs: 'chosen' });
+      const chosen = await addMember(db, roomId);
+      const other = await addMember(db, roomId);
+      await db.query(
+        `insert into public.room_rule_members (room_id, rule, user_id) values ($1, 'add_songs', $2)`,
+        [roomId, chosen.id],
+      );
+      const chosenBatch = await previewBatch(roomId, chosen);
+      const otherBatch = await previewBatch(roomId, other);
+      await expect(
+        importBatch(chosen, {
+          room_id: roomId,
+          batch_id: chosenBatch,
+          recording_ids: await insertRecordings(db, 2),
+        }),
+      ).resolves.toMatchObject({ added: 2, skipped: 0 });
+      await expect(
+        importBatch(other, {
+          room_id: roomId,
+          batch_id: otherBatch,
+          recording_ids: await insertRecordings(db, 2),
+        }),
+      ).rejects.toMatchObject({ code: 'not_allowed' });
+    });
+
+    it('undo keeps the other songs in their order, with positions 1..n', async () => {
+      const { host, roomId } = await startRoom(db);
+      const [playing, before, after] = await insertRecordings(db, 3);
+      const add = (recordingId: string) =>
+        db.as(host).rpc<{ entry_id: string }>('enqueue_recording', {
+          room_id: roomId,
+          recording_id: recordingId,
+          idempotency_key: newKey(),
+        });
+      await add(playing);
+      await add(before);
+      const batchId = await previewBatch(roomId, host);
+      await importBatch(host, {
+        room_id: roomId,
+        batch_id: batchId,
+        recording_ids: await insertRecordings(db, 5),
+      });
+      await add(after);
+      await expect(undo(host, { room_id: roomId, batch_id: batchId })).resolves.toMatchObject({
+        removed: 5,
+      });
+      const live = (await queueRows(db, roomId)).filter((r) => r.status !== 'removed');
+      expect(live.map((r) => [r.recording_id, r.status, r.position])).toEqual([
+        [playing, 'playing', 0],
+        [before, 'queued', 1],
+        [after, 'queued', 2],
+      ]);
+    });
+  });
+});
