@@ -11,6 +11,7 @@ import {
 
 import type { MusicProvider } from '@/domain/music-provider';
 import { allows, type RoomRules } from '@/domain/room-rules';
+import { formatArtists } from '@/domain/recording';
 import { formatDuration, parseDuration } from '@/domain/time';
 import { usePlayback, type Playback } from '@/features/playback/usePlayback';
 import { useMockSession } from '@/features/session/MockSession';
@@ -60,8 +61,8 @@ export function trackFromResult(
   return {
     id: track.providerTrackId,
     title: track.title,
-    artist: track.artist,
-    album: track.album,
+    artist: formatArtists(track.artists),
+    album: track.album ?? '',
     duration: formatDuration(track.durationMs),
     provider: playsThrough,
     // Mock catalog songs always carry Apple's color; grey is the Figma "Rebel" fallback.

@@ -149,6 +149,53 @@ Product and technical decisions that are not obvious from the code. Newest first
 - **An unknown `recording_id` is `invalid_input`** (`details.field = 'recording_id'`), like a missing one. Search results always come from `recordings`, so this means a client bug, not a user situation.
 - **No profile check.** Members already finished onboarding to join, so `enqueue_recording` doesn't repeat `profile_incomplete`.
 
+## 2026-11-25 · Canonical catalog search (Apple catalog)
+
+- **Search runs in an Edge Function** (ARCHITECTURE.md open decision 1, PRODUCT_SPEC.md § 13). `catalog-search` holds the Apple Music API developer token and serves everyone the same results: guests without a service, Android and the web. On-device MusicKit search would leave them out. The card asked for this; **a teammate should confirm**.
+- **The developer token is minted in the function** from the MusicKit key in Edge Function secrets (ES256, 12 hours, replaced an hour early or after Apple rejects it). It never ships in the app. **Built, untested against the live API:** nobody has a developer key yet, so every test uses synthetic recorded fixtures.
+- **One canonical recording per Apple song id.** Saving the same song again keeps its recording id and refreshes its metadata, so search is idempotent. Two Apple songs with the same ISRC (a single and its album copy) stay two recordings; whether to merge them is an **open question**.
+- **Apple's artist credit is kept whole** (`['Delerium & Sarah McLachlan']`). Splitting at "&" would break "Simon & Garfunkel", and matching splits credits itself.
+- **Version tags are read from the title** with the matching card's `parseTitle`, without `clean` (that's the explicit flag). Supabase deploys only what's under `supabase/functions`, so the function can't import `src/`: it uses `supabase/functions/_shared/matching-text.ts`, a copy of `src/domain/matching/text.ts` that a test keeps identical (review fix).
+- **Songs missing an id, title, artist or a positive duration are skipped,** not invented. Artwork must be https; Apple's `{w}x{h}` template is stored and sized in the app.
+- **Search results know only Apple.** `availableOn` is `['apple_music']`. **Open question before live search is wired in:** Add a song reads a missing provider as "Not on Spotify", which live search can't know yet. The app still uses the mock catalog, so nothing shows this today.
+- **60 searches a minute per user,** counted in Postgres, because Apple's limit is per developer token and shared by everyone. Add a song waits 300 ms after typing before a live search; the mock doesn't wait.
+- **New error code `provider_unavailable`** for a music service that can't answer (unreachable, timed out, misconfigured or an unexpected response). The database's code list has it too; another branch that rewrites `private.error_codes()` must keep it.
+- **Add a song shows search errors** as plain copy ("Too many searches. Try again in 12 seconds.", "Search isn’t working right now…") and "Searching…" while a first search loads. Figma has no frame for these; Figma not re-checked.
+- **Track and link lookups aren't built.** The live Apple catalog adapter's `getTrack` and `resolveLink` still say "not in this build".
+
+## 2026-11-24 · Track matching
+
+The rules are PRODUCT_SPEC.md §6. These are the numbers and edge cases the matching card had to pick. All of it is in `src/domain/matching`, pure and deterministic.
+
+- **Score out of 100:** title 40 (character-pair similarity of the title without version markers or credits), primary artist 25 (20 if they're credited but not first), duration 20, album 5, explicit status 5, version markers 5.
+- **Duration bands:** within 2 s gets 20, within 5 s 14, within 10 s 6, further off 0. A missing duration gets 10 and a missing album 3, so missing data neither wins nor sinks a match.
+- **Automatic match:** at least 90, and at least 5 points ahead of the next candidate that's the same version with the same explicit status. Below 90, or without that lead, the best candidate is kept with a `low_confidence` warning. Below 50 nothing is kept.
+- **Exact ISRC wins** and gives 100, even across version markers ("2011 Remaster" with the same ISRC is the same recording). Two exceptions need review instead: an explicit/clean conflict (`explicit_conflict`), and a duration more than 10 s off, which suggests bad data (`low_confidence`, capped at 89). Several tracks with the same ISRC are the same recording, so the closest one wins.
+- **A different version is never chosen without an ISRC.** Live, remix, acoustic, instrumental, sped-up, slowed, remastered, radio edit, extended, demo, karaoke and a cappella are read only from a title's brackets or " - " suffix, so "Live Forever" isn't a live version. If only other versions exist, the result is `unavailable`, and they're listed for "Wrong version?". The plan didn't say whether they should be a low-confidence mapping; mapping them would play a wrong version with only a warning, so they aren't.
+- **A different artist is a different recording too** (added by the matching tests card). A candidate whose primary artist isn't credited and doesn't look alike (under 10 of the 25 artist points) is never chosen without an ISRC: a cover, or Lionel Richie's "Hello" for Adele's. The tests found that such a candidate could still reach 50 and be kept as a low-confidence mapping. It's listed for "Wrong version?" with the reason `artist_mismatch`. A slightly different spelling ("Harbour" for "Harbor") still counts as the artist.
+- **"Clean" is the explicit flag, not a version.** A "(Clean)" title counts as not explicit. When only the other explicit status is close, it's kept with an `explicit_conflict` warning and never matched automatically.
+- **Credits:** "feat.", "ft." and "featuring" in a title are credits. "(with X)" is a credit only when X is one of the track's artists, so "Have a Baby (With Me)" keeps its title. Artist credits split at commas, `&`, "and", "feat." and "with", so "Delerium & Sarah McLachlan" and `['Delerium', 'Sarah McLachlan']` compare equal.
+- **Normalization** keeps letters of every script, so non-Latin titles still compare, and folds ß, æ, ø and similar letters that accent stripping misses.
+- **Ties break the same way every time:** ISRC match, no explicit conflict, same version, score, closer duration, then provider track id. Duplicate provider track ids count once. Candidates for other providers are ignored.
+- **A host override always wins** (`method: 'override'`, confidence 100), even if the track isn't among today's candidates.
+
+## 2026-11-24 · Provider adapter interfaces and mocks
+
+- **The adapters follow API_CONTRACTS.md §5,** with the changes marked there: `getState` returns a `PlayerState` (one device's player) rather than the room's `PlaybackState`, `ConnectionState` keeps `isMock`, `ProviderTrack` gains `album`, and the error codes are listed.
+- **Apple Music and Spotify are stubs that say "not in this build".** They connect to `not_in_this_build`, reject everything else with that code and claim no capability, so they can't pass for a working integration. Their cards replace them after a real-device test. The app keeps using the mocks.
+- **Mocks claim no capability.** A mock plays no audio, so it reports `inAppAudio`, `backgroundPlayback`, `requiresExternalApp` and `autoplay` as `false`, and `isMock` as `true`. The old mock said Apple played inside q’d, which no mock does.
+- **A player only takes its own provider's tracks** (`wrong_provider`). In mock mode the room player plays each fixture through the room's service, standing in for the provider track matching resolves later. This keeps the "plays through Apple Music" preview working.
+- **Positions must be finite and not negative** (`invalid_argument`); fractional milliseconds are rounded.
+- **Share links are parsed by hand,** not with `URL`, because React Native's `URL` lacks `hostname`, `pathname` and `searchParams` on some platforms. The mock catalog resolves a few made-up link ids to fixtures and says so; a real link to a song it doesn't have is `not_found`.
+- **Mock results are copies,** so a caller can't change the catalog. Fixture tracks have no ISRC and aren't explicit, so nothing pretends to be real provider metadata.
+
+## 2026-11-24 · Shared domain types and realtime events
+
+- **Zod is a dependency now,** and `src/domain` may import it (ARCHITECTURE.md §4). The domain types card writes every shape in API_CONTRACTS.md §6 as a Zod schema and infers the TypeScript type from it, so the runtime check and the type can't drift apart.
+- **A realtime payload that doesn't parse is ignored and triggers a refetch.** That covers a newer envelope `v`, an unknown event type, an event naming a different room than its channel, and any bad shape. The parsers never throw, and what they report for logging holds field paths and issue codes only, never values.
+- **Schemas strip unknown fields** instead of rejecting them, so a new column or event field is additive and older clients keep working.
+- **The card's "ProviderCapabilities" is `PlaybackCapabilities`** from API_CONTRACTS.md §5, with `ProviderCapabilities` as an alias. It lives in `src/domain` because the UI reads it.
+- **Two `ProviderTrack` types exist for one branch.** `src/domain/recording.ts` has the contract's shape (`artists[]`, nullable ISRC). `src/providers/types.ts` still has the mocks' older shape; the provider adapters card moves the providers onto the domain type.
 ## 2026-11-24 · create_room
 
 - **Room codes leave out look-alike characters.** Codes use `23456789ABCDEFGHJKLMNPQRSTUVWXYZ` (no `0`, `O`, `1` or `I`), so a code read aloud or typed from a screen can't be misread. Six characters still give about a billion codes. This answers part of PRODUCT_SPEC.md § 13; **a teammate should confirm it**.

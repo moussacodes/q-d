@@ -51,6 +51,7 @@ Why it's shaped this way: [ARCHITECTURE.md § 4.10](ARCHITECTURE.md#410-client-v
 | `invite_invalid` | Wrong, expired or revoked QR invite token |
 | `rate_limited` | Too many attempts. Includes `retry_after_seconds`. |
 | `provider_required` | This device needs a connected music service to do this |
+| `provider_unavailable` | The music service couldn't answer: unreachable, timed out, rejected q’d's credentials or sent something unexpected. Includes `provider` and `reason`. Edge Functions only (catalog search). (Added) |
 | `already_in_queue` | The recording is already queued. Retry with `allow_duplicate: true` after the user confirms. |
 | `entry_not_found` | The queue entry was removed or already played |
 | `stale_state` | The caller acted on an old view (for example, skipping a song that already changed). Refetch and retry. |
@@ -144,7 +145,7 @@ Why it's shaped this way: [ARCHITECTURE.md § 4.10](ARCHITECTURE.md#410-client-v
 - **Returns:** `{ entry_id, position, queue_length }`. The app uses `queue_length` for "Rain Down added · 8th in line". `position` is the entry's place in line (1 = next), or 0 when it started playing.
 - **Errors:** `already_in_queue` (unless `allow_duplicate`; `details.status` is `queued` or `playing`, so the app can ask "Already in queue" or "Playing now"), `room_not_found`, `room_ended`, `not_member`, `not_allowed`, `invalid_input` (`details.field`: `room_id`, `recording_id` (missing or not a known recording), `allow_duplicate` or `idempotency_key`), `idempotency_conflict`, `not_authenticated`. A song counts as already in the queue while it's queued or playing; played and removed entries don't count.
 - **Confirmed (RPC contracts card):** when nothing is playing, the new entry becomes the playing one and `queue_length` is 0, so the toast says "playing now". The mock store does this.
-- **Note:** `recording_id` comes from a catalog search result. How search results become `recordings` rows depends on where search runs ([ARCHITECTURE.md, open decision 1](ARCHITECTURE.md#open-technical-decisions)).
+- **Note:** `recording_id` comes from a catalog search result: `catalog-search` saves every result as a `recordings` row and returns its id ([§ Catalog](#catalog)).
 
 **Queue positions (decided 2026-11-25).** Queued entries hold dense integer positions `1..n` in play order; the playing entry holds `0`; played and removed entries keep their last position, which means nothing. Only RPCs write positions, always under the room lock, and a unique index on queued positions per room backs it up. Clients sort by `position` and never compute one.
 
@@ -229,6 +230,26 @@ Moves the room to the next song when the current one ends, is skipped, or isn't 
 - **Errors:** `feature_disabled` while `sync` is off, `provider_required`, `limit_exceeded` (15 slots)
 - **Built as placeholders:** both functions exist, check sign-in, and fail with `feature_disabled` (`details.flag = 'sync'`).
 
+### Catalog
+
+#### `catalog-search` (Edge Function, Added)
+
+**Built** (`supabase/functions/catalog-search`, migration `20261125003000_catalog_search.sql`). Built, not yet tested against the live Apple Music API (no developer key).
+
+- **Caller:** any signed-in user, with or without a music service. Supabase checks the JWT (`verify_jwt`); the function reads `sub`, so the anon key alone gets `401 not_authenticated`.
+- **Input (JSON body):** `query` string (trimmed and whitespace-collapsed, 1–100 characters), `limit` integer 1–25 (default 20), `storefront` two-letter Apple storefront (default `us`, case-insensitive).
+- **Effect:** counts one search against the caller's limit (60 a minute, `consume_catalog_search`), searches Apple's catalog for songs with the developer token the function holds, and saves each usable song with `save_catalog_tracks`: an Apple `provider_tracks` row and a canonical `recordings` row with version tags read from the title. Saving the same song again keeps its recording id and refreshes its metadata. No `track_matches` are written; mappings are resolved when playback needs them.
+- **Returns:** `200 { storefront, results: [{ recordingId, track, availableOn }] }` in Apple's order, camelCase, with `track` in the `ProviderTrack` shape (§ 6). `artworkUrl` is Apple's template with `{w}`/`{h}` left in; the app sizes it (`src/domain/artwork.ts`). `availableOn` is `['apple_music']`: search can't know about other services. The app parses it with `catalogSearchResponseSchema` (`src/domain/catalog.ts`).
+- **Errors:** `400 invalid_input` (`field`: `body`, `query`, `limit`, `storefront` or `method`; Apple answering 404 means an unknown storefront), `401 not_authenticated`, `429 rate_limited` (`retry_after_seconds` and a `Retry-After` header, from q’d's limit or Apple's), `502 provider_unavailable` (`provider`, `reason`: `not_configured`, `unauthorized`, `timeout`, `network`, `upstream_error` or `bad_response`). An unexpected failure (for example the database) is `500 {}` without a code, which the app shows as generic copy.
+- **Secrets:** `APPLE_MUSIC_TEAM_ID`, `APPLE_MUSIC_KEY_ID`, `APPLE_MUSIC_PRIVATE_KEY` (the MusicKit `.p8` text) in Edge Function secrets, never `EXPO_PUBLIC_*`. The function mints a 12-hour ES256 developer token, and mints a new one an hour early or after Apple rejects it.
+
+#### `save_catalog_tracks`, `consume_catalog_search` (service role only)
+
+Called by `catalog-search`, not by apps: `anon` and `authenticated` can't execute them.
+
+- `save_catalog_tracks(tracks jsonb)` returns `[{ provider_track_id, recording_id }]` in input order. At most 25 tracks (`limit_exceeded`), all or nothing (`invalid_input` with `field: 'tracks'` and the element's `index`).
+- `consume_catalog_search(user_id uuid, per_minute integer = 60)`: `rate_limited` with `retry_after_seconds` over the limit, per user, in one-minute windows.
+
 ### Matching
 
 #### `override_track_match` (Added)
@@ -236,6 +257,8 @@ Moves the room to the next song when the current one ends, is skipped, or isn't 
 - **Caller:** host, from "Wrong version?".
 - **Input:** `room_id uuid`, `recording_id uuid`, `provider`, `provider_track_id text`, `idempotency_key uuid`
 - **Effect:** stores a `track_match_overrides` row with who changed it and when, and uses it for this room from then on.
+
+**Built (matching card):** the server stores what `matchRecording` in `src/domain/matching` decides. Its `match` is a `TrackMatch` (§6): `method: 'isrc' | 'score' | 'override'`, `confidence` 0–100, and `warning` set whenever the match isn't automatic. An unavailable recording has `providerTrackId: null` and `confidence: 0`.
 
 ### Account
 
@@ -319,6 +342,7 @@ type RoomPresence = {
 
 - `v` increases only for a breaking change to an envelope. A client that sees an unknown `type` or a newer `v` ignores the payload and refetches.
 - Add new event types instead of changing the meaning of old ones.
+- **Built (domain types card):** `parseRoomEvent(payload, expectedRoomId?)` and `parseRoomPresence(payload)` in `src/domain/realtime.ts`. They never throw. They return `{ ok: true, value }` or `{ ok: false, reason, issues }`, where `reason` is `unsupported_version` (any `v` other than 1), `unknown_type`, `wrong_room` (the event names another room than the channel's) or `invalid`. `issues` holds field paths and Zod issue codes only, never payload values, so it's safe to log. Every `ok: false` means "ignore it and refetch". Unknown extra fields are stripped, so nothing personal that a payload carries by mistake reaches the app.
 
 ## 5. Provider adapters
 
@@ -345,9 +369,15 @@ interface PlaybackAdapter {
   pause(): Promise<void>;
   seek(positionMs: number): Promise<void>;
   enqueue(tracks: ProviderTrack[]): Promise<void>;
-  getState(): Promise<PlaybackState>;
+  getState(): Promise<PlayerState>;
   disconnect(): Promise<void>;
 }
+
+type PlayerState = {            // this device's player, not the room's PlaybackState (§6)
+  status: 'idle' | 'playing' | 'paused';
+  track: ProviderTrack | null;
+  positionMs: number;
+};
 
 type PlaybackCapabilities = {
   inAppAudio: boolean;          // Apple: true. Spotify: false (the Spotify app plays).
@@ -357,13 +387,49 @@ type PlaybackCapabilities = {
   isMock: boolean;              // true only for mock adapters; the UI labels them
 };
 
-type ConnectionState =
-  | { status: 'connected' }
+type ConnectionState = { isMock: boolean } & (  // isMock: the UI labels mock connections
+  | { status: 'connected'; accountLabel?: string }
   | { status: 'needs_authorization' }
   | { status: 'needs_subscription' }   // e.g. no Apple Music subscription or Spotify Premium
   | { status: 'app_not_installed' }    // Spotify
-  | { status: 'error'; code: string };
+  | { status: 'error'; code: ProviderErrorCode }
+);
+
+type CatalogResult = {
+  track: ProviderTrack;
+  availableOn: MusicProvider[];
+  recordingId?: string;         // Added (canonical search card): the saved recording; mocks leave it out
+};
+type ProviderEntity =
+  | { kind: 'track'; track: ProviderTrack }
+  | { kind: 'playlist'; provider: MusicProvider; playlistId: string };
+type PlaylistPage = {
+  provider: MusicProvider;
+  playlistId: string;
+  name: string;
+  tracks: ProviderTrack[];
+  nextCursor: string | null;
+};
+
+type ProviderErrorCode =
+  | 'not_in_this_build'  // the real adapter isn't in this build yet
+  | 'not_found'
+  | 'unsupported_link'   // not an Apple Music or Spotify link q’d reads
+  | 'wrong_provider'     // e.g. a Spotify track given to the Apple player
+  | 'invalid_argument'   // e.g. a negative seek position
+  | 'rate_limited'       // Added (canonical search card); ProviderError.retryAfterSeconds says when
+  | 'provider_unavailable'; // Added (canonical search card): the service or q’d's server couldn't answer
 ```
+
+**Built (provider adapters card)** in `src/providers`: the interfaces (`types.ts`), `ProviderError` (`errors.ts`), the share-link parser (`links.ts`), the mocks (`mock/`), and Apple Music and Spotify stubs (`apple/`, `spotify/`, `unavailable.ts`). Changes from the sketch above, marked here for review:
+
+- **`getState` returns `PlayerState`,** not `PlaybackState`. The adapter knows one device's player; `PlaybackState` (§6) is the room's state the host reports, with a room and entry id the adapter doesn't have.
+- **`ConnectionState` carries `isMock`,** and a connected state may carry an `accountLabel`. The error `code` is a `ProviderErrorCode`.
+- **`ProviderTrack` gained `album`** (§6), because matching scores album context.
+- **`getPlaylist` takes an optional cursor** for the next page.
+- **Mocks claim no capability.** They play no audio, so every capability is `false` and `isMock` is `true`.
+- **The Apple Music and Spotify adapters are stubs** until their cards land and are tested on an iPhone. `connect` returns `{ status: 'error', code: 'not_in_this_build', isMock: false }`, every other call rejects with that code, they claim no capability, and `disconnect` resolves (nothing to undo). The app still uses the mocks, because `mock` is the only data mode.
+- The shared contract suite is `src/test/providerContract.ts`. `src/providers/contract.test.ts` runs it against the mocks and both stubs.
 
 **Rules every adapter follows** (the shared contract test suite checks these):
 
@@ -375,6 +441,14 @@ type ConnectionState =
 ## 6. Shared domain types
 
 These are sketches. The domain types card writes them as Zod schemas in `src/domain`, and the TypeScript types are inferred from them.
+
+**Built (domain types card).** Every type below is a Zod schema in `src/domain` (`room.ts`, `recording.ts`, `queue.ts`, `playback.ts`, with `MusicProvider` and `PlaybackMode` in `music-provider.ts`), and `PlaybackCapabilities` from § 5 is in `playback.ts`. What the sketches left open, the schemas pin down:
+
+- IDs are UUIDs and times are ISO 8601 with `Z` or an offset (Postgres `timestamptz`). Durations, positions and counts are non-negative integers. `QueueEntry.position` is any number, because the position representation is still open ([ARCHITECTURE.md, open decision 3](ARCHITECTURE.md#open-technical-decisions)).
+- `Room.code` is the six stored characters, uppercase letters and digits, without `QD-`. The character set is still an open question, so the schema only checks the length and case.
+- ISRCs are stored in their compact uppercase form (`USRC17607839`). Version tags are lowercase snake case (`sped_up`).
+- `PlaylistImportBatch` rejects `addedCount + skippedCount > itemCount`. `PlaybackSlot.slot` is 1–15.
+- Unknown extra fields are stripped, so adding a column doesn't break older clients.
 
 ```ts
 type Room = {
@@ -416,6 +490,7 @@ type ProviderTrack = {
   providerTrackId: string;
   title: string;
   artists: string[];
+  album: string | null;           // Added (provider adapters card): matching scores album context
   durationMs: number;
   isrc: string | null;
   explicit: boolean;

@@ -71,4 +71,15 @@ describe('room player', () => {
     expect((await player.getState()).status).toBe('idle');
     expect(ended).not.toHaveBeenCalled();
   });
+
+  it('plays through the room’s service, even when the sample song names another', async () => {
+    const adapter = new MockPlaybackAdapter('apple_music', () => 0);
+    const player = new RoomPlayer(adapter, jest.fn());
+    const { nowPlaying } = createRoomStore().get(room);
+    expect(nowPlaying?.provider).toBe('spotify');
+    await player.load(nowPlaying, 0);
+    const state = await player.getState();
+    expect(state.status).toBe('playing');
+    expect(state.track?.provider).toBe('apple_music');
+  });
 });

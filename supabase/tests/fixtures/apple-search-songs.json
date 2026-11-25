@@ -1,0 +1,214 @@
+{
+  "results": {
+    "songs": {
+      "href": "/v1/catalog/us/search?limit=20&term=paper+lanterns&types=songs",
+      "next": "/v1/catalog/us/search?offset=20&term=paper+lanterns&types=songs",
+      "data": [
+        {
+          "id": "9000000001",
+          "type": "songs",
+          "href": "/v1/catalog/us/songs/9000000001",
+          "attributes": {
+            "name": "Paper Lanterns",
+            "artistName": "The Fixture Band",
+            "albumName": "Synthetic Weather",
+            "durationInMillis": 214000,
+            "genreNames": ["Synthetic"],
+            "releaseDate": "2026-01-01",
+            "trackNumber": 1,
+            "discNumber": 1,
+            "url": "https://music.example.test/us/song/9000000001",
+            "playParams": {
+              "id": "9000000001",
+              "kind": "song"
+            },
+            "isrc": "QZ-SYN-26-00001",
+            "contentRating": "explicit",
+            "artwork": {
+              "width": 3000,
+              "height": 3000,
+              "url": "https://artwork.example.test/image/thumb/Synthetic/a1/{w}x{h}bb.jpg",
+              "bgColor": "1a2b3c",
+              "textColor1": "ffffff"
+            }
+          }
+        },
+        {
+          "id": "9000000002",
+          "type": "songs",
+          "href": "/v1/catalog/us/songs/9000000002",
+          "attributes": {
+            "name": "Paper Lanterns (Clean)",
+            "artistName": "The Fixture Band",
+            "albumName": "Synthetic Weather",
+            "durationInMillis": 214500,
+            "genreNames": ["Synthetic"],
+            "releaseDate": "2026-01-01",
+            "trackNumber": 1,
+            "discNumber": 1,
+            "url": "https://music.example.test/us/song/9000000002",
+            "playParams": {
+              "id": "9000000002",
+              "kind": "song"
+            },
+            "isrc": "QZSYN2600002",
+            "contentRating": "clean",
+            "artwork": {
+              "width": 3000,
+              "height": 3000,
+              "url": "https://artwork.example.test/image/thumb/Synthetic/a1/{w}x{h}bb.jpg",
+              "bgColor": "1a2b3c",
+              "textColor1": "ffffff"
+            }
+          }
+        },
+        {
+          "id": "9000000003",
+          "type": "songs",
+          "href": "/v1/catalog/us/songs/9000000003",
+          "attributes": {
+            "name": "Paper Lanterns (Live at the Fixture Hall)",
+            "artistName": "The Fixture Band",
+            "albumName": "Live Fixtures",
+            "durationInMillis": 251000.6,
+            "genreNames": ["Synthetic"],
+            "releaseDate": "2026-01-01",
+            "trackNumber": 1,
+            "discNumber": 1,
+            "url": "https://music.example.test/us/song/9000000003",
+            "playParams": {
+              "id": "9000000003",
+              "kind": "song"
+            },
+            "artwork": {
+              "url": "https://artwork.example.test/image/thumb/Synthetic/a3/{w}x{h}bb.jpg",
+              "bgColor": "F0E0D0"
+            }
+          }
+        },
+        {
+          "id": "9000000004",
+          "type": "songs",
+          "href": "/v1/catalog/us/songs/9000000004",
+          "attributes": {
+            "name": "Glass Rivers (feat. Mira Vale)",
+            "artistName": "Northbound & Harbor Lights",
+            "albumName": null,
+            "durationInMillis": 198000,
+            "genreNames": ["Synthetic"],
+            "releaseDate": "2026-01-01",
+            "trackNumber": 1,
+            "discNumber": 1,
+            "url": "https://music.example.test/us/song/9000000004",
+            "playParams": {
+              "id": "9000000004",
+              "kind": "song"
+            },
+            "isrc": "QZSYN2600004",
+            "artwork": {
+              "url": "http://artwork.example.test/insecure/{w}x{h}bb.jpg",
+              "bgColor": "not-a-color"
+            }
+          }
+        },
+        {
+          "id": "9000000005",
+          "type": "songs",
+          "href": "/v1/catalog/us/songs/9000000005",
+          "attributes": {
+            "name": "No Length Here",
+            "artistName": "The Fixture Band",
+            "albumName": "Synthetic Weather",
+            "durationInMillis": null,
+            "genreNames": ["Synthetic"],
+            "releaseDate": "2026-01-01",
+            "trackNumber": 1,
+            "discNumber": 1,
+            "url": "https://music.example.test/us/song/9000000005",
+            "playParams": {
+              "id": "9000000005",
+              "kind": "song"
+            },
+            "isrc": "QZSYN2600005"
+          }
+        },
+        {
+          "id": "9000000001",
+          "type": "songs",
+          "href": "/v1/catalog/us/songs/9000000001",
+          "attributes": {
+            "name": "Paper Lanterns",
+            "artistName": "The Fixture Band",
+            "albumName": "Synthetic Weather",
+            "durationInMillis": 214000,
+            "genreNames": ["Synthetic"],
+            "releaseDate": "2026-01-01",
+            "trackNumber": 1,
+            "discNumber": 1,
+            "url": "https://music.example.test/us/song/9000000001",
+            "playParams": {
+              "id": "9000000001",
+              "kind": "song"
+            },
+            "isrc": "QZSYN2600001",
+            "contentRating": "explicit",
+            "artwork": {
+              "width": 3000,
+              "height": 3000,
+              "url": "https://artwork.example.test/image/thumb/Synthetic/a1/{w}x{h}bb.jpg",
+              "bgColor": "1a2b3c",
+              "textColor1": "ffffff"
+            }
+          }
+        },
+        {
+          "id": "9000000006",
+          "type": "music-videos",
+          "href": "/v1/catalog/us/songs/9000000006",
+          "attributes": {
+            "name": "Paper Lanterns (Video)",
+            "artistName": "The Fixture Band",
+            "albumName": null,
+            "durationInMillis": 220000,
+            "genreNames": ["Synthetic"],
+            "releaseDate": "2026-01-01",
+            "trackNumber": 1,
+            "discNumber": 1,
+            "url": "https://music.example.test/us/song/9000000006",
+            "playParams": {
+              "id": "9000000006",
+              "kind": "song"
+            }
+          }
+        },
+        {
+          "id": "9000000007",
+          "type": "songs",
+          "href": "/v1/catalog/us/songs/9000000007",
+          "attributes": {
+            "name": "Sped Signals - Sped Up",
+            "artistName": "Quiet Static",
+            "albumName": "  ",
+            "durationInMillis": 120000,
+            "genreNames": ["Synthetic"],
+            "releaseDate": "2026-01-01",
+            "trackNumber": 1,
+            "discNumber": 1,
+            "url": "https://music.example.test/us/song/9000000007",
+            "playParams": {
+              "id": "9000000007",
+              "kind": "song"
+            },
+            "isrc": "BAD"
+          }
+        }
+      ]
+    }
+  },
+  "meta": {
+    "results": {
+      "order": ["songs"],
+      "rawOrder": ["songs"]
+    }
+  }
+}

@@ -56,7 +56,7 @@ A broadcast that never arrives costs freshness but never correctness, because th
 | Visuals | expo-image, expo-blur, react-native-svg | Built |
 | Server state | TanStack Query | Built: `src/services/queryClient.ts`, provided by `features/server-state/ServerStateProvider` in `app/_layout.tsx`. No screen queries Supabase yet |
 | Ephemeral state | Zustand, only for small room and player state | Planned |
-| Runtime contracts | Zod for env, RPC results and realtime payloads | Built for env (`src/services/env.ts`). Planned for RPC results and realtime payloads · domain types and RPC cards |
+| Runtime contracts | Zod for env, RPC results and realtime payloads | Built for env (`src/services/env.ts`), domain schemas and realtime payload parsers (`src/domain`). Planned: RPC results (RPC contracts card) |
 | Forms | React Hook Form | Not added yet: the email form validates with `validateEmailForm` (`src/domain/auth.ts`). Added when a longer form needs it |
 | Interaction | Reanimated, Gesture Handler, a bottom-sheet library | Planned, added only where Figma needs them |
 | Backend | Supabase Auth, Postgres, RLS, Realtime, Edge Functions, migrations | Client built (`src/services/supabase.ts`, created only when the env validates; untested against a live project). Auth built for email/password and Google (`src/services/auth.ts`, `features/auth`; untested against a live project and on a device). Rest planned · Supabase cards |
@@ -84,15 +84,16 @@ src/
   design/                 Tokens: colors, type, spacing, Now playing palettes, ThemeProvider
   domain/                 Pure types and logic: rooms, queue, recordings, matching
   features/               Feature modules: auth, onboarding, rooms, queue, search, settings
-  providers/              Apple, Spotify and mock catalog/playback adapters      (mock built; Apple, Spotify planned)
-  services/               Supabase, env, flags, logging, analytics               (data mode, env, flags, logging, Supabase client, storage, query client built; analytics planned)
+  providers/              Apple, Spotify and mock catalog/playback adapters      (interfaces, mocks, Apple/Spotify stubs and the Apple catalog search adapter built; live Apple playback, Spotify planned)
+  services/               Supabase, env, flags, logging, analytics               (data mode, env, flags, logging, Supabase client, storage, query client and Edge Function calls built; analytics planned)
   test/                   Fixtures and provider contract helpers
 modules/
   qd-music-kit/           Local Swift Expo module and config plugin             (planned)
 supabase/
   config.toml             Supabase CLI settings for a local stack
   migrations/             Schema, RPC functions, triggers, RLS                   (schema built)
-  functions/              Edge Functions                    (delete-account placeholder built)
+  functions/              Edge Functions                    (delete-account placeholder and catalog-search built)
+    _shared/              Code functions share; can't import src/ (copies are test-checked)
   tests/                  Database and RLS tests on PGlite, plus the harness      (built)
   scripts/                Operator scripts run from a laptop, never the app      (demo reset built)
 assets/icons/             The 34 Figma icons, unmodified SVG
@@ -113,7 +114,7 @@ Each boundary below says what belongs on each side, the rule, and the reason. Wh
 | `src/features/` | `components`, `design`, `domain`, `services`, `providers` | `app/`, another feature's internals |
 | `src/components/` | `design`, other components, `domain` types | `features`, `services`, `providers`, `app/` |
 | `src/design/` | React and React Native only | anything else in `src/` |
-| `src/domain/` | Zod (once added) | React, React Native, Expo, Supabase, any other `src/` folder |
+| `src/domain/` | Zod | React, React Native, Expo, Supabase, any other `src/` folder |
 | `src/providers/` | `domain`, `services` (logging, env, flags), `modules/qd-music-kit` | `features`, `components`, `app/` |
 | `src/services/` | `domain` | `features`, `components`, `providers`, `app/` |
 | `src/test/` | anything | — (production code must not import it) |
@@ -152,7 +153,7 @@ ESLint enforces these rules (`no-restricted-imports` in `eslint.config.js`), so 
 
 - **Rule:** pure TypeScript only. That means types (`MusicProvider`, `PlaybackMode`, `Room`, `QueueEntry`, `CanonicalRecording`, `TrackMatch` and so on), Zod schemas and pure functions such as matching scores, text normalization and room-code formatting. No React, no I/O.
 - **Why:** this is the contract that the app, the providers, the database and a future SwiftUI client all agree on. Pure code is easy to unit-test, and the matching rules in particular need exhaustive tests (ISRC, durations, explicit/clean, version markers).
-- Status: `music-provider.ts` exists, and `invite-link.ts` builds and parses QR invite links (Built · QR invitations card). The rest is planned under the domain types card (see [API_CONTRACTS.md](API_CONTRACTS.md) for the shapes).
+- Status: **Built** (domain types card): Zod schemas with inferred types for every shape in [API_CONTRACTS.md § 6](API_CONTRACTS.md#6-shared-domain-types) (`music-provider.ts`, `room.ts`, `recording.ts`, `queue.ts`, `playback.ts`, `primitives.ts`), and the versioned realtime payload parsers from [§ 4](API_CONTRACTS.md#4-realtime) (`realtime.ts`). Matching is built in `matching/` (matching card). `invite-link.ts` builds and parses QR invite links (Built · QR invitations card).
 
 ### 4.6 Providers (`src/providers/`)
 
@@ -165,6 +166,7 @@ ESLint enforces these rules (`no-restricted-imports` in `eslint.config.js`), so 
   - **Apple:** wraps `modules/qd-music-kit` (MusicKit `ApplicationMusicPlayer`, background audio, queue observation).
   - **Spotify:** controls an installed or active Spotify client through App Remote and the Web API. q’d never streams Spotify audio itself.
   - **Mock:** deterministic adapters for web and Windows development, UI work, automated tests and the demo fallback. They're labeled in the UI and switched by feature flags, so a mock can never pass for a live integration.
+- **Status: Built** (provider adapters card): both interfaces, `ProviderError`, the share-link parser, the mocks, and Apple Music and Spotify stubs that report "not in this build" until their cards land. The shared contract suite runs against all of them. See [API_CONTRACTS.md § 5](API_CONTRACTS.md#5-provider-adapters).
 - `capabilities()` reports what each adapter can do (for example in-app audio, background playback or autoplay), and the UI asks it instead of checking which provider it is.
 
 ### 4.7 Services (`src/services/`)
@@ -269,7 +271,9 @@ Built · RLS card (`supabase/migrations/20261124000300_row_level_security.sql`, 
 
 - Apple's catalog is canonical. Search results become `recordings`. When a song has to play, the host's provider resolves a `provider_track` and stores a `track_match`.
 - Matching is a pure function in `src/domain` (normalize, then score). The thresholds and rules are in [PRODUCT_SPEC.md § 6](PRODUCT_SPEC.md#6-catalog-and-matching). Results and overrides are stored in Postgres, so every phone sees the same answer and overrides are audited.
-- Planned · Canonical search card, matching card.
+- **Built** (matching card): `src/domain/matching` (`text.ts` normalizes and reads version markers, `match.ts` ranks candidates and decides). `matchRecording(recording, candidates, { provider, overrideTrackId })` returns the `TrackMatch` to store, a status (`matched`, `needs_review` or `unavailable`), the reasons and every candidate ranked for "Wrong version?". The numbers are in [DECISIONS.md](DECISIONS.md) (2026-11-24 · Track matching).
+- **Built** (canonical search card): search runs in the `catalog-search` Edge Function (open decision 1). It holds the Apple Music API developer token, searches Apple's catalog, normalizes each song (`supabase/functions/catalog-search/apple.ts`) and saves it with `save_catalog_tracks` as an Apple `provider_tracks` row plus a canonical `recordings` row, found again by `recordings (source_provider, source_track_id)`. The app calls it through `services/edgeFunctions.ts` and the Apple `CatalogAdapter` (`providers/apple/catalog.ts`), and `features/search/useCatalogSearch` debounces it. Mock mode still uses the mock catalog. **Built, untested against the live Apple Music API**: the team has no developer key yet.
+- Planned · Storing `track_matches` when playback needs a mapping (the queue and playback cards call `matchRecording`).
 
 ## 8. Configuration, environments and flags
 
@@ -307,8 +311,8 @@ Jest, React Native Testing Library and the Maestro folder are set up. Each featu
 
 | Layer | Tool | What it proves |
 |---|---|---|
-| Domain | Jest | Matching (ISRC, durations, explicit/clean, version tokens), room-code formatting, queue ordering helpers |
-| Providers | Shared contract suite in `src/test` | Apple, Spotify and mock adapters behave the same through the interface |
+| Domain | Jest | Matching (ISRC, durations, explicit/clean, version tokens; Built: `src/domain/matching/rules.test.ts`), room-code formatting, queue ordering helpers |
+| Providers | Shared contract suite in `src/test` (Built: `src/test/providerContract.ts`) | Apple, Spotify and mock adapters behave the same through the interface |
 | Database | Jest + PGlite in `supabase/tests` (see below) | RLS denies outsiders, host/member permissions, idempotent enqueue/reorder/remove, concurrent adds, code collisions, expiry and rate limits |
 | Components and screens | React Native Testing Library | Loading, offline, empty, unavailable, reconnecting and provider-required states |
 | End to end | Maestro | Smoke flows: sign in, create a room, join, add a song |
@@ -339,7 +343,7 @@ Post-demo, private, behind the `sync` flag. Nothing here ships publicly without 
 
 Record each answer in [DECISIONS.md](DECISIONS.md) and update this file.
 
-1. **Where canonical (Apple catalog) search runs.** Guests without Apple Music, and Android or web clients, can't use on-device MusicKit search. An Edge Function holding an Apple Music API developer token would serve everyone the same results. On-device MusicKit is simpler but works only on iOS. Decided in the canonical search card.
+1. **Where canonical (Apple catalog) search runs.** Guests without Apple Music, and Android or web clients, can't use on-device MusicKit search. An Edge Function holding an Apple Music API developer token would serve everyone the same results. On-device MusicKit is simpler but works only on iOS. **Decided 2026-11-25 (canonical search card): an Edge Function**, so guests, Android and the web search the same catalog. See DECISIONS.md.
 2. **How broadcasts are sent.** Decided 2026-11-24 (RPC contracts card): the RPC itself sends it, through `private.broadcast_room_event()` and `realtime.send()`. See [API_CONTRACTS.md § 4](API_CONTRACTS.md#4-realtime).
 3. **Queue position representation.** Decided 2026-11-25 (enqueue_recording card): dense integers. Queued entries are `1..n` in play order, the playing entry is `0`, and only RPCs renumber them, under the room lock. See [API_CONTRACTS.md § enqueue_recording](API_CONTRACTS.md#enqueue_recording). Clients never compute positions.
 4. **Bottom-sheet library.** Pick one only when an interaction needs gestures that a modal route can't provide.
