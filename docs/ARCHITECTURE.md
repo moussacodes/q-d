@@ -56,7 +56,7 @@ A broadcast that never arrives costs freshness but never correctness, because th
 | Visuals | expo-image, expo-blur, react-native-svg | Built |
 | Server state | TanStack Query | Planned · Supabase client card |
 | Ephemeral state | Zustand, only for small room and player state | Planned |
-| Runtime contracts | Zod for env, RPC results and realtime payloads | Planned · Env validation card |
+| Runtime contracts | Zod for env, RPC results and realtime payloads | Built: domain schemas and realtime payload parsers (`src/domain`) · Planned: env (Env validation card), RPC results (RPC contracts card) |
 | Forms | React Hook Form | Planned · Auth cards |
 | Interaction | Reanimated, Gesture Handler, a bottom-sheet library | Planned, added only where Figma needs them |
 | Backend | Supabase Auth, Postgres, RLS, Realtime, Edge Functions, migrations | Planned · Supabase cards |
@@ -111,7 +111,7 @@ Each boundary below says what belongs on each side, the rule, and the reason. Wh
 | `src/features/` | `components`, `design`, `domain`, `services`, `providers` | `app/`, another feature's internals |
 | `src/components/` | `design`, other components, `domain` types | `features`, `services`, `providers`, `app/` |
 | `src/design/` | React and React Native only | anything else in `src/` |
-| `src/domain/` | Zod (once added) | React, React Native, Expo, Supabase, any other `src/` folder |
+| `src/domain/` | Zod | React, React Native, Expo, Supabase, any other `src/` folder |
 | `src/providers/` | `domain`, `services` (logging, env, flags), `modules/qd-music-kit` | `features`, `components`, `app/` |
 | `src/services/` | `domain` | `features`, `components`, `providers`, `app/` |
 | `src/test/` | anything | — (production code must not import it) |
@@ -150,7 +150,7 @@ ESLint enforces these rules (`no-restricted-imports` in `eslint.config.js`), so 
 
 - **Rule:** pure TypeScript only. That means types (`MusicProvider`, `PlaybackMode`, `Room`, `QueueEntry`, `CanonicalRecording`, `TrackMatch` and so on), Zod schemas and pure functions such as matching scores, text normalization and room-code formatting. No React, no I/O.
 - **Why:** this is the contract that the app, the providers, the database and a future SwiftUI client all agree on. Pure code is easy to unit-test, and the matching rules in particular need exhaustive tests (ISRC, durations, explicit/clean, version markers).
-- Status: `music-provider.ts` exists. The rest is planned under the domain types card (see [API_CONTRACTS.md](API_CONTRACTS.md) for the shapes).
+- Status: **Built** (domain types card): Zod schemas with inferred types for every shape in [API_CONTRACTS.md § 6](API_CONTRACTS.md#6-shared-domain-types) (`music-provider.ts`, `room.ts`, `recording.ts`, `queue.ts`, `playback.ts`, `primitives.ts`), and the versioned realtime payload parsers from [§ 4](API_CONTRACTS.md#4-realtime) (`realtime.ts`). Matching is planned under the matching card.
 
 ### 4.6 Providers (`src/providers/`)
 

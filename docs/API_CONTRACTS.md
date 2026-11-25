@@ -241,6 +241,7 @@ type RoomPresence = {
 
 - `v` increases only for a breaking change to an envelope. A client that sees an unknown `type` or a newer `v` ignores the payload and refetches.
 - Add new event types instead of changing the meaning of old ones.
+- **Built (domain types card):** `parseRoomEvent(payload, expectedRoomId?)` and `parseRoomPresence(payload)` in `src/domain/realtime.ts`. They never throw. They return `{ ok: true, value }` or `{ ok: false, reason, issues }`, where `reason` is `unsupported_version` (any `v` other than 1), `unknown_type`, `wrong_room` (the event names another room than the channel's) or `invalid`. `issues` holds field paths and Zod issue codes only, never payload values, so it's safe to log. Every `ok: false` means "ignore it and refetch". Unknown extra fields are stripped, so nothing personal that a payload carries by mistake reaches the app.
 
 ## 5. Provider adapters
 
@@ -297,6 +298,14 @@ type ConnectionState =
 ## 6. Shared domain types
 
 These are sketches. The domain types card writes them as Zod schemas in `src/domain`, and the TypeScript types are inferred from them.
+
+**Built (domain types card).** Every type below is a Zod schema in `src/domain` (`room.ts`, `recording.ts`, `queue.ts`, `playback.ts`, with `MusicProvider` and `PlaybackMode` in `music-provider.ts`), and `PlaybackCapabilities` from § 5 is in `playback.ts`. What the sketches left open, the schemas pin down:
+
+- IDs are UUIDs and times are ISO 8601 with `Z` or an offset (Postgres `timestamptz`). Durations, positions and counts are non-negative integers. `QueueEntry.position` is any number, because the position representation is still open ([ARCHITECTURE.md, open decision 3](ARCHITECTURE.md#open-technical-decisions)).
+- `Room.code` is the six stored characters, uppercase letters and digits, without `QD-`. The character set is still an open question, so the schema only checks the length and case.
+- ISRCs are stored in their compact uppercase form (`USRC17607839`). Version tags are lowercase snake case (`sped_up`).
+- `PlaylistImportBatch` rejects `addedCount + skippedCount > itemCount`. `PlaybackSlot.slot` is 1–15.
+- Unknown extra fields are stripped, so adding a column doesn't break older clients.
 
 ```ts
 type Room = {
