@@ -74,8 +74,8 @@ describe('a low-confidence match playing', () => {
     // It plays: the host's controls all work.
     expect(screen.getByLabelText('Pause')).toBeEnabled();
     expect(screen.getByLabelText('Previous')).toBeEnabled();
-    // "Wrong version?" comes with its own card; nothing pretends to offer it.
-    expect(screen.queryByText('Wrong version?')).toBeNull();
+    // The host can also correct it (__tests__/wrong-version.test.tsx).
+    expect(screen.getByText('Wrong version?')).toBeVisible();
 
     await press('Skip this song');
     expect(await screen.findByText('Butterflies')).toBeVisible();

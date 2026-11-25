@@ -2,7 +2,8 @@ import type { MusicProvider } from '@/domain/music-provider';
 
 import { mockCatalog } from './mock/catalog';
 import { MockPlaybackAdapter } from './mock/playback';
-import type { CatalogAdapter, PlaybackAdapter } from './types';
+import { mockVersions } from './mock/versions';
+import type { CatalogAdapter, PlaybackAdapter, VersionSource } from './types';
 
 export type * from './types';
 export { isProviderError, ProviderError } from './errors';
@@ -14,6 +15,9 @@ export { isProviderError, ProviderError } from './errors';
  * report "not in this build"; their cards wire the live ones in here.
  */
 export const catalog: CatalogAdapter = mockCatalog;
+
+/** The versions "Wrong version?" offers. Mock only until the live provider cards. */
+export const versions: VersionSource = mockVersions;
 
 export function createPlayback(provider: MusicProvider): PlaybackAdapter {
   return new MockPlaybackAdapter(provider);

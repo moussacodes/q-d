@@ -1,6 +1,6 @@
 import type { MusicProvider } from '@/domain/music-provider';
 import type { PlaybackCapabilities } from '@/domain/playback';
-import type { ProviderTrack, TrackMatch } from '@/domain/recording';
+import type { CanonicalRecording, ProviderTrack, TrackMatch } from '@/domain/recording';
 
 /**
  * The provider adapter contracts (docs/API_CONTRACTS.md §5). Apple Music,
@@ -51,6 +51,25 @@ export interface CatalogAdapter {
   resolveLink(url: string): Promise<ProviderEntity>;
   getTrack(id: string): Promise<ProviderTrack>;
   getPlaylist?(id: string, cursor?: string): Promise<PlaylistPage>;
+}
+
+/** A recording and the tracks one service offers for it. */
+export type VersionCandidates = {
+  recording: CanonicalRecording;
+  /** That service's tracks that could be this recording, any version, in no order. */
+  candidates: ProviderTrack[];
+  /** Made-up mock versions, which the screen must label as mock. */
+  isMock: boolean;
+};
+
+/**
+ * Where "Wrong version?" finds the versions the room's service has of a
+ * song (PRODUCT_SPEC.md §6, rule 8). `matchRecording` ranks them. Only the
+ * labeled mock exists so far; the live source searches the host's service
+ * and comes with the playback cards (API_CONTRACTS.md §5).
+ */
+export interface VersionSource {
+  versions(recordingId: string, provider: MusicProvider): Promise<VersionCandidates>;
 }
 
 /**

@@ -58,3 +58,12 @@ export function queueNote(availability: TrackAvailability, playsThrough: MusicPr
       return undefined;
   }
 }
+
+/**
+ * The note under a queued song: the host's "Wrong version?" pick says so, so
+ * listeners know why the song may sound different; otherwise `queueNote`.
+ */
+export function entryNote(track: Pick<MockTrack, 'matches'>, playsThrough: MusicProvider) {
+  if (track.matches?.[playsThrough]?.method === 'override') return 'Version picked by the host';
+  return queueNote(entryAvailability(track, playsThrough), playsThrough);
+}

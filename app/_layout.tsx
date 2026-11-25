@@ -76,6 +76,7 @@ function RootStack() {
         <Stack.Screen name="room/[code]/add-song" options={sheet} />
         <Stack.Screen name="room/[code]/invite" options={sheet} />
         <Stack.Screen name="room/[code]/listeners" options={sheet} />
+        <Stack.Screen name="room/[code]/version" options={sheet} />
       </Stack.Protected>
 
       <Stack.Protected guard={__DEV__} redirectTo={redirectTo}>

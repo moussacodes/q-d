@@ -19,7 +19,7 @@ import { useTheme } from '@/design';
 import { formatDuration, formatMinutes, parseDuration } from '@/domain/time';
 import type { MockRoom, MockTrack } from '@/providers/mock/data';
 
-import { entryAvailability, queueNote } from './availability';
+import { entryNote } from './availability';
 import { cantAddNote } from './RoomRules';
 import { roomParams, type LiveRoom, type RoomHandle } from './useRoom';
 
@@ -254,7 +254,7 @@ export function QueueList({ room, controls }: { room: LiveRoom; controls?: Queue
             addedBy={`by ${entry.addedBy}`}
             duration={entry.duration}
             showGrip={!!controls}
-            note={queueNote(entryAvailability(entry, room.playsThrough), room.playsThrough)}
+            note={entryNote(entry, room.playsThrough)}
             onPress={
               controls
                 ? () => setOpen((current) => (current === entryId ? null : entryId))

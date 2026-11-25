@@ -34,7 +34,7 @@ import {
   UpNextPeek,
 } from '@/features/room/RoomParts';
 import { hostAwayNote, HostNotice, ServiceMissingNotice } from '@/features/room/HostNotice';
-import { MatchNotice } from '@/features/room/MatchNotice';
+import { MatchNotice, VersionPickedNotice } from '@/features/room/MatchNotice';
 import { UnavailableNotice } from '@/features/room/UnavailableNotice';
 import { roomParams, useRoom, type RoomView } from '@/features/room/useRoom';
 
@@ -92,6 +92,15 @@ export default function Room() {
 
   const openSheet = (sheet: 'add-song' | 'invite' | 'listeners' | 'queue') =>
     router.push({ pathname: `/room/[code]/${sheet}`, params: roomParams(room) });
+  // "Wrong version?" is the host's alone (PRODUCT_SPEC.md §6, rule 8).
+  const pickVersion =
+    isHost && track
+      ? () =>
+          router.push({
+            pathname: '/room/[code]/version',
+            params: { ...roomParams(room), entry: track.entryId },
+          })
+      : undefined;
 
   const header = (
     <View style={styles.header}>
@@ -184,13 +193,20 @@ export default function Room() {
           {missing ? (
             <UnavailableNotice playsThrough={room.playsThrough} isHost={isHost} onSkip={skip} />
           ) : null}
-          {availability?.kind === 'uncertain' || availability?.kind === 'unknown' ? (
-            // "Wrong version?" (onWrongVersion) comes with the override card.
+          {track?.versionPickedWhilePlaying ? (
+            // The host picked another version; this play finishes as it started.
+            <VersionPickedNotice
+              playsThrough={room.playsThrough}
+              isHost={isHost}
+              onPickAgain={pickVersion}
+            />
+          ) : availability?.kind === 'uncertain' || availability?.kind === 'unknown' ? (
             <MatchNotice
               availability={availability}
               playsThrough={room.playsThrough}
               isHost={isHost}
               onSkip={skip}
+              onWrongVersion={pickVersion}
             />
           ) : null}
 

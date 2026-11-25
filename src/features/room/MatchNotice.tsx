@@ -11,8 +11,8 @@ type Props = {
   isHost: boolean;
   onSkip: () => void;
   /**
-   * "Wrong version?" (PRODUCT_SPEC.md §6, rule 8). The override card passes
-   * it; until then the button doesn't appear, so nothing pretends to work.
+   * "Wrong version?" (PRODUCT_SPEC.md §6, rule 8): opens the version picker.
+   * The room passes it for the host only; without it the button doesn't appear.
    */
   onWrongVersion?: () => void;
 };
@@ -61,8 +61,60 @@ export function MatchNotice({ availability, playsThrough, isHost, onSkip, onWron
         <View style={styles.actions}>
           <Button size="small" label="Skip" accessibilityLabel="Skip this song" onPress={onSkip} />
           {onWrongVersion && availability.kind === 'uncertain' ? (
-            <Button size="small" kind="secondary" label="Wrong version?" onPress={onWrongVersion} />
+            <Button
+              size="small"
+              kind="secondary"
+              label="Wrong version?"
+              accessibilityLabel="Wrong version? Pick the right one"
+              onPress={onWrongVersion}
+            />
           ) : null}
+        </View>
+      ) : null}
+    </Panel>
+  );
+}
+
+type PickedProps = {
+  playsThrough: MusicProvider;
+  isHost: boolean;
+  /** The host can change the pick again. */
+  onPickAgain?: () => void;
+};
+
+/**
+ * The host picked another version ("Wrong version?") while the song was
+ * playing. The song never swaps mid-play: this play finishes as it started,
+ * and the pick plays from the next time the song comes up. Replaces the
+ * uncertain-match warning, and says plainly what happened.
+ */
+export function VersionPickedNotice({ playsThrough, isHost, onPickAgain }: PickedProps) {
+  const { colors } = useTheme();
+  const service = providerNames[playsThrough];
+  return (
+    <Panel style={[styles.notice, { borderColor: colors.strokeStrong }]}>
+      <View style={styles.row}>
+        <Icon name="check" size={18} color={colors.statusOk} />
+        <View style={styles.flex}>
+          <Text variant="bodyStrong">
+            {isHost ? 'You picked a different version' : 'The host picked a different version'}
+          </Text>
+          <Text variant="caption" color="text2">
+            {isHost
+              ? `This play finishes as it started. Your pick plays on ${service} from the next time this song comes up.`
+              : `This play finishes as it started. The host’s pick plays from the next time this song comes up.`}
+          </Text>
+        </View>
+      </View>
+      {isHost && onPickAgain ? (
+        <View style={styles.actions}>
+          <Button
+            size="small"
+            kind="secondary"
+            label="Change pick"
+            accessibilityLabel="Change the version you picked"
+            onPress={onPickAgain}
+          />
         </View>
       ) : null}
     </Panel>

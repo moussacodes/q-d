@@ -3,6 +3,8 @@ import {
   nextHostPresence,
   type HostPresence,
 } from '@/domain/host-presence';
+import { latestOverride, overriddenMatch, type TrackMatchOverride } from '@/domain/match-override';
+import type { MusicProvider } from '@/domain/music-provider';
 import { defaultRoomRules, type RoomRules } from '@/domain/room-rules';
 import { findRoom, mockQueue, type MockRoom, type MockTrack } from '@/providers/mock/data';
 
@@ -10,13 +12,43 @@ import { findRoom, mockQueue, type MockRoom, type MockTrack } from '@/providers/
  * Mock mode's stand-in for the room's rows in Postgres: what's playing,
  * what's next, and the room's rules. Its actions follow the RPCs in
  * docs/API_CONTRACTS.md (`enqueue_recording`, `reorder_queue`,
- * `remove_queue_entry`, `advance_queue`, `update_room_rules`), so the screens
+ * `remove_queue_entry`, `advance_queue`, `update_room_rules`,
+ * `override_track_match`), so the screens
  * call the same operations the real backend will offer. The Supabase cards
  * replace it; the server, not this store, will check who may do what.
  */
 
 /** A song in a room's queue. Entries have their own id, so one song can be queued twice. */
-export type RoomEntry = MockTrack & { entryId: string };
+export type RoomEntry = MockTrack & {
+  entryId: string;
+  /**
+   * The host picked another version ("Wrong version?") while this entry was
+   * playing. It keeps playing the version it started with; the pick plays
+   * from the next time the song comes up.
+   */
+  versionPickedWhilePlaying?: true;
+};
+
+/**
+ * A "Wrong version?" pick in mock mode: a `track_match_overrides` row
+ * (src/domain/match-override.ts). Mock rooms have codes, not ids, so it
+ * leaves out `roomId`; the store keeps each room's own.
+ */
+export type MockMatchOverride = Omit<TrackMatchOverride, 'roomId' | 'createdBy'> & {
+  /** Who picked it, by display name. */
+  createdBy: string;
+};
+
+/** What the host picks: a version on the room's service for one recording. */
+export type OverrideChoice = Pick<
+  TrackMatchOverride,
+  'recordingId' | 'provider' | 'providerTrackId'
+>;
+
+/** What `override_track_match` answers. */
+export type OverrideResult =
+  | { ok: true; override: MockMatchOverride }
+  | { ok: false; error: 'invalid_input'; field: 'recording_id' };
 
 /** The parts of a room that change while it plays. */
 export type RoomState = {
@@ -33,7 +65,31 @@ export type RoomState = {
    * paused, queue kept, until the returning host resumes.
    */
   pausedForHost: boolean;
+  /** The host's "Wrong version?" picks in this room, oldest first. Never edited: the audit trail. */
+  overrides: MockMatchOverride[];
 };
+
+/** The canonical recording an entry is, read from its stored matches. */
+export function recordingIdOf(entry: Pick<MockTrack, 'matches'>): string | null {
+  const match = Object.values(entry.matches ?? {}).find(Boolean);
+  return match?.recordingId ?? null;
+}
+
+/** The entry with the room's newest pick for its recording on each service applied. */
+function withOverrides<T extends RoomEntry | Omit<RoomEntry, 'entryId'>>(
+  entry: T,
+  overrides: readonly MockMatchOverride[],
+): T {
+  const recordingId = recordingIdOf(entry);
+  if (!recordingId || overrides.length === 0) return entry;
+  let matches = entry.matches;
+  for (const provider of ['apple_music', 'spotify'] as MusicProvider[]) {
+    const override = latestOverride(overrides, recordingId, provider);
+    if (override)
+      matches = { ...matches, [provider]: overriddenMatch(matches?.[provider], override)! };
+  }
+  return matches === entry.matches ? entry : { ...entry, matches };
+}
 
 /**
  * Development previews of the room (docs/PRODUCT_SPEC.md §12, 4.1–4.3, plus
@@ -131,6 +187,7 @@ function seed(ref: RoomRef, now: number): RoomState {
     startAtMs: room.nowPlaying ? MOCK_START_MS : 0,
     rules: defaultRoomRules,
     ...seedHost(ref.view, now),
+    overrides: [],
   };
 }
 
@@ -141,6 +198,7 @@ export function createRoomStore(now: () => number = Date.now) {
   const rooms = new Map<string, RoomState>();
   const listeners = new Set<() => void>();
   let added = 0;
+  let picks = 0;
 
   /**
    * The room's current state. A room nobody has touched yet starts from the
@@ -187,7 +245,11 @@ export function createRoomStore(now: () => number = Date.now) {
         room.nowPlaying?.id === track.id || room.queue.some((entry) => entry.id === track.id);
       if (present && !allowDuplicate) return { ok: false, error: 'already_in_queue' };
       added += 1;
-      const entry: RoomEntry = { ...track, addedBy, entryId: `${roomKey(ref)}/added-${added}` };
+      // The host's earlier "Wrong version?" picks apply to the song from now on.
+      const entry: RoomEntry = withOverrides(
+        { ...track, addedBy, entryId: `${roomKey(ref)}/added-${added}` },
+        room.overrides,
+      );
       if (!room.nowPlaying) {
         update(ref, { ...room, nowPlaying: entry, startAtMs: 0 });
         return {
@@ -244,6 +306,46 @@ export function createRoomStore(now: () => number = Date.now) {
      */
     setRules(ref: RoomRef, rules: RoomRules) {
       update(ref, { ...get(ref), rules });
+    },
+
+    /**
+     * `override_track_match`: the host's "Wrong version?" pick for a song in
+     * this room, on the service it plays through. Queued copies of the song,
+     * and copies added later, play the picked version. A copy that's playing
+     * now keeps the version it started with (no swap mid-song) and is marked
+     * so the room can say so. Picking the version that's already picked
+     * changes nothing. The server checks that the caller hosts the room and
+     * that the version exists; the mock trusts the screen, which offers it to
+     * the host only.
+     */
+    overrideMatch(ref: RoomRef, choice: OverrideChoice, createdBy: string): OverrideResult {
+      const room = get(ref);
+      const isSong = (entry: RoomEntry) => recordingIdOf(entry) === choice.recordingId;
+      const playing = room.nowPlaying !== null && isSong(room.nowPlaying);
+      if (!playing && !room.queue.some(isSong)) {
+        return { ok: false, error: 'invalid_input', field: 'recording_id' };
+      }
+      const latest = latestOverride(room.overrides, choice.recordingId, choice.provider);
+      if (latest?.providerTrackId === choice.providerTrackId) return { ok: true, override: latest };
+
+      picks += 1;
+      const override: MockMatchOverride = {
+        id: `00000000-0000-4000-9000-${picks.toString(16).padStart(12, '0')}`,
+        ...choice,
+        createdBy,
+        createdAt: new Date(now()).toISOString(),
+      };
+      const overrides = [...room.overrides, override];
+      update(ref, {
+        ...room,
+        overrides,
+        queue: room.queue.map((entry) => (isSong(entry) ? withOverrides(entry, overrides) : entry)),
+        nowPlaying:
+          playing && room.nowPlaying
+            ? { ...room.nowPlaying, versionPickedWhilePlaying: true }
+            : room.nowPlaying,
+      });
+      return { ok: true, override };
     },
 
     /**

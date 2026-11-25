@@ -27,22 +27,34 @@ import {
 } from '@/providers/mock/data';
 
 import { entryAvailability } from './availability';
+import { overrideTrackMatchRpc } from './overrideTrackMatch';
 import { RoomPlayer } from './RoomPlayer';
 import {
   createRoomStore,
   listenerViews,
   previewRoom,
+  recordingIdOf,
   roomKey,
+  type MockMatchOverride,
+  type OverrideResult,
   type RoomEntry,
   type RoomRef,
   type RoomStore,
   type RoomView,
 } from './roomStore';
 
-export type { EnqueueResult, RoomEntry, RoomView } from './roomStore';
+export type {
+  EnqueueResult,
+  MockMatchOverride,
+  OverrideResult,
+  RoomEntry,
+  RoomView,
+} from './roomStore';
+export { recordingIdOf } from './roomStore';
 export {
   availabilityLabel,
   entryAvailability,
+  entryNote,
   queueNote,
   resultAvailability,
 } from './availability';
@@ -53,6 +65,8 @@ export type LiveRoom = Omit<MockRoom, 'nowPlaying' | 'queue'> & {
   queue: RoomEntry[];
   /** Who adds songs and who controls the music. */
   rules: RoomRules;
+  /** The host's "Wrong version?" picks, oldest first (`track_match_overrides`). */
+  overrides: MockMatchOverride[];
   /** The development preview being shown, if any. Sheets open with the same one. */
   view?: RoomView;
 };
@@ -189,6 +203,7 @@ function useLiveRoom(base: MockRoom | null, view?: RoomView) {
       nowPlaying: state.nowPlaying,
       queue: state.queue,
       rules: state.rules,
+      overrides: state.overrides,
       ...(view ? { view } : {}),
     };
   }, [base, view, state]);
@@ -308,6 +323,26 @@ export function useRoom(code: string | undefined, view?: RoomView) {
     /** Undo on the "added" toast: takes back your own song while it's still queued. */
     undoAdd: (entryId: string) => {
       store.remove(at, entryId);
+    },
+    /**
+     * `override_track_match` ("Wrong version?"): the host picks the version of
+     * the entry's song to play on the room's service. Only the host sees it.
+     * Rejects when the call fails (no connection), like the RPC would.
+     */
+    overrideVersion: (
+      entry: Pick<RoomEntry, 'matches'>,
+      providerTrackId: string,
+    ): Promise<OverrideResult> => {
+      const recordingId = recordingIdOf(entry);
+      if (!recordingId) {
+        return Promise.resolve({ ok: false, error: 'invalid_input', field: 'recording_id' });
+      }
+      return overrideTrackMatchRpc.call(
+        store,
+        at,
+        { recordingId, provider: live.playsThrough, providerTrackId },
+        user.name,
+      );
     },
   };
 }
