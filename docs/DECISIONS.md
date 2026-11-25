@@ -2,6 +2,15 @@
 
 Product and technical decisions that are not obvious from the code. Newest first.
 
+## 2026-11-24 · Supabase client and device storage
+
+- **The Supabase session lives in `expo-sqlite`'s `localStorage`,** which is what Supabase's Expo guide recommends now and ships in Expo Go. On the web it's the browser's own `localStorage`, or memory where storage is blocked. The session isn't encrypted at rest there; that's Supabase's standard setup, and the session is revocable from the server. Music-service tokens are a different case and go to SecureStore.
+- **Provider credentials use the Keychain with `AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY`.** The host's phone can refresh a Spotify token while it plays with the screen locked, and the token never moves to another device through a backup. Unreadable entries are deleted, so the person reconnects instead of the app crashing.
+- **On the web, provider credentials stay in memory.** The web has no secure storage, and any script on the page can read browser storage. The web build is for mock mode and guests, who never connect a service.
+- **No client without a valid env.** `getSupabase()` returns null until both Supabase variables validate, so mock mode needs no `.env` and makes no network calls.
+- **Zustand isn't added yet.** Nothing needs it: the mock room store is React context and moves to TanStack Query with the Supabase cards. It comes in when a small transient player or room state needs it (ARCHITECTURE.md §4.12).
+- **Session refresh follows the app state** on devices (start in the foreground, stop in the background), as Supabase recommends for React Native.
+
 ## 2026-11-24 · Structured logging and crash-report filtering
 
 - **Redaction happens inside the logger,** before any sink, so no sink (console, crash reporter, a future service) can leak. It removes credentials, emails, room codes, invite tokens and listening history, in nested objects, arrays, Maps, Sets, Errors and their causes, and inside strings.

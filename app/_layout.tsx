@@ -8,6 +8,7 @@ import { fontAssets, neutral, ThemeProvider } from '@/design';
 import { ProviderConnectionsProvider } from '@/features/connections/ProviderConnections';
 import { MockModeFrame } from '@/features/dev/MockModeFrame';
 import { RoomsProvider } from '@/features/room/useRoom';
+import { ServerStateProvider } from '@/features/server-state/ServerStateProvider';
 import { landingFor, MockSessionProvider, useMockSession } from '@/features/session/MockSession';
 
 SplashScreen.preventAutoHideAsync();
@@ -29,18 +30,20 @@ export default function RootLayout() {
   }
 
   return (
-    <ThemeProvider>
-      <MockSessionProvider>
-        <ProviderConnectionsProvider>
-          <RoomsProvider>
-            <StatusBar style="light" />
-            <MockModeFrame>
-              <RootStack />
-            </MockModeFrame>
-          </RoomsProvider>
-        </ProviderConnectionsProvider>
-      </MockSessionProvider>
-    </ThemeProvider>
+    <ServerStateProvider>
+      <ThemeProvider>
+        <MockSessionProvider>
+          <ProviderConnectionsProvider>
+            <RoomsProvider>
+              <StatusBar style="light" />
+              <MockModeFrame>
+                <RootStack />
+              </MockModeFrame>
+            </RoomsProvider>
+          </ProviderConnectionsProvider>
+        </MockSessionProvider>
+      </ThemeProvider>
+    </ServerStateProvider>
   );
 }
 
