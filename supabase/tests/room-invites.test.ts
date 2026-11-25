@@ -492,3 +492,90 @@ describe('join_room_by_invite idempotency', () => {
     expect(row).toEqual({ result: { room_id: roomId }, has_token: false });
   });
 });
+
+describe('invite tokens and attempt counting (review)', () => {
+  it('carries 244 random bits: both 16-byte halves are version 4 UUIDs', async () => {
+    const rows = await db.query<{ v1: number; v2: number; r1: number; r2: number }>(
+      `select get_byte(b, 6) >> 4 as v1, get_byte(b, 22) >> 4 as v2,
+              get_byte(b, 8) >> 6 as r1, get_byte(b, 24) >> 6 as r2
+         from (select decode(translate(private.generate_invite_token(), '-_', '+/') || '=', 'base64') as b
+                 from generate_series(1, 50)) s`,
+    );
+    // 4 version bits and 2 variant bits are fixed in each UUID: 2 × 122 = 244.
+    for (const row of rows) {
+      expect(row).toEqual({ v1: 4, v2: 4, r1: 2, r2: 2 });
+    }
+  });
+
+  it('does not count a replaced or an expired token: neither is a guess', async () => {
+    const { host, roomId } = await newRoom();
+    const replaced = (await invite(host, roomId)).token;
+    const live = (await invite(host, roomId)).token;
+    const guest = await db.createUser();
+    await expect(join(guest, replaced)).rejects.toMatchObject({ code: 'invite_invalid' });
+    await db.query(
+      `update public.room_invites set expires_at = now() - interval '1 second',
+              created_at = now() - interval '2 days' where room_id = $1 and revoked_at is null`,
+      [roomId],
+    );
+    await expect(join(guest, live)).rejects.toMatchObject({ code: 'invite_invalid' });
+    expect(await failures(guest, 'invite')).toBe(0);
+    expect(await members(roomId)).toHaveLength(1);
+  });
+
+  it('a token is case-sensitive: an upper-cased one is unknown and counted', async () => {
+    const { host, roomId } = await newRoom();
+    let token = (await invite(host, roomId)).token;
+    while (token.toUpperCase() === token) token = (await invite(host, roomId)).token;
+    const guest = await db.createUser();
+    await expect(join(guest, token.toUpperCase())).rejects.toMatchObject({
+      code: 'invite_invalid',
+    });
+    expect(await failures(guest, 'invite')).toBe(1);
+  });
+
+  it('the token a replay replaced is unknown afterwards, so trying it counts', async () => {
+    const { host, roomId } = await newRoom();
+    const key = newKey();
+    const lost = (await invite(host, roomId, key)).token;
+    await invite(host, roomId, key);
+    const guest = await db.createUser();
+    await expect(join(guest, lost)).rejects.toMatchObject({ code: 'invite_invalid' });
+    expect(await failures(guest, 'invite')).toBe(1);
+  });
+
+  it('a locked-out caller gets rate_limited even for something that is not a token', async () => {
+    const guest = await db.createUser();
+    for (let i = 0; i < 5; i += 1) {
+      await join(guest, await unknownToken()).catch(() => undefined);
+    }
+    await expect(join(guest, 'abc')).rejects.toMatchObject({ code: 'rate_limited' });
+    await expect(join(guest, null)).rejects.toMatchObject({ code: 'rate_limited' });
+    expect(await failures(guest, 'invite')).toBe(5);
+  });
+
+  it('an unknown token commits the attempt and nothing else', async () => {
+    const guest = await db.createUser();
+    const key = newKey();
+    await expect(join(guest, await unknownToken(), key)).rejects.toMatchObject({
+      code: 'invite_invalid',
+    });
+    const [{ keys, rooms }] = await db.query<{ keys: number; rooms: number }>(
+      `select (select count(*)::int from public.idempotency_keys where user_id = $1) as keys,
+              (select count(*)::int from public.room_members where user_id = $1) as rooms`,
+      [guest.id],
+    );
+    expect({ keys, rooms }).toEqual({ keys: 0, rooms: 0 });
+    expect(await failures(guest, 'invite')).toBe(1);
+  });
+
+  it('a member who is not the host cannot read the invite row', async () => {
+    const { host, roomId } = await newRoom();
+    await invite(host, roomId);
+    const member = await db.createUser();
+    await addMember(roomId, member);
+    await expect(
+      db.as(member).query('select * from public.room_invites where room_id = $1', [roomId]),
+    ).resolves.toEqual([]);
+  });
+});
