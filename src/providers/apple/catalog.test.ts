@@ -99,6 +99,19 @@ describe('Apple Music catalog (live, through catalog-search)', () => {
       30,
     ],
     [
+      'a 429 from the gateway without q’d’s body',
+      { status: 429, body: { code: 429, message: 'Too many requests' } },
+      'rate_limited',
+      30,
+    ],
+    ['a 429 that is not JSON', { status: 429, body: null }, 'rate_limited', 30],
+    [
+      'rate_limited with an unusable time',
+      { status: 429, body: { code: 'rate_limited', retry_after_seconds: 0 } },
+      'rate_limited',
+      30,
+    ],
+    [
       'invalid_input',
       { status: 400, body: { code: 'invalid_input', field: 'query' } },
       'invalid_argument',

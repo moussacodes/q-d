@@ -36,7 +36,9 @@ const fail = (code: ConstructorParameters<typeof ProviderError>[0], retryAfterSe
 /** Maps an error answer to the adapter's error codes. */
 function errorFor(response: EdgeFunctionResponse): ProviderError {
   const parsed = edgeFunctionErrorSchema.safeParse(response.body);
-  const code = parsed.success ? parsed.data.code : null;
+  // A 429 without q’d's body (for example from Supabase's own gateway) is
+  // still "too many searches", not "search is broken".
+  const code = parsed.success ? parsed.data.code : response.status === 429 ? 'rate_limited' : null;
   switch (code) {
     case 'rate_limited':
       return fail('rate_limited', parsed.data?.retry_after_seconds ?? 30);
