@@ -1,4 +1,9 @@
-import { callbackErrorCode, parseAuthCallbackParams, parseAuthCallbackUrl } from './auth';
+import {
+  callbackErrorCode,
+  loggableReason,
+  parseAuthCallbackParams,
+  parseAuthCallbackUrl,
+} from './auth';
 
 describe('parseAuthCallbackUrl', () => {
   it.each([
@@ -56,5 +61,18 @@ describe('callbackErrorCode', () => {
     ['something_new', null, 'link_invalid'],
   ] as const)('%s / %s → %s', (error, errorCode, expected) => {
     expect(callbackErrorCode(error, errorCode)).toBe(expected);
+  });
+});
+
+describe('loggableReason', () => {
+  it('passes short machine codes and nothing else', () => {
+    expect(loggableReason('otp_expired')).toBe('otp_expired');
+    expect(loggableReason('access_denied')).toBe('access_denied');
+    expect(loggableReason(null)).toBeNull();
+    expect(loggableReason(undefined)).toBeNull();
+    expect(loggableReason('someone@example.com')).toBe('other');
+    expect(loggableReason('Email link is invalid')).toBe('other');
+    expect(loggableReason('a'.repeat(65))).toBe('other');
+    expect(loggableReason('')).toBe('other');
   });
 });

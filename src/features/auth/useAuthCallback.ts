@@ -1,7 +1,12 @@
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 
-import { callbackErrorCode, parseAuthCallbackParams, type AuthErrorCode } from '@/domain/auth';
+import {
+  callbackErrorCode,
+  loggableReason,
+  parseAuthCallbackParams,
+  type AuthErrorCode,
+} from '@/domain/auth';
 import { landingFor, useMockSession } from '@/features/session/MockSession';
 import { exchangeAuthCode } from '@/services/auth';
 import { isLiveAuth } from '@/services/dataMode';
@@ -43,7 +48,7 @@ export function useAuthCallback(
     let active = true;
     const callback = parseAuthCallbackParams(JSON.parse(serialized));
     const failWith = (code: AuthErrorCode, reason: string | null) => {
-      callbackLog.warn('Sign-in link failed', { errorCode: code, reason });
+      callbackLog.warn('Sign-in link failed', { errorCode: code, reason: loggableReason(reason) });
       setState({ status: 'failed', code, message: callbackMessage(code) });
     };
 
@@ -73,8 +78,10 @@ export function useAuthCallback(
   }, [serialized, live]);
 
   // AuthSync sets the state from the new session; then leave this screen.
+  // Someone already signed in moves on too, even when the link itself fails
+  // (opened twice, or after a restart forgot the code): they don't need it.
   useEffect(() => {
-    if (state.status === 'signedIn' && auth !== 'signedOut') router.replace(landingFor[auth]);
+    if (state.status !== 'working' && auth !== 'signedOut') router.replace(landingFor[auth]);
   }, [state.status, auth]);
 
   return state;

@@ -195,3 +195,13 @@ export function callbackErrorCode(error: string, errorCode: string | null): Auth
   if (error === 'server_error' || error === 'temporarily_unavailable') return 'unknown';
   return 'link_invalid';
 }
+
+/**
+ * A redirect's `error` / `error_code`, safe to log. Anyone can craft a link,
+ * so only short machine codes like `otp_expired` pass; anything else (free
+ * text, an email address, a token) is logged as `other`.
+ */
+export function loggableReason(reason: string | null | undefined): string | null {
+  if (reason === null || reason === undefined) return null;
+  return /^[a-z0-9_]{1,64}$/i.test(reason) ? reason : 'other';
+}

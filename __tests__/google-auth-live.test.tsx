@@ -159,6 +159,7 @@ it('explains a link that can’t be used', async () => {
 it('clears an earlier failure when the person tries again', async () => {
   mockSupabase.auth.signInWithOAuth.mockRejectedValueOnce(new TypeError('Network request failed'));
   await renderRouter('./app', { initialUrl: '/' });
+  await flushAuthEvents();
   await press('Continue with Google');
   const network = 'Couldn’t reach q’d. Check your connection and try again.';
   expect(await screen.findByText(network)).toBeVisible();
@@ -179,6 +180,7 @@ it('never logs the code Google returned', async () => {
     error: new AuthApiError('Expired', 400, 'flow_state_expired'),
   } as never);
   await renderRouter('./app', { initialUrl: '/' });
+  await flushAuthEvents();
   await press('Continue with Google');
   expect(
     await screen.findByText('That link has expired. Sign in again to get a new one.'),

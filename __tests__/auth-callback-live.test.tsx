@@ -1,4 +1,5 @@
 import { AuthApiError } from '@supabase/supabase-js';
+import { router } from 'expo-router';
 import { act, fireEvent, renderRouter, screen } from 'expo-router/testing-library';
 
 import {
@@ -150,6 +151,72 @@ describe('the callback link', () => {
     await renderRouter('./app', { initialUrl: `/auth/callback?code=${nextCode()}` });
     await flushAuthEvents();
     expect(await screen.findByText('Start a room or jump into one.')).toBeVisible();
+  });
+
+  it('opened again once signed in with a used code, goes Home instead of failing', async () => {
+    mockSupabase.setStoredSession(fakeSession());
+    mockSupabase.setProfile(completeProfile);
+    mockSupabase.auth.exchangeCodeForSession.mockResolvedValueOnce({
+      data: { user: null, session: null },
+      error: new AuthApiError('Not found', 404, 'flow_state_not_found'),
+    } as never);
+    await renderRouter('./app', { initialUrl: `/auth/callback?code=${nextCode()}` });
+    await flushAuthEvents();
+    expect(await screen.findByText('Start a room or jump into one.')).toBeVisible();
+    expect(screen).toHavePathname('/home');
+  });
+
+  it('an error link opened while signed in goes Home too', async () => {
+    mockSupabase.setStoredSession(fakeSession());
+    mockSupabase.setProfile(completeProfile);
+    await renderRouter('./app', { initialUrl: '/auth/callback?error=access_denied' });
+    await flushAuthEvents();
+    expect(await screen.findByText('Start a room or jump into one.')).toBeVisible();
+    expect(mockSupabase.auth.exchangeCodeForSession).not.toHaveBeenCalled();
+  });
+
+  it('reopened after signing out, says the link didn’t work instead of hanging', async () => {
+    const code = nextCode();
+    await renderRouter('./app', { initialUrl: `/auth/callback?code=${code}` });
+    await flushAuthEvents();
+    await screen.findByText('What should we call you?');
+
+    await act(async () => {
+      mockSupabase.emit('SIGNED_OUT', null);
+    });
+    await flushAuthEvents();
+    await screen.findByText('Different apps. One aux.');
+
+    // Supabase refuses a code it already exchanged.
+    mockSupabase.auth.exchangeCodeForSession.mockResolvedValueOnce({
+      data: { user: null, session: null },
+      error: new AuthApiError('Not found', 404, 'flow_state_not_found'),
+    } as never);
+    await act(async () => router.push(`/auth/callback?code=${code}`));
+    await flushAuthEvents();
+    expect(await screen.findByText('That didn’t work.')).toBeVisible();
+    expect(mockSupabase.auth.exchangeCodeForSession).toHaveBeenCalledTimes(2);
+  });
+
+  it('logs only machine codes from a crafted link, never its free text', async () => {
+    await renderRouter('./app', {
+      initialUrl: '/auth/callback?error=someone%40example.com%20eyJhbGciOi.secret',
+    });
+    await flushAuthEvents();
+    expect(await screen.findByText('That didn’t work.')).toBeVisible();
+    const logged = JSON.stringify(warnings.mock.calls);
+    expect(logged).not.toContain('example.com');
+    expect(logged).not.toContain('secret');
+    expect(logged).toContain('"reason":"other"');
+  });
+
+  it('logs a known redirect code as it is', async () => {
+    await renderRouter('./app', {
+      initialUrl: '/auth/callback?error=access_denied&error_code=otp_expired',
+    });
+    await flushAuthEvents();
+    await screen.findByText('That link has expired. Sign in again to get a new one.');
+    expect(JSON.stringify(warnings.mock.calls)).toContain('"reason":"otp_expired"');
   });
 
   it('shows “Signing you in…” while it works', async () => {

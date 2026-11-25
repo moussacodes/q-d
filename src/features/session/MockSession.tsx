@@ -6,6 +6,7 @@ import type { MusicProvider } from '@/domain/music-provider';
 import { findRoom, mockUser, type MockRoom } from '@/providers/mock/data';
 import { clearProviderCredentials, signOut as signOutOfSupabase } from '@/services/auth';
 import { isLiveAuth } from '@/services/dataMode';
+import { log } from '@/services/logger';
 
 /**
  * Where someone is in the sign-in flow (see `AuthStatus` in domain/auth.ts).
@@ -109,15 +110,38 @@ type Trip = { mode: 'replace' | 'push'; hrefs: Href[] };
 
 const MockSessionContext = createContext<MockSessionValue | null>(null);
 
+/**
+ * The longest the splash waits for the stored session at startup. A slow or
+ * hanging network (a token refresh, the profile read) mustn't keep the app
+ * on its splash forever.
+ */
+export const RESTORE_TIMEOUT_MS = 10_000;
+
+const sessionLog = log.child('session');
+
 export function MockSessionProvider({
   children,
   liveAuth = isLiveAuth,
+  restoreTimeoutMs = RESTORE_TIMEOUT_MS,
 }: {
   children: ReactNode;
   liveAuth?: boolean;
+  /** Tests shorten it. */
+  restoreTimeoutMs?: number;
 }) {
   const [auth, setAuth] = useState<AuthStatus>('signedOut');
   const [restoring, setRestoring] = useState(liveAuth);
+
+  // Past the limit, show Welcome. If the session turns up later, applyAuth
+  // still moves the person on to onboarding or Home.
+  useEffect(() => {
+    if (!restoring) return;
+    const timer = setTimeout(() => {
+      sessionLog.warn('Session restore timed out', { afterMs: restoreTimeoutMs });
+      setRestoring(false);
+    }, restoreTimeoutMs);
+    return () => clearTimeout(timer);
+  }, [restoring, restoreTimeoutMs]);
   const [account, setAccount] = useState<Account>({
     id: 0,
     returning: false,

@@ -6,6 +6,7 @@ import { Platform } from 'react-native';
 import {
   callbackErrorCode,
   isProfileComplete,
+  loggableReason,
   parseAuthCallbackUrl,
   normalizeEmail,
   type AuthErrorCode,
@@ -264,7 +265,7 @@ export async function completeAuthRedirect(
   authLog.warn('Auth step failed', {
     step: 'redirect',
     errorCode,
-    supabaseErrorCode: callback.errorCode ?? callback.error,
+    supabaseErrorCode: loggableReason(callback.errorCode ?? callback.error),
   });
   return fail(errorCode);
 }
