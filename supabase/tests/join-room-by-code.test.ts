@@ -602,3 +602,122 @@ describe('private.error_response', () => {
     });
   });
 });
+
+describe('join_room_by_code attempt limit bypasses (review)', () => {
+  it('counts a wrong code however it is typed: case, spaces, dashes and the QD- prefix', async () => {
+    const guest = await db.createUser();
+    const variants = [
+      (c: string) => c.toLowerCase(),
+      (c: string) => `QD-${c}`,
+      (c: string) => `qd ${c.slice(0, 3)} ${c.slice(3)}`,
+      (c: string) => `${c.slice(0, 3)}-${c.slice(3)}`,
+      (c: string) => ` ${c} `,
+    ];
+    for (const variant of variants) {
+      await expect(join(guest, variant(await unusedCode()))).rejects.toMatchObject({
+        code: 'code_invalid',
+      });
+    }
+    expect(await failures(guest)).toBe(5);
+    await expect(join(guest, await unusedCode())).rejects.toMatchObject({ code: 'rate_limited' });
+  });
+
+  it('a locked-out caller gets rate_limited even for input that is not a code', async () => {
+    const guest = await db.createUser();
+    for (let i = 0; i < 5; i += 1) {
+      await join(guest, await unusedCode()).catch(() => undefined);
+    }
+    await expect(join(guest, '7K4F9O')).rejects.toMatchObject({ code: 'rate_limited' });
+    await expect(join(guest, null)).rejects.toMatchObject({ code: 'rate_limited' });
+    expect(await failures(guest)).toBe(5);
+  });
+
+  it('reusing the key of a wrong guess for another guess is counted again, not a conflict', async () => {
+    const guest = await db.createUser();
+    const key = newKey();
+    for (let i = 0; i < 5; i += 1) {
+      await expect(join(guest, await unusedCode(), { key })).rejects.toMatchObject({
+        code: 'code_invalid',
+      });
+    }
+    await expect(join(guest, await unusedCode(), { key })).rejects.toMatchObject({
+      code: 'rate_limited',
+    });
+    expect(await failures(guest)).toBe(5);
+  });
+
+  it('a stored success cannot be replayed to probe other codes', async () => {
+    const own = await newRoom();
+    const guest = await db.createUser();
+    const key = newKey();
+    await join(guest, own.code, { key });
+    // Another code under the same key: a conflict whether or not it exists.
+    const other = await newRoom();
+    await expect(join(guest, other.code, { key })).rejects.toMatchObject({
+      code: 'idempotency_conflict',
+    });
+    await expect(join(guest, await unusedCode(), { key })).rejects.toMatchObject({
+      code: 'idempotency_conflict',
+    });
+    expect(await members(other.roomId)).toHaveLength(1);
+  });
+
+  it('a new address for every guess does not get past the per-user limit', async () => {
+    const guest = await db.createUser();
+    for (let i = 0; i < 5; i += 1) {
+      await join(guest, await unusedCode(), { ip: `198.51.100.${i + 10}` }).catch(() => undefined);
+    }
+    const { code } = await newRoom();
+    await expect(join(guest, code, { ip: '198.51.100.99' })).rejects.toMatchObject({
+      code: 'rate_limited',
+    });
+  });
+
+  it('a wrong code commits the attempt and nothing else: no member, no key, no broadcast', async () => {
+    const { roomId } = await newRoom();
+    const guest = await db.createUser();
+    const key = newKey();
+    const before = (await db.broadcasts(roomId)).length;
+    await expect(join(guest, await unusedCode(), { key })).rejects.toMatchObject({
+      code: 'code_invalid',
+    });
+    expect(await failures(guest)).toBe(1);
+    const [{ n }] = await db.query<{ n: number }>(
+      'select count(*)::int as n from public.idempotency_keys where user_id = $1',
+      [guest.id],
+    );
+    expect(n).toBe(0);
+    const [{ m }] = await db.query<{ m: number }>(
+      'select count(*)::int as m from public.room_members where user_id = $1',
+      [guest.id],
+    );
+    expect(m).toBe(0);
+    expect(await db.broadcasts(roomId)).toHaveLength(before);
+  });
+});
+
+describe('private.error_response usage (review)', () => {
+  // Setting response.status commits whatever the transaction already wrote. A
+  // `perform private.error_response(...)` (no return) would let the function
+  // carry on and commit a success under an error status. Every use must return
+  // it straight away, and only the join RPCs may use it.
+  it('is only ever returned immediately, and only by the join RPCs', async () => {
+    const rows = await db.query<{ name: string; src: string }>(
+      `select n.nspname || '.' || p.proname as name, p.prosrc as src
+         from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+        where p.prosrc like '%error_response(%' and p.proname <> 'error_response'`,
+    );
+    const users = new Set<string>();
+    for (const { name, src } of rows) {
+      const code = src.replace(/--[^\n]*/g, '');
+      for (const line of code.match(/[^\n;]*private\.error_response\(/g) ?? []) {
+        expect(line.trim()).toMatch(/^return private\.error_response\(/);
+        users.add(name);
+      }
+    }
+    expect([...users]).toContain('public.join_room_by_code');
+    for (const name of users) {
+      expect(['public.join_room_by_code', 'public.join_room_by_invite']).toContain(name);
+    }
+  });
+});
