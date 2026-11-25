@@ -211,7 +211,7 @@ Runs as an Edge Function, not a database function, because it needs the service 
 ### Channels
 
 - One private channel per room: `room:<room_id>`.
-- Realtime Authorization (RLS on `realtime.messages`) lets only room members join and listen.
+- Realtime Authorization (RLS on `realtime.messages`) lets only room members join and listen, and lets them track presence. Built in the RLS card; clients can't send broadcasts at all.
 - Clients never send room-state broadcasts. The RPC that made the change sends them, through `private.broadcast_room_event(room_id, type)`, which calls Supabase's `realtime.send()` on the topic `room:<room_id>` as a private broadcast whose event name is the `type` (ARCHITECTURE.md open decision 2, decided 2026-11-24). Because it runs inside the RPC's transaction, a rolled-back change sends nothing.
 
 ### Broadcast events

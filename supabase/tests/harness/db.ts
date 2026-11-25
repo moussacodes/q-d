@@ -99,7 +99,12 @@ export type TestDb = Session & {
   pg: PGlite;
   /** Run several SQL statements as the superuser (setup only). */
   exec(sql: string): Promise<void>;
-  as(user: TestUser | string): Session;
+  /**
+   * Act as a signed-in user. `settings` sets extra transaction-local settings,
+   * for example `{ 'realtime.topic': 'room:<id>' }` to act as a Realtime
+   * subscriber on that channel.
+   */
+  as(user: TestUser | string, settings?: Record<string, string>): Session;
   asAnon(): Session;
   asServiceRole(): Session;
   createUser(options?: CreateUserOptions): Promise<TestUser>;
@@ -124,7 +129,11 @@ function rpcSql(name: string, args: Record<string, unknown>): { sql: string; par
   return { sql: `select public.${name}(${list}) as result`, params };
 }
 
-type Role = { role: 'authenticated' | 'anon' | 'service_role'; sub: string | null };
+type Role = {
+  role: 'authenticated' | 'anon' | 'service_role';
+  sub: string | null;
+  settings?: Record<string, string>;
+};
 
 function session(pg: PGlite, who: Role | null): Session {
   const run = async <T>(sql: string, params: unknown[] = []): Promise<T[]> => {
@@ -142,6 +151,9 @@ function session(pg: PGlite, who: Role | null): Session {
                   set_config('request.jwt.claims', $3, true)`,
           [who.sub ?? '', who.role, claims],
         );
+        for (const [name, value] of Object.entries(who.settings ?? {})) {
+          await tx.query('select set_config($1, $2, true)', [name, value]);
+        }
         await tx.exec(`set local role ${who.role}`);
         return (await tx.query<T>(sql, params)).rows;
       });
@@ -179,8 +191,12 @@ export async function createTestDb(): Promise<TestDb> {
     async exec(sql) {
       await pg.exec(sql);
     },
-    as: (user) =>
-      session(pg, { role: 'authenticated', sub: typeof user === 'string' ? user : user.id }),
+    as: (user, settings) =>
+      session(pg, {
+        role: 'authenticated',
+        sub: typeof user === 'string' ? user : user.id,
+        settings,
+      }),
     asAnon: () => session(pg, { role: 'anon', sub: null }),
     asServiceRole: () => session(pg, { role: 'service_role', sub: null }),
     async createUser(options = {}) {

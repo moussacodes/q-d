@@ -569,11 +569,14 @@ describe('idempotency_keys', () => {
   });
 });
 
-describe('before any policy exists', () => {
-  it('signed-in users and anon read nothing', async () => {
+describe('row level security', () => {
+  it('hides a room from people who are not in it', async () => {
     const host = await db.createUser();
-    await insertRoom(host);
-    expect(await db.as(host).query('select * from public.rooms')).toEqual([]);
-    expect(await db.asAnon().query('select * from public.rooms')).toEqual([]);
+    const outsider = await db.createUser();
+    const room = await insertRoom(host);
+    const seen = await db
+      .as(outsider)
+      .query('select id from public.rooms where id = $1', [room.id]);
+    expect(seen).toEqual([]);
   });
 });

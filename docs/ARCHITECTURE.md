@@ -236,6 +236,14 @@ Built · Initial Supabase migrations card (`supabase/migrations/20261124000100_i
 
 **RLS principle:** a signed-in user can read a room's data only if they're a member. Nobody inserts into, updates or deletes from room tables directly. Writes happen only through the RPC functions, which run with elevated rights after their own checks. The RLS tests prove an outsider can't read or change anything.
 
+Built · RLS card (`supabase/migrations/20261124000300_row_level_security.sql`, tests in `supabase/tests/rls.test.ts`):
+
+- Members read their room's rows in every room table. Only the host reads `room_invites`. Members see each other's profiles. The catalog (`recordings`, `provider_tracks`, `track_matches`) is readable by anyone signed in.
+- `anon` holds no privilege on any table. Signed-in users hold no insert, update or delete privilege except on their own profile's onboarding fields, their own `provider_connections` rows and their own `blocks`, so a direct write to a room table fails with permission denied.
+- `idempotency_keys` and `analytics_events` are never readable by clients.
+- Realtime Authorization: members may receive on `room:<room_id>` and track presence there. Nobody may send a broadcast from a client.
+- **Every new table** needs RLS switched on, no `anon` privileges and no write privileges for `authenticated`. Guard tests in `rls.test.ts` fail otherwise, because Supabase's default grants would expose it.
+
 ## 6. Playback in `aux`
 
 - Only the host's device creates a `PlaybackAdapter`. Listeners' devices never play audio from q’d.
