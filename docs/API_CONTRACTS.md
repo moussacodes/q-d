@@ -216,9 +216,17 @@ Called by `catalog-search`, not by apps: `anon` and `authenticated` can't execut
 
 #### `override_track_match` (Added)
 
-- **Caller:** host, from "Wrong version?".
-- **Input:** `room_id uuid`, `recording_id uuid`, `provider`, `provider_track_id text`, `idempotency_key uuid`
-- **Effect:** stores a `track_match_overrides` row with who changed it and when, and uses it for this room from then on.
+**Built** (`supabase/migrations/20261125006000_override_track_match.sql`, "Wrong version?" card).
+
+- **Caller:** the host only, from "Wrong version?". The control rule doesn't extend it: a listener it lets in still gets `not_host`.
+- **Input:** `room_id uuid`, `recording_id uuid`, `provider music_provider`, `provider_track_id text`, `idempotency_key uuid`
+- **Checks**, in §1's order: signed in, replay, arguments, the room (exists, not ended, locked), member, host. Then: `provider` is the service the room plays through; the recording has been in this room's queue (queued, playing, played or removed); the track is a saved `provider_tracks` row on that provider. It needn't be among the matcher's candidates: the host's choice always wins (DECISIONS 2026-11-24).
+- **Effect:** appends a `track_match_overrides` row with the room, who picked it and when. Rows are never updated, so the table is the audit trail; the newest row for (room, recording, provider) wins, ties broken by the larger id. The override belongs to this room only: `track_matches`, which every room shares, doesn't change. Picking the version that's already the newest pick adds no row and sends no event. A new pick broadcasts `queue.changed` from inside the transaction (§4), so the room's phones refetch.
+- **Returns:** `{ override_id, recording_id, provider, provider_track_id, created_at }`. A repeat of the current pick returns the existing row.
+- **Errors:** `not_authenticated`, `invalid_input` (`details.field`: `idempotency_key`, `room_id`, `recording_id`, `provider` or `provider_track_id`; a `provider` other than the room's, a recording never queued in the room and a track q’d hasn't saved are `invalid_input` on that field), `room_not_found`, `room_ended`, `not_member`, `not_host`, `idempotency_conflict`. No new error code.
+- **Reading it:** members read `track_match_overrides` through RLS (outsiders see nothing). The client takes the newest row per recording and service with `latestOverride` and turns it into the `TrackMatch` to play with `overriddenMatch` (`src/domain/match-override.ts`, §6); `availabilityOf` reads that as `playable`, with no warning.
+- **Not swapped mid-song:** the app keeps playing the version a song started with. The pick plays from the next time the song comes up (DECISIONS 2026-11-25 · "Wrong version?" host override).
+- **Depends on:** the chosen version must already be in `provider_tracks`. `catalog-search` saves Apple tracks; nothing saves Spotify tracks yet. The card that resolves mappings when playback needs them (ARCHITECTURE.md §7) has to save the candidates it offers before a Spotify override can succeed.
 
 **Built (matching card):** the server stores what `matchRecording` in `src/domain/matching` decides. Its `match` is a `TrackMatch` (§6): `method: 'isrc' | 'score' | 'override'`, `confidence` 0–100, and `warning` set whenever the match isn't automatic. An unavailable recording has `providerTrackId: null` and `confidence: 0`.
 
@@ -251,7 +259,7 @@ Events are hints to refetch, not data. They carry IDs and a version, never names
 type RoomEvent = {
   v: 1;                       // envelope version
   type:
-    | 'queue.changed'         // add, batch add, reorder, remove, advance
+    | 'queue.changed'         // add, batch add, reorder, remove, advance, version override
     | 'playback.changed'      // report_playback_state, advance_queue
     | 'members.changed'       // join, leave, removal
     | 'room.ended';
@@ -352,6 +360,18 @@ type PlaylistPage = {
   nextCursor: string | null;
 };
 
+// Added ("Wrong version?" card): where the picker finds a song's versions on
+// the room's service. Only the labeled mock (src/providers/mock/versions.ts)
+// exists; the live source searches the host's service in a later card.
+interface VersionSource {
+  versions(recordingId: string, provider: MusicProvider): Promise<VersionCandidates>;
+}
+type VersionCandidates = {
+  recording: CanonicalRecording;
+  candidates: ProviderTrack[];  // any version, in no order; matchRecording ranks them
+  isMock: boolean;              // the screen labels mock versions
+};
+
 type ProviderErrorCode =
   | 'not_in_this_build'  // the real adapter isn't in this build yet
   | 'not_found'
@@ -446,6 +466,17 @@ type TrackMatch = {
   confidence: number;             // 0–100
   method: 'isrc' | 'score' | 'override';
   warning: 'low_confidence' | 'explicit_conflict' | null;
+};
+
+// Added ("Wrong version?" card), src/domain/match-override.ts.
+type TrackMatchOverride = {
+  id: string;
+  roomId: string;
+  recordingId: string;
+  provider: MusicProvider;
+  providerTrackId: string;        // 1–200 characters
+  createdBy: string | null;       // null after the host deletes their account
+  createdAt: string;
 };
 
 type QueueEntry = {

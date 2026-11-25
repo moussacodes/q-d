@@ -2,6 +2,19 @@
 
 Product and technical decisions that are not obvious from the code. Newest first.
 
+## 2026-11-25 · "Wrong version?" host override
+
+- **Only the host picks a version** (PRODUCT_SPEC.md §6, rule 8; API_CONTRACTS.md says "Caller: host"). The control rule doesn't extend it: a listener it lets in still gets `not_host`, and listeners never see the button.
+- **An override belongs to one room.** It's a `track_match_overrides` row for (room, recording, provider), the way the schema was built. `track_matches`, which every room shares, never changes, so one host's taste doesn't change other rooms.
+- **Only the service the room plays through.** That's the only service whose versions the picker lists, so `override_track_match` rejects any other `provider` (`invalid_input`). If the host switches services later, the other service's automatic match applies until they pick again.
+- **Only a song that's been in the room's queue,** in any status, and only a version q’d has saved in `provider_tracks`. Both fail with `invalid_input` on that field, so no new error code was needed. The version needn't be among the matcher's candidates (2026-11-24: an override always wins).
+- **The playing song is never swapped mid-play.** The card asked for this, and nothing in PRODUCT_SPEC.md says otherwise (§6 says services change only between songs; it says nothing about versions). The song keeps playing the version it started with. The warning is replaced by "You picked a different version" for the host (with "Change pick") and "The host picked a different version" for listeners, both saying the pick plays from the next time the song comes up. Queued copies of the song, and copies added later, play the pick with no warning; their queue row says "Version picked by the host".
+- **Picking the current pick again changes nothing:** no new audit row, no broadcast, and the sheet's "Use this version" stays off for it. Picking the version that's playing (or the current automatic match) is off too when nothing else has been picked, because nothing would change.
+- **The picker lists versions in the matcher's order** (`matchRecording`'s ranking), so it's the same on every phone. That puts a version without an explicit/clean conflict above an explicit one, even when the explicit one is what's playing. Each row shows title, artists, album, length, version tags ("Radio edit", "Live", "Sped up"), "Explicit" or "Clean", and "Playing now", "Current match" or "Your pick".
+- **Mock versions are labeled.** The mock's uncertain fixtures now also offer a radio edit, a live take and (for "Way Bigger") a sped-up version. The matcher never picks those without an ISRC, so every stored mock match is unchanged (a test checks). The sheet says "Mock versions for testing. They aren’t from Spotify’s catalog."
+- **Open question for a teammate:** should the host be able to confirm the closest match ("Yes, this is right") to clear the warning without picking another version? Not built: the spec's rule 8 is about picking the right one.
+- **Open dependency:** a Spotify override needs the Spotify track in `provider_tracks`, and nothing saves Spotify tracks yet. The card that resolves mappings when playback needs them must save the candidates it offers. Figma not re-checked: it has no "Wrong version?" frame; the sheet reuses Add a song's look.
+
 ## 2026-11-25 · UI state tests
 
 - **Every non-happy state has a test** in `__tests__/ui-states.test.tsx`: loading, empty queue, unavailable and low-confidence songs, host reconnecting, no music service (guest), music service disconnected, wrong or expired code, room full, room ended, too many tries, and offline.
