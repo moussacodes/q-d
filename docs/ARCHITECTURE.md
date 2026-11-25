@@ -285,7 +285,7 @@ Jest, React Native Testing Library and the Maestro folder are set up. Each featu
 
 | Layer | Tool | What it proves |
 |---|---|---|
-| Domain | Jest | Matching (ISRC, durations, explicit/clean, version tokens), room-code formatting, queue ordering helpers |
+| Domain | Jest | Matching (ISRC, durations, explicit/clean, version tokens; Built: `src/domain/matching/rules.test.ts`), room-code formatting, queue ordering helpers |
 | Providers | Shared contract suite in `src/test` (Built: `src/test/providerContract.ts`) | Apple, Spotify and mock adapters behave the same through the interface |
 | Database | Supabase tests in `supabase/tests` | RLS denies outsiders, host/member permissions, idempotent enqueue/reorder/remove, concurrent adds, code collisions, expiry and rate limits |
 | Components and screens | React Native Testing Library | Loading, offline, empty, unavailable, reconnecting and provider-required states |
