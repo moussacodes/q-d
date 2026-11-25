@@ -146,6 +146,12 @@ export function createSpotifyAuth(deps: SpotifyAuthDeps): SpotifyAuth {
   const now = deps.now ?? Date.now;
   let authorizing: Promise<AuthorizeResult> | null = null;
   let refreshing: Promise<string> | null = null;
+  /**
+   * Bumped by `disconnect`. A refresh that started before a Disconnect must
+   * not write its new tokens back afterwards, or the account would quietly
+   * reconnect.
+   */
+  let generation = 0;
 
   const fail = (code: ProviderErrorCode, message: string) =>
     new ProviderError(code, 'spotify', message);
@@ -227,7 +233,11 @@ export function createSpotifyAuth(deps: SpotifyAuthDeps): SpotifyAuth {
     try {
       result = await openAuthSession(url, redirectUri);
     } catch (error) {
-      authLog.warn('Could not open the Spotify sign-in sheet', { error });
+      // Only the error's name: its message could quote the authorize URL,
+      // and with it the state.
+      authLog.warn('Could not open the Spotify sign-in sheet', {
+        errorName: error instanceof Error ? error.name : typeof error,
+      });
       return { type: 'failed', code: 'auth_failed' };
     }
     // `cancel` (closed or declined in the sheet), `dismiss`, `locked`…
@@ -255,6 +265,7 @@ export function createSpotifyAuth(deps: SpotifyAuthDeps): SpotifyAuth {
   }
 
   async function refresh(): Promise<string> {
+    const startedIn = generation;
     const current = await store.load('spotify');
     if (!current) throw fail('needs_authorization', 'Spotify is not connected');
     if (!current.refreshToken || !clientId) {
@@ -270,6 +281,9 @@ export function createSpotifyAuth(deps: SpotifyAuthDeps): SpotifyAuth {
     if (response.status === 200) {
       const parsed = tokenResponseSchema.safeParse(body);
       if (parsed.success) {
+        if (startedIn !== generation) {
+          throw fail('needs_authorization', 'Spotify was disconnected');
+        }
         const next = toCredentials(parsed.data, current.refreshToken);
         try {
           await store.save('spotify', next);
@@ -330,6 +344,7 @@ export function createSpotifyAuth(deps: SpotifyAuthDeps): SpotifyAuth {
     },
 
     async disconnect() {
+      generation += 1;
       await store.clear('spotify');
     },
   };

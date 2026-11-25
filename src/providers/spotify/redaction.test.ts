@@ -123,6 +123,17 @@ describe('Spotify credentials stay out of logs and errors', () => {
     expect(dump(raw)).not.toContain('forged-state-value');
   });
 
+  it('when the sign-in sheet fails with the authorize URL in its message', async () => {
+    const opened: { url: string }[] = [];
+    const { auth, api } = setup(async (url) => {
+      opened.push({ url });
+      throw new Error(`Could not open ${url}`);
+    });
+    await connectSpotify(auth, api);
+    expect(raw.length).toBeGreaterThan(0);
+    expectNoSecrets(opened);
+  });
+
   it('when the code exchange is refused with a body that echoes it', async () => {
     fake.script('POST', '/api/token', {
       status: 400,

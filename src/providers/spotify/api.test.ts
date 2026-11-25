@@ -207,3 +207,46 @@ describe('request', () => {
     expect((error as Error).message).toBe('Spotify answered 403');
   });
 });
+
+describe('review: the loose development-mode match', () => {
+  it.each([
+    ['UNKNOWN', 'Restriction violated: not approved for this device'],
+    ['DEVICE_NOT_CONTROLLABLE', 'See the developer dashboard'],
+    ['PREMIUM_REQUIRED', 'User not registered'],
+  ])('a player 403 with a reason (%s) is never read as not_approved_user', (reason, message) => {
+    const code = errorCodeFor(403, playerError(403, message, reason), '/me/player/play');
+    expect(code).not.toBe('not_approved_user');
+  });
+
+  it('a player refusal keeps the tokens; only the development-mode refusal is not_approved_user', async () => {
+    const { auth, api } = setup();
+    await fake.connectAccount();
+    fake.script('PUT', '/v1/me/player/play', {
+      status: 403,
+      body: playerError(403, 'Restriction violated: not approved', 'UNKNOWN'),
+    });
+    const error = await failure(api.request({ method: 'PUT', path: '/me/player/play' }));
+    expect(isProviderError(error) && error.code).toBe('playback_refused');
+    expect(await auth.hasCredentials()).toBe(true);
+  });
+
+  it('never puts the token in the URL, only the Authorization header', async () => {
+    const { api } = setup();
+    await fake.connectAccount();
+    await api.request({ method: 'GET', path: '/me/player', query: { market: 'US' } });
+    const [call] = fake.apiCalls();
+    expect(call.url).not.toContain('fake-access');
+    expect(call.headers.Authorization).toBe('Bearer fake-access-1');
+  });
+
+  it('an error never carries Spotify’s message text (it can echo request data)', async () => {
+    const { api } = setup();
+    await fake.connectAccount();
+    fake.script('PUT', '/v1/me/player/play', {
+      status: 400,
+      body: playerError(400, 'Invalid track uri: spotify:track:abc123SECRETISH'),
+    });
+    const error = await failure(api.request({ method: 'PUT', path: '/me/player/play' }));
+    expect(String((error as Error).message)).toBe('Spotify answered 400');
+  });
+});

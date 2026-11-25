@@ -101,7 +101,10 @@ export function errorCodeFor(status: number, data: unknown, path: string): Provi
       return 'premium_required';
     }
     if (reason === 'NO_ACTIVE_DEVICE') return 'no_active_device';
-    if (NOT_APPROVED.test(message)) return 'not_approved_user';
+    // Only a refusal without a player reason: a player 403 (e.g.
+    // RESTRICTION_VIOLATED) must never read as "not on the tester list",
+    // because that drops the tokens.
+    if (reason === undefined && NOT_APPROVED.test(message)) return 'not_approved_user';
     return 'playback_refused';
   }
   if (status === 404) {
