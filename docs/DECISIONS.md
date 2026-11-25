@@ -2,6 +2,12 @@
 
 Product and technical decisions that are not obvious from the code. Newest first.
 
+## 2026-11-24 · Listeners: audit
+
+- **Listeners shows who's in the room** (Figma 3.6): everyone by name, you marked "(you)", the host first with "Host · plays the music" and a Host chip, and everyone else "In the room". The host edits the rules and picks chosen people there; listeners read the rules as text. A person still compares it with Figma `20 · Mobile`.
+- **The host's row names the service the room plays through.** It showed the host's sample service, so a room started through Apple Music still said Spotify.
+- **"1 person in the room",** not "1 people".
+
 ## 2026-11-24 · Home: idle and live states
 
 - **Idle (2.1)** is Home with no room: the greeting, Start a room, the code field and Recent rooms, with no mini player and no Live row. **Live (2.2)** is Home while you're in a room: that room's row says Live and "N listening now", and while a song plays the mini player sits at the foot of the screen. A room with nothing playing is still Live, without a mini player.
