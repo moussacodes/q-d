@@ -193,6 +193,7 @@ ESLint enforces these rules (`no-restricted-imports` in `eslint.config.js`), so 
 - Built (RPC contracts card): the shared checks, the error convention and the idempotency machinery live in the `private` schema (`supabase/migrations/20261124000200_rpc_foundation.sql`). Each RPC is a `security definer` function in `public` with a pinned `search_path`, and `anon` can't execute any of them.
 - Built (join by code card): `join_room_by_code` (`supabase/migrations/20261125001000_join_room_by_code.sql`), with the attempt limits in `private.join_attempts` and `private.join_room()`, which every way of joining shares. Failed guesses are answered with `private.error_response()` so they're kept ([API_CONTRACTS.md § 1](API_CONTRACTS.md#1-conventions)).
 - Built (QR invitations card): `create_room_invite` and `join_room_by_invite` (`supabase/migrations/20261125001100_room_invites.sql`). Tokens are generated in Postgres and stored only as hashes. The pure link helper is `src/domain/invite-link.ts`; the QR screen isn't built yet.
+- Built (end_room card): `end_room` (`supabase/migrations/20261125001200_end_room.sql`). Host only. It ends the room, stops playback, frees and expires the code, revokes the invite and broadcasts `room.ended`.
 
 ### 4.11 q’d sign-in vs. music-service authorization
 

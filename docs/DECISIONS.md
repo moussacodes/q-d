@@ -2,6 +2,14 @@
 
 Product and technical decisions that are not obvious from the code. Newest first.
 
+## 2026-11-25 · end_room
+
+- **`end_room` returns `{ room_id, ended_at }`.** The contract listed no result. A replay returns the same values.
+- **Ending a room expires its code** by moving `code_expires_at` back to the end time if it was later, and frees the code for new rooms. **It revokes the live invite,** so a scanned QR code answers `room_ended`.
+- **Playback stops in the database** (`stopped`, reported by the host). The host's phone stops its player when it gets `room.ended`; the client card builds that.
+- **History stays as it is.** Members keep reading the ended room, its members and its queue. The queue isn't rewritten (a playing entry stays `playing`), and the 90-day cleanup is a later card.
+- **No finished profile is needed,** because `delete_account` calls it for a user who's leaving.
+
 ## 2026-11-25 · QR invitations
 
 - **A QR invite works for 24 hours,** like a room code, counted from when the host creates it. Each new invite revokes the older one, as the contract says, so a room has one live invite. **A teammate should confirm the length.**

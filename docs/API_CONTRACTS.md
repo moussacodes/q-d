@@ -126,7 +126,11 @@ Why it's shaped this way: [ARCHITECTURE.md § 4.10](ARCHITECTURE.md#410-client-v
 
 - **Caller:** host. `delete_account` also calls it.
 - **Input:** `room_id uuid`, `idempotency_key uuid`
-- **Effect:** marks the room ended, stops playback and expires its code and invites. History is kept for 90 days.
+- **Built** (`supabase/migrations/20261125001200_end_room.sql`).
+- **Effect:** marks the room ended (`state = 'ended'`, `ended_at`), stops playback (`playback_states.status = 'stopped'`), expires its code (`code_expires_at` no later than `ended_at`; the code is free for new rooms) and revokes its live invite. Broadcasts `room.ended`. Members and the queue are kept as history that members can still read; the 90-day cleanup is a later card.
+- **Returns:** `{ room_id, ended_at }`
+- **Errors:** `not_authenticated`, `invalid_input` (`field: 'idempotency_key'`), `room_not_found`, `room_ended` (with a new key), `not_member`, `not_host`, `idempotency_conflict`
+- **Replay:** answered before the other checks, so a retry with the same key after the room ended returns the stored result and broadcasts nothing again.
 
 ### Queue
 
