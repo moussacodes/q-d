@@ -130,6 +130,38 @@ describe('the host', () => {
     expect(spy).toHaveBeenCalledTimes(1);
   });
 
+  it('makes a new link when the kept one has expired', async () => {
+    const spy = jest.spyOn(MockRoomServer.prototype, 'createRoomInvite');
+    await signIn();
+    await openInvite();
+    await screen.findByLabelText('QR code with the invite link');
+    const first = lastQrValue();
+    await press('Close');
+    const later = Date.now() + 25 * 3_600_000;
+    jest.spyOn(Date, 'now').mockReturnValue(later);
+    await openInvite();
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(2));
+    await screen.findByLabelText('QR code with the invite link');
+    expect(lastQrValue()).not.toBe(first);
+  });
+
+  it('keeps the current link when a new one can’t be made, and says so', async () => {
+    await signIn();
+    await openInvite();
+    await screen.findByLabelText('QR code with the invite link');
+    const current = lastQrValue();
+    jest
+      .spyOn(MockRoomServer.prototype, 'createRoomInvite')
+      .mockResolvedValueOnce({ ok: false, error: { code: 'room_ended' } });
+    await press('Make a new link');
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Couldn’t make an invite link. Try again. The current link still works.',
+    );
+    expect(qr()).toBeVisible();
+    expect(lastQrValue()).toBe(current);
+    expect(screen.getByLabelText('Copy link')).toBeEnabled();
+  });
+
   it('can make a new link, and the old one stops working', async () => {
     await signIn();
     await openInvite();
@@ -247,6 +279,57 @@ describe('opening an invite link', () => {
       router.push('/join');
     });
     await waitFor(() => expect(screen).toHavePathname('/home'));
+  });
+
+  it('sends someone signed out to Welcome without calling the server', async () => {
+    const spy = jest.spyOn(MockRoomServer.prototype, 'joinRoomByInvite');
+    await renderRouter('./app', { initialUrl: '/join?invite=mock-0123' });
+    await waitFor(() => expect(screen).toHavePathname('/'));
+    expect(screen.queryByText('Joining the room…')).toBeNull();
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('says it’s joining while the server checks the invite', async () => {
+    let release: (result: RpcResult<{ code: string }>) => void = () => {};
+    jest.spyOn(MockRoomServer.prototype, 'joinRoomByInvite').mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    await signIn();
+    await act(async () => {
+      router.push({ pathname: '/join', params: { invite: 'mock-held' } });
+    });
+    expect(await screen.findByText('Joining the room…')).toBeVisible();
+    expect(screen.queryByLabelText('Go to Home')).toBeNull();
+    await act(async () => {
+      release({ ok: true, value: { code: ROOM } });
+    });
+    await waitFor(() => expect(screen).toHavePathname(`/room/${ROOM}`));
+  });
+
+  it.each([
+    [{ code: 'room_full' }, 'That room is full. Rooms hold up to 15 people.'],
+    [{ code: 'room_ended' }, 'That room has ended. Ask the host for a new code.'],
+    [
+      { code: 'rate_limited', retryAfterSeconds: 30 },
+      'Too many tries. Wait 30 seconds, then try again.',
+    ],
+    [{ code: 'profile_incomplete' }, 'Finish your profile before joining a room.'],
+    [{ code: 'not_authenticated' }, 'Sign in again to join a room.'],
+    [{ code: 'stale_state' }, 'Couldn’t join right now. Try again.'],
+  ] as const)('explains %o in words', async (error, words) => {
+    jest
+      .spyOn(MockRoomServer.prototype, 'joinRoomByInvite')
+      .mockResolvedValue({ ok: false, error } as RpcResult<{ code: string }>);
+    await signIn();
+    await act(async () => {
+      router.push({ pathname: '/join', params: { invite: 'mock-any' } });
+    });
+    expect(await screen.findByRole('alert')).toHaveTextContent(words);
+    expect(screen.queryByText(new RegExp(error.code))).toBeNull();
+    expect(screen.getByLabelText('Go to Home')).toBeVisible();
   });
 
   it('says a wrong token doesn’t work and offers Home', async () => {

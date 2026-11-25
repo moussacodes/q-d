@@ -385,7 +385,12 @@ export function useJoinByInvite() {
  */
 export function useRoomInvite(roomCode: string, isHost: boolean) {
   const { server, invites } = useRooms();
-  const [invite, setInvite] = useState<RoomInvite | null>(() => invites.get(roomCode) ?? null);
+  // A kept invite that has expired would draw a QR code that no longer works.
+  const current = () => {
+    const kept = invites.get(roomCode);
+    return kept && Date.parse(kept.expiresAt) > Date.now() ? kept : null;
+  };
+  const [invite, setInvite] = useState<RoomInvite | null>(current);
   const call = useCallback(
     async (_: void, idempotencyKey: string) => {
       const result = await server.createRoomInvite({ roomCode, asHost: isHost, idempotencyKey });
@@ -400,8 +405,8 @@ export function useRoomInvite(roomCode: string, isHost: boolean) {
   const { state, run } = useCall(call);
 
   useEffect(() => {
-    if (isHost && !invites.has(roomCode)) run();
-  }, [isHost, invites, roomCode, run]);
+    if (isHost && !invite) run();
+  }, [isHost, invite, roomCode, run]);
 
   return {
     /** Null until the first invite exists. */

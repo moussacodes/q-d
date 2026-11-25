@@ -157,9 +157,22 @@ export default function InviteSheet() {
               disabled={making}
               onPress={replace}
             />
-            <Text variant="caption" color="text3" style={styles.centerText}>
-              The old QR code and link stop working. The room code stays the same.
-            </Text>
+            {failed ? (
+              // The new link wasn't made, so the one on screen still works.
+              <Text
+                variant="caption"
+                color="statusWarn"
+                accessibilityRole="alert"
+                accessibilityLiveRegion="polite"
+                style={styles.centerText}
+              >
+                {createInviteErrorMessage(state.error)} The current link still works.
+              </Text>
+            ) : (
+              <Text variant="caption" color="text3" style={styles.centerText}>
+                The old QR code and link stop working. The room code stays the same.
+              </Text>
+            )}
           </View>
         ) : null}
       </View>
