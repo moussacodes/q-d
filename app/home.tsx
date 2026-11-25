@@ -1,6 +1,5 @@
 import { router } from 'expo-router';
-import { useState } from 'react';
-import { Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import {
   Avatar,
@@ -9,19 +8,17 @@ import {
   Icon,
   IconButton,
   Logo,
-  Panel,
   Screen,
   SectionLabel,
   Text,
   useScreenPalette,
 } from '@/components';
-import { typography, useTheme } from '@/design';
-import { ROOM_CODE_LENGTH, roomCodeFromInput } from '@/domain/room-code';
+import { useTheme } from '@/design';
 import { RoomMiniPlayer } from '@/features/playback/RoomMiniPlayer';
 import { roomPalette } from '@/features/playback/palette';
-import { useActiveRoom } from '@/features/room/useRoom';
+import { JoinWithCode } from '@/features/room/JoinWithCode';
+import { useActiveRoom, useRecentRooms, type MockRoom } from '@/features/room/useRoom';
 import { useMockSession } from '@/features/session/MockSession';
-import { mockRooms, type MockRoom } from '@/test/fixtures/mock-data';
 
 function greeting(date = new Date()) {
   const hour = date.getHours();
@@ -30,32 +27,19 @@ function greeting(date = new Date()) {
   return 'Evening';
 }
 
-/** In the mock, a complete code that isn't a sample room's finds Kitchen Disco. */
-const roomForCode = (code: string) =>
-  mockRooms.find((room) => room.code === `QD-${code}`) ?? mockRooms[1];
-
 /**
  * 2.1 Home (nothing playing) and 2.2 Home (mini player while a room plays).
- * Joining happens here: a complete code opens the room straight away.
+ * Joining happens here: a complete code opens the room once the server says yes.
  */
 export default function Home() {
-  const { user, enterRoom } = useMockSession();
+  const { user } = useMockSession();
   const { room: activeRoom, playback, canControl } = useActiveRoom();
+  const recentRooms = useRecentRooms();
   useScreenPalette(roomPalette(activeRoom));
   const { colors } = useTheme();
-  const [code, setCode] = useState('');
-  const complete = code.length === ROOM_CODE_LENGTH;
 
   const openRoom = (room: MockRoom) =>
     router.push({ pathname: '/room/[code]', params: { code: room.code } });
-
-  const join = () => {
-    if (!complete) return;
-    const room = roomForCode(code);
-    enterRoom(room.code);
-    setCode('');
-    openRoom(room);
-  };
 
   return (
     <Screen
@@ -112,45 +96,14 @@ export default function Home() {
           </View>
         </Pressable>
 
-        <Panel>
-          <Text variant="bodyStrong">Join with a code</Text>
-          <View style={styles.joinRow}>
-            <View
-              style={[
-                styles.codeInput,
-                { backgroundColor: colors.surface, borderColor: colors.stroke },
-              ]}
-            >
-              <Text variant="mono" color="text3">
-                QD-
-              </Text>
-              <TextInput
-                value={code}
-                onChangeText={(t) => setCode(roomCodeFromInput(t))}
-                onSubmitEditing={join}
-                placeholder="XXXXXX"
-                placeholderTextColor={colors.text3}
-                autoCapitalize="characters"
-                autoCorrect={false}
-                returnKeyType="go"
-                accessibilityLabel="Room code"
-                keyboardAppearance="dark"
-                style={[styles.codeText, typography.mono, { color: colors.text }]}
-              />
-            </View>
-            <IconButton
-              icon="arrow-right"
-              accessibilityLabel="Join"
-              disabled={!complete}
-              onPress={join}
-            />
-          </View>
-        </Panel>
+        <JoinWithCode
+          onJoined={(code) => router.push({ pathname: '/room/[code]', params: { code } })}
+        />
       </View>
 
       <View style={styles.recent}>
         <SectionLabel>Recent rooms</SectionLabel>
-        {mockRooms.map((room) => {
+        {recentRooms.map((room) => {
           const live = activeRoom?.code === room.code;
           // The room you're in shows the name it was started with.
           const name = live ? activeRoom.name : room.name;
@@ -210,18 +163,6 @@ const styles = StyleSheet.create({
   },
   dim: { opacity: 0.7 },
   plus: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  joinRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  codeInput: {
-    flex: 1,
-    height: 44,
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  codeText: { flex: 1, paddingVertical: 0, letterSpacing: 1 },
   recent: { gap: 6 },
   roomRow: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 8 },
   stack: { width: 48, height: 44, justifyContent: 'center' },

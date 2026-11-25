@@ -16,12 +16,13 @@ import {
 } from '@/components';
 import { useTheme } from '@/design';
 import { providerNames } from '@/domain/music-provider';
+import { MAX_ROOM_NAME_LENGTH, roomNameProblem } from '@/domain/room-name';
 import { defaultRoomRules } from '@/domain/room-rules';
 import { useProviderConnections } from '@/features/connections/ProviderConnections';
+import { createRoomErrorMessage, roomNameMessage } from '@/features/room/errorCopy';
 import { RoomRulesEditor } from '@/features/room/RoomRules';
 import { useStartRoom } from '@/features/room/useRoom';
 import { ServicesSection } from '@/features/settings/ServicesSection';
-import { mockRooms } from '@/test/fixtures/mock-data';
 
 /**
  * 2.4 Start a room. The host sets who adds songs and who plays, skips,
@@ -31,21 +32,26 @@ import { mockRooms } from '@/test/fixtures/mock-data';
  *
  * Hosting is the one place a music service is required, because the host's
  * phone plays the queue. Without one connected, this screen asks for it.
+ *
+ * The room is always `aux`: there's no mode choice, because `sync (beta)` is
+ * never shown. The name is trimmed and needs 1–40 characters.
  */
 export default function CreateRoom() {
   useScreenPalette();
   const { colors } = useTheme();
-  const startRoom = useStartRoom();
+  const { state, start: startRoom } = useStartRoom();
   const { connected, playsThrough, choose } = useProviderConnections();
   const [name, setName] = useState('Sunday Slow Burn');
   const [rules, setRules] = useState(defaultRoomRules);
-  const room = mockRooms[0];
   const other = connected.find((provider) => provider !== playsThrough);
+  const nameProblem = roomNameProblem(name);
+  const starting = state.status === 'pending';
+  const blocked = !playsThrough || nameProblem !== null || starting;
 
-  const start = () => {
-    if (!playsThrough) return;
-    startRoom(room.code, { name: name.trim(), playsThrough, rules });
-    router.replace({ pathname: '/room/[code]', params: { code: room.code } });
+  const start = async () => {
+    if (blocked) return;
+    const room = await startRoom({ name, playsThrough, rules });
+    if (room) router.replace({ pathname: '/room/[code]', params: { code: room.code } });
   };
 
   return (
@@ -55,11 +61,22 @@ export default function CreateRoom() {
         <>
           <Button
             block
-            label="Start room"
-            disabled={!name.trim() || !playsThrough}
+            label={starting ? 'Starting…' : 'Start room'}
+            accessibilityLabel="Start room"
+            accessibilityState={{ disabled: blocked, busy: starting }}
+            disabled={blocked}
             onPress={start}
           />
-          {playsThrough ? null : (
+          {state.status === 'failed' ? (
+            <Text
+              variant="caption"
+              color="statusWarn"
+              accessibilityRole="alert"
+              accessibilityLiveRegion="polite"
+            >
+              {createRoomErrorMessage(state.error)}
+            </Text>
+          ) : playsThrough ? null : (
             <Text variant="caption" color="text3">
               Connect a music service to start a room.
             </Text>
@@ -67,7 +84,22 @@ export default function CreateRoom() {
         </>
       }
     >
-      <TextField label="Room name" value={name} onChangeText={setName} />
+      <View style={styles.field}>
+        <TextField
+          label="Room name"
+          value={name}
+          onChangeText={setName}
+          maxLength={MAX_ROOM_NAME_LENGTH}
+          autoCapitalize="words"
+          returnKeyType="done"
+          accessibilityHint={`Up to ${MAX_ROOM_NAME_LENGTH} characters`}
+        />
+        {nameProblem ? (
+          <Text variant="caption" color="statusWarn" accessibilityLiveRegion="polite">
+            {roomNameMessage(nameProblem)}
+          </Text>
+        ) : null}
+      </View>
 
       <View style={styles.group}>
         <SectionLabel>Room rules</SectionLabel>
@@ -122,6 +154,7 @@ export default function CreateRoom() {
 const styles = StyleSheet.create({
   flex: { flex: 1, gap: 2 },
   group: { gap: 10 },
+  field: { gap: 6 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   notice: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
 });

@@ -87,12 +87,7 @@ const layers = [
  * data from src/test/fixtures until the mock-data development mode replaces it.
  * Remove a file from this list when it stops importing src/test. Don't add new ones.
  */
-const mockDataImporters = [
-  'app/create-room.tsx',
-  'app/home.tsx',
-  'app/onboarding/name.tsx',
-  'app/room/[[]code]/invite.tsx',
-];
+const mockDataImporters = ['app/onboarding/name.tsx', 'app/room/[[]code]/invite.tsx'];
 
 const testFiles = ['**/*.test.ts', '**/*.test.tsx', '__tests__/**', 'src/test/**'];
 

@@ -81,6 +81,8 @@ type SegmentedControlProps<T extends string> = {
   onChange: (value: T) => void;
   /** Full-width track with equal segments (Settings tabs). */
   fill?: boolean;
+  /** What the choice is about, read before the options (for example "Add songs"). */
+  accessibilityLabel?: string;
 };
 
 /** A row of Figma "Segment" options. */
@@ -89,6 +91,7 @@ export function SegmentedControl<T extends string>({
   value,
   onChange,
   fill,
+  accessibilityLabel,
 }: SegmentedControlProps<T>) {
   const { colors } = useTheme();
   return (
@@ -101,6 +104,7 @@ export function SegmentedControl<T extends string>({
         ],
       ]}
       accessibilityRole="tablist"
+      accessibilityLabel={accessibilityLabel}
     >
       {options.map((option) => {
         const selected = option.value === value;

@@ -2,6 +2,20 @@
 
 Product and technical decisions that are not obvious from the code. Newest first.
 
+## 2026-11-25 · Create room and join room screens
+
+Figma audit of 2.4 Start a room and of joining with a code, which now lives on Home (see "Join with a code on Home" below). Figma wasn't re-checked: a person still compares both with `20 · Mobile`. Mock mode only; the RPC cards wire the real `create_room` and `join_room_by_code`.
+
+- **Joining waits for the server's answer.** Home's arrow (or Go) calls `join_room_by_code` and opens the room only when it says yes. While it's out, the line under the field says "Joining QD-…", and the field and the arrow are disabled, so a second tap sends nothing. Every tap sends its own idempotency key.
+- **Every join error the contract names has its own line** under the field, and the code stays so it can be fixed: `code_invalid` ("doesn't match a room… mistyped or expired"), `room_full`, `room_ended`, `rate_limited` (with the wait from `retry_after_seconds`), `profile_incomplete` and `not_authenticated`. A wrong code and an expired one get the same words, as the contract requires, so codes can't be probed. Any other code reads "Couldn't join right now", never a raw code. Editing the code clears the line.
+- **Look-alike characters are pointed out, not changed.** Codes never use `0`, `O`, `1` or `I` (DECISIONS 2026-11-24 · create_room, on `feat/create-room-rpc`, which **a teammate still has to confirm**). A code with one says so under the field and keeps Join disabled, without calling the server. They can't be mapped to the right character, because both halves of each pair are left out.
+- **Mock join answers.** This replaces "Any other complete code opens Kitchen Disco" from the 2026-11-20 entry: the mock now answers like the contract, so the error states can be tried. A sample room's code opens that room. `QD-FULL22` is full, `QD-ENDED2` has ended, `QD-STALE2` stands for an expired code, and anything else is wrong. After five wrong codes in a row, joining pauses for 30 seconds (`rate_limited`), checked before the code, as the contract says. Those two numbers are mock values; the real attempt limits are still open (PRODUCT_SPEC.md § 13).
+- **Start a room checks the name:** trimmed, 1–40 characters, like `create_room`. The field stops at 40 characters, and a blank name says "Give the room a name." with Start room disabled. It still starts filled in with "Sunday Slow Burn".
+- **No mode choice.** Start a room sends `mode: 'aux'` and never mentions `sync`; a test checks it.
+- **Start room waits for `create_room`.** It reads "Starting…" and ignores more taps until the answer, then opens the room. An error (`provider_required`, `profile_incomplete`, `invalid_input`…) appears under the button in words. The screen still asks for a service before it lets you start, so a guest is never asked for one.
+- **The rule choices are labeled.** Each Everyone / Chosen / Only you row reads its rule ("Add songs", "Play, skip, reorder, remove") to screen readers.
+- **Code.** `src/domain/room-code.ts` holds the alphabet and code helpers, `src/domain/room-name.ts` the name rule and `src/domain/rpc-error.ts` the error codes. The mock RPCs are `src/features/room/mockServer.ts`, the copy is `errorCopy.ts`, and Home's field is `JoinWithCode.tsx`. Home and Start a room no longer import sample data from `src/test`, so they're off the lint exception list.
+
 ## 2026-11-24 · Settings: music services and account
 
 - **Settings can disconnect a service** (PRODUCT_SPEC.md §3: connect, change and disconnect). In Settings a connected service shows **Disconnect** where the other screens show the Connected chip. Onboarding step 2 and Start a room still only connect. Disconnecting the service rooms play through hands "Play rooms through" to the other one, or hides it when none is left, so Start a room asks for a service again. Mock only: the real flow also has to revoke the provider authorization and remove the `provider_connections` row, which `API_CONTRACTS.md` doesn't cover yet. That's for the provider and RPC cards.
@@ -39,9 +53,9 @@ Product and technical decisions that are not obvious from the code. Newest first
 
 ## 2026-11-20 · Join with a code on Home
 
-- **The Join with a code screen (Figma 2.3, `/join`) is gone.** Baron asked for it. People type the code in Home's "Join with a code" field. Once all six characters are in, the arrow (or the keyboard's Go key) opens the room. There's no "Room found" preview step before it. Back from the room goes to Home.
+- **The Join with a code screen (Figma 2.3, `/join`) is gone.** Baron asked for it. It was pushed as work in progress (`feat/join-from-home`) and finished in "Create room and join room screens" (2026-11-25). PLAN.md §6 still lists a "Join room" screen, so **a teammate should confirm** the removal. People type the code in Home's "Join with a code" field. Once all six characters are in, the arrow (or the keyboard's Go key) opens the room. There's no "Room found" preview step before it. Back from the room goes to Home.
 - **Pasting a whole code works.** The field drops a pasted `QD-` prefix and anything that isn't a letter or digit (`src/domain/room-code.ts`), so `QD-7K4F9X` from a message lands as `7K4F9X`. The Join screen's "Paste from clipboard" chip went with the screen.
-- **Mock mode.** A sample room's code opens that room. Any other complete code opens Kitchen Disco, as the Join screen did. The real `join_room_by_code` will say when a code doesn't exist.
+- **Mock mode.** A sample room's code opens that room. Any other complete code opens Kitchen Disco, as the Join screen did. The real `join_room_by_code` will say when a code doesn't exist. *(Replaced on 2026-11-25: the mock answers wrong codes with `code_invalid`.)*
 - **Onboarding step 3.** "Join with a code" finishes onboarding on Home, where the code field is.
 - **Copy.** The Join screen said guests don't need a music service. Welcome and onboarding step 2 still say it.
 - **Figma** still has frame 2.3. It needs removing there too.

@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
   type ReactNode,
@@ -11,18 +12,21 @@ import {
 
 import type { MusicProvider } from '@/domain/music-provider';
 import { allows, type RoomRules } from '@/domain/room-rules';
+import type { RpcError } from '@/domain/rpc-error';
 import { formatDuration, parseDuration } from '@/domain/time';
 import { usePlayback, type Playback } from '@/features/playback/usePlayback';
 import { useMockSession } from '@/features/session/MockSession';
 import { createPlayback, type CatalogResult } from '@/providers';
 import {
   findRoom,
+  mockRooms,
   mockUser,
   type MockPerson,
   type MockRoom,
   type MockTrack,
 } from '@/providers/mock/data';
 
+import { MockRoomServer, newIdempotencyKey } from './mockServer';
 import { RoomPlayer } from './RoomPlayer';
 import {
   createRoomStore,
@@ -35,6 +39,7 @@ import {
 } from './roomStore';
 
 export type { EnqueueResult, RoomEntry, RoomView } from './roomStore';
+export type { MockRoom } from '@/providers/mock/data';
 
 /** A room as everyone in it sees it right now. */
 export type LiveRoom = Omit<MockRoom, 'nowPlaying' | 'queue'> & {
@@ -70,7 +75,7 @@ export function trackFromResult(
   };
 }
 
-type Rooms = { store: RoomStore; players: Map<string, RoomPlayer> };
+type Rooms = { store: RoomStore; players: Map<string, RoomPlayer>; server: MockRoomServer };
 
 const RoomsContext = createContext<Rooms | null>(null);
 
@@ -80,7 +85,11 @@ const RoomsContext = createContext<Rooms | null>(null);
  * every room, so listeners still see a song progress.
  */
 export function RoomsProvider({ children }: { children: ReactNode }) {
-  const [rooms] = useState<Rooms>(() => ({ store: createRoomStore(), players: new Map() }));
+  const [rooms] = useState<Rooms>(() => ({
+    store: createRoomStore(),
+    players: new Map(),
+    server: new MockRoomServer(),
+  }));
   return <RoomsContext.Provider value={rooms}>{children}</RoomsContext.Provider>;
 }
 
@@ -232,21 +241,98 @@ export function useActiveRoom() {
   return { room, playback, canControl };
 }
 
+/** Rooms you've been in, newest first, for Home. Mock mode shows the sample rooms. */
+export function useRecentRooms(): MockRoom[] {
+  return mockRooms;
+}
+
+/** Where a call to the server is: not started, waiting for its answer, or failed with an error. */
+export type CallState =
+  { status: 'idle' } | { status: 'pending' } | { status: 'failed'; error: RpcError };
+
+const idle: CallState = { status: 'idle' };
+
+/**
+ * One server call at a time: while one is pending, another tap does nothing,
+ * so a double tap can't send two. Each tap gets its own idempotency key.
+ */
+function useCall<A, T>(
+  call: (
+    args: A,
+    idempotencyKey: string,
+  ) => Promise<{ ok: true; value: T } | { ok: false; error: RpcError }>,
+) {
+  const [state, setState] = useState<CallState>(idle);
+  const busy = useRef(false);
+  const run = useCallback(
+    async (args: A): Promise<T | null> => {
+      if (busy.current) return null;
+      busy.current = true;
+      setState({ status: 'pending' });
+      const result = await call(args, newIdempotencyKey());
+      busy.current = false;
+      setState(result.ok ? idle : { status: 'failed', error: result.error });
+      return result.ok ? result.value : null;
+    },
+    [call],
+  );
+  const reset = useCallback(() => setState(idle), []);
+  return { state, run, reset };
+}
+
+/**
+ * `join_room_by_code` from Home. On success you're in the room and `join`
+ * returns `{ code }` (`QD-…`); on failure it returns null and `state` holds
+ * the error.
+ */
+export function useJoinRoom() {
+  const { server } = useRooms();
+  const { enterRoom } = useMockSession();
+  const call = useCallback(
+    async (code: string, idempotencyKey: string) => {
+      const result = await server.joinRoomByCode({ code, idempotencyKey });
+      if (result.ok) enterRoom(result.value.code);
+      return result;
+    },
+    [server, enterRoom],
+  );
+  const { state, run, reset } = useCall(call);
+  return { state, join: run, reset };
+}
+
 /**
  * `create_room`: start hosting with the name, service and rules chosen on
- * Start a room. The room plays through `playsThrough` on this phone.
+ * Start a room. The room is always `aux` and plays through `playsThrough` on
+ * this phone. On success `start` returns `{ code }`; on failure, null.
  */
 export function useStartRoom() {
-  const { store } = useRooms();
+  const { store, server } = useRooms();
   const { startRoom } = useMockSession();
-  return useCallback(
-    (
-      code: string,
-      { rules, ...room }: { name: string; playsThrough: MusicProvider; rules: RoomRules },
+  const call = useCallback(
+    async (
+      {
+        name,
+        playsThrough,
+        rules,
+      }: { name: string; playsThrough: MusicProvider | null; rules: RoomRules },
+      idempotencyKey: string,
     ) => {
-      store.setRules({ code }, rules);
-      startRoom(code, room);
+      const trimmed = name.trim();
+      const result = await server.createRoom({
+        name: trimmed,
+        playbackProvider: playsThrough,
+        rules,
+        mode: 'aux',
+        idempotencyKey,
+      });
+      if (result.ok && playsThrough) {
+        store.setRules({ code: result.value.code }, rules);
+        startRoom(result.value.code, { name: trimmed, playsThrough });
+      }
+      return result;
     },
-    [store, startRoom],
+    [server, store, startRoom],
   );
+  const { state, run } = useCall(call);
+  return { state, start: run };
 }

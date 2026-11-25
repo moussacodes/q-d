@@ -93,12 +93,12 @@ describe('idle (2.1)', () => {
     expect(screen).toHavePathname('/room/QD-9M2XR4');
   });
 
-  it('only takes letters and digits in the code field, six at most', async () => {
+  it('only takes letters and digits in the code field, six at most, without a pasted QD-', async () => {
     await signIn();
     await act(async () => {
       fireEvent.changeText(screen.getByLabelText('Room code'), 'qd-7k4f9x-extra');
     });
-    expect(screen.getByLabelText('Room code')).toHaveDisplayValue('QD7K4F');
+    expect(screen.getByLabelText('Room code')).toHaveDisplayValue('7K4F9X');
   });
 });
 

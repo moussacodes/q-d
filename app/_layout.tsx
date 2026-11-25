@@ -68,7 +68,6 @@ function RootStack() {
 
       <Stack.Protected guard={auth === 'ready'} redirectTo={redirectTo}>
         <Stack.Screen name="home" />
-        <Stack.Screen name="join" />
         <Stack.Screen name="create-room" />
         <Stack.Screen name="settings" />
         <Stack.Screen name="room/[code]/index" />
