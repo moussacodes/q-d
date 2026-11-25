@@ -307,3 +307,55 @@ describe('switch_playback_provider', () => {
     expect(store.get(room).playsThrough).toBeNull();
   });
 });
+
+describe('provider autoplay', () => {
+  /** The sample room with only the playing song left. */
+  const lastSong = () => {
+    const store = createRoomStore();
+    store.get(room).queue.forEach((entry) => store.remove(room, entry.entryId));
+    return store;
+  };
+
+  it('records the service that kept playing when the last song ended', () => {
+    const store = lastSong();
+    const playing = store.get(room).nowPlaying!.entryId;
+    expect(store.advance(room, playing, 'ended', 'spotify')).toBe(true);
+    expect(store.get(room)).toMatchObject({ nowPlaying: null, autoplay: 'spotify' });
+  });
+
+  it('ignores autoplay while songs are queued: the queue comes first', () => {
+    const store = createRoomStore();
+    store.advance(room, store.get(room).nowPlaying!.entryId, 'ended', 'spotify');
+    expect(store.get(room).autoplay).toBeNull();
+    expect(store.get(room).nowPlaying?.title).toBe('Lovers Rock');
+  });
+
+  it('doesn’t autoplay after a skip, or when the service stopped', () => {
+    const skipped = lastSong();
+    skipped.advance(room, skipped.get(room).nowPlaying!.entryId, 'skipped', 'spotify');
+    expect(skipped.get(room).autoplay).toBeNull();
+
+    const stopped = lastSong();
+    stopped.advance(room, stopped.get(room).nowPlaying!.entryId, 'ended');
+    expect(stopped.get(room).autoplay).toBeNull();
+  });
+
+  it('hands the room back to the queue when someone adds a song', () => {
+    const store = lastSong();
+    store.advance(room, store.get(room).nowPlaying!.entryId, 'ended', 'apple_music');
+    const song = { ...findRoom('QD-9M2XR4').nowPlaying!, id: 'new' };
+    expect(store.enqueue(room, song, 'Maya')).toMatchObject({ ok: true, playingNow: true });
+    expect(store.get(room)).toMatchObject({ autoplay: null, nowPlaying: { id: 'new' } });
+  });
+
+  it('forgets autoplay when the provider stops, telling subscribers once', () => {
+    const store = lastSong();
+    store.advance(room, store.get(room).nowPlaying!.entryId, 'ended', 'spotify');
+    const listener = jest.fn();
+    store.subscribe(listener);
+    store.stopAutoplay(room);
+    store.stopAutoplay(room);
+    expect(store.get(room).autoplay).toBeNull();
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+});

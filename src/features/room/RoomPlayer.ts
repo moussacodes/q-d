@@ -15,6 +15,8 @@ export class RoomPlayer {
   private loaded: string | null = null;
   /** The entry the player finished loading and started. Cleared once its end is reported. */
   private started: string | null = null;
+  /** The provider is playing songs it picked itself, after the room's queue ran out. */
+  private autoplaying = false;
 
   private player: PlaybackAdapter;
 
@@ -25,7 +27,8 @@ export class RoomPlayer {
   constructor(
     private readonly adapterFor: (provider: MusicProvider) => PlaybackAdapter,
     provider: MusicProvider,
-    private readonly onEnded: (entryId: string) => void,
+    /** `providerKeptPlaying`: the provider went on to a song it picked itself (autoplay). */
+    private readonly onEnded: (entryId: string, providerKeptPlaying: boolean) => void,
   ) {
     this.player = adapterFor(provider);
   }
@@ -45,6 +48,7 @@ export class RoomPlayer {
     if (this.loaded === id) return;
     this.loaded = id;
     this.started = null;
+    if (entry) this.autoplaying = false;
     if (entry && provider !== this.player.provider) {
       const previous = this.player;
       this.player = this.adapterFor(provider);
@@ -55,7 +59,8 @@ export class RoomPlayer {
       await this.player.prepare({ ...toProviderTrack(entry), provider }, startAtMs);
       if (this.loaded !== id) return;
       await this.player.play();
-    } else {
+    } else if (!this.autoplaying) {
+      // With nothing queued, provider autoplay keeps going; anything else stops.
       await this.player.disconnect();
     }
     if (this.loaded === id) this.started = id;
@@ -63,7 +68,8 @@ export class RoomPlayer {
 
   /**
    * Stops the music without moving the room on, for when this phone can't
-   * play right now (its service was disconnected). The song that was playing
+   * play right now (its service was disconnected, or the song isn't on it).
+   * Provider autoplay stops too. The song that was playing
    * pauses where it is; any other song isn't started. A later `load` of the
    * paused song leaves it paused, so the music only resumes when the host
    * presses Play.
@@ -77,16 +83,24 @@ export class RoomPlayer {
     }
     this.loaded = null;
     this.started = null;
+    this.autoplaying = false;
     await this.player.disconnect();
+  }
+
+  /** The provider is playing songs it picked itself. */
+  get isAutoplaying() {
+    return this.autoplaying;
   }
 
   /** The player's state. The first read after the song ends reports the end, once. */
   async getState(): Promise<PlaybackState> {
     const started = this.started;
     const state = await this.player.getState();
-    if (started && started === this.started && state.status === 'idle') {
+    const ended = state.status === 'idle' || !!state.autoplay;
+    if (started && started === this.started && ended) {
       this.started = null;
-      this.onEnded(started);
+      this.autoplaying = !!state.autoplay;
+      this.onEnded(started, this.autoplaying);
     }
     return state;
   }

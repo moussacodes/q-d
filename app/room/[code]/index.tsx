@@ -31,6 +31,7 @@ import {
   TrackInfo,
   UpNextPeek,
 } from '@/features/room/RoomParts';
+import { AutoplayNotice } from '@/features/room/AutoplayNotice';
 import { ServiceMissingNotice } from '@/features/room/ServiceMissingNotice';
 import { SwitchedNote, UnavailableNotice } from '@/features/room/UnavailableNotice';
 import { roomParams, useRoom, type RoomView } from '@/features/room/useRoom';
@@ -154,6 +155,14 @@ export default function Room() {
         >
           {track ? (
             <TrackInfo track={track} room={room} />
+          ) : room.autoplay ? (
+            <AutoplayNotice
+              provider={room.autoplay}
+              isHost={isHost}
+              canAdd={canAdd}
+              canPlay={canPlay}
+              playback={playback}
+            />
           ) : (
             <View style={styles.gap6}>
               <Text variant="display">Nothing playing yet</Text>

@@ -50,7 +50,7 @@ export default function Settings() {
     <Screen
       header={<ScreenHeader title="Settings" />}
       footer={
-        activeRoom?.nowPlaying ? (
+        activeRoom?.nowPlaying || activeRoom?.autoplay ? (
           <RoomMiniPlayer room={activeRoom} playback={playback} canControl={canPlay} />
         ) : undefined
       }

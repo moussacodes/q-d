@@ -46,7 +46,7 @@ describe('room player', () => {
     expect((await player.getState()).status).toBe('idle');
     await player.getState();
     expect(ended).toHaveBeenCalledTimes(1);
-    expect(ended).toHaveBeenCalledWith(entries.nowPlaying!.entryId);
+    expect(ended).toHaveBeenCalledWith(entries.nowPlaying!.entryId, false);
   });
 
   it('doesn’t report an end for a paused song', async () => {
@@ -149,7 +149,79 @@ describe('room player', () => {
       await player.load(entries.queue[0], 0, 'apple_music');
       wait(213_000); // "Lovers Rock" is 3:33
       await player.getState();
-      expect(ended).toHaveBeenCalledWith(entries.queue[0].entryId);
+      expect(ended).toHaveBeenCalledWith(entries.queue[0].entryId, false);
+    });
+  });
+
+  describe('provider autoplay', () => {
+    /** A room player whose service autoplays once the queue runs out. */
+    function autoplaySetup() {
+      let now = 0;
+      const ended = jest.fn();
+      const adapter = new MockPlaybackAdapter('spotify', () => now, { autoplay: true });
+      const player = new RoomPlayer(() => adapter, 'spotify', ended);
+      const entries = createRoomStore().get(room);
+      return {
+        player,
+        ended,
+        entries,
+        wait: (ms: number) => {
+          now += ms;
+        },
+      };
+    }
+
+    it('reports the end once, saying the provider kept playing', async () => {
+      const { player, ended, entries, wait } = autoplaySetup();
+      await player.load(entries.nowPlaying, 0);
+      wait(226_000);
+      const state = await player.getState();
+      expect(state).toMatchObject({ status: 'playing', autoplay: true });
+      await player.getState();
+      expect(ended).toHaveBeenCalledTimes(1);
+      expect(ended).toHaveBeenCalledWith(entries.nowPlaying!.entryId, true);
+      expect(player.isAutoplaying).toBe(true);
+    });
+
+    it('lets autoplay go on when the room has nothing next', async () => {
+      const { player, entries, wait } = autoplaySetup();
+      await player.load(entries.nowPlaying, 0);
+      wait(226_000);
+      await player.getState();
+      await player.load(null, 0);
+      expect(await player.getState()).toMatchObject({ status: 'playing', autoplay: true });
+    });
+
+    it('hands back to the queue when a song is added', async () => {
+      const { player, entries, wait } = autoplaySetup();
+      await player.load(entries.nowPlaying, 0);
+      wait(226_000);
+      await player.getState();
+      await player.load(null, 0);
+      await player.load(entries.queue[0], 0);
+      const state = await player.getState();
+      expect(state.track?.title).toBe('Lovers Rock');
+      expect(state.autoplay).toBeUndefined();
+      expect(player.isAutoplaying).toBe(false);
+    });
+
+    it('stops autoplay when the phone can’t play any more', async () => {
+      const { player, entries, wait } = autoplaySetup();
+      await player.load(entries.nowPlaying, 0);
+      wait(226_000);
+      await player.getState();
+      await player.load(null, 0);
+      await player.hold(null);
+      expect((await player.getState()).status).toBe('idle');
+      expect(player.isAutoplaying).toBe(false);
+    });
+
+    it('reports a plain end from a service that stops', async () => {
+      const { player, ended, entries, wait } = setup();
+      await player.load(entries.nowPlaying, 0);
+      wait(226_000);
+      await player.getState();
+      expect(ended).toHaveBeenCalledWith(entries.nowPlaying!.entryId, false);
     });
   });
 });

@@ -10,6 +10,7 @@ import {
 } from 'react';
 
 import type { MusicProvider } from '@/domain/music-provider';
+import { afterQueueEnds } from '@/domain/autoplay';
 import { planSong, type SongPlan } from '@/domain/provider-switch';
 import { allows, type RoomRules } from '@/domain/room-rules';
 import { formatDuration, parseDuration } from '@/domain/time';
@@ -48,6 +49,8 @@ export type LiveRoom = Omit<MockRoom, 'nowPlaying' | 'queue'> & {
   rules: RoomRules;
   /** The room's last service switch, to tell everyone while that song plays. */
   switched: RoomState['switched'];
+  /** The service playing songs it picked itself after the queue ran out, if any. */
+  autoplay: RoomState['autoplay'];
   /** The development preview being shown, if any. Sheets open with the same one. */
   view?: RoomView;
 };
@@ -102,9 +105,19 @@ function playerFor({ store, players }: Rooms, ref: RoomRef, room: MockRoom) {
   const key = roomKey(ref);
   let player = players.get(key);
   if (!player) {
-    player = new RoomPlayer(createPlayback, room.playsThrough, (entryId) =>
-      store.advance(ref, entryId, 'ended'),
+    const created: RoomPlayer = new RoomPlayer(
+      createPlayback,
+      room.playsThrough,
+      (entryId, providerKeptPlaying) => {
+        const { autoplay } = afterQueueEnds({
+          mode: 'aux',
+          provider: created.provider,
+          providerKeptPlaying,
+        });
+        store.advance(ref, entryId, 'ended', autoplay);
+      },
     );
+    player = created;
     players.set(key, player);
   }
   return player;
@@ -161,11 +174,13 @@ function useLiveRoom(base: MockRoom | null, view?: RoomView) {
   const { refresh } = playback;
   useEffect(() => {
     if (!player || !playsThrough) return;
+    // A phone that can't play stops provider autoplay too.
+    if (holding && ref) store.stopAutoplay(ref);
     const next = holding
       ? player.hold(nowPlaying)
       : player.load(nowPlaying, startAtMs, playsThrough);
     next.then(refresh);
-  }, [player, nowPlaying, startAtMs, playsThrough, holding, refresh]);
+  }, [player, nowPlaying, startAtMs, playsThrough, holding, refresh, store, ref]);
 
   const room = useMemo<LiveRoom | null>(() => {
     if (!base || !state || !playsThrough) return null;
@@ -176,6 +191,7 @@ function useLiveRoom(base: MockRoom | null, view?: RoomView) {
       queue: state.queue,
       rules: state.rules,
       switched: state.switched,
+      autoplay: state.autoplay,
       ...(view ? { view } : {}),
     };
   }, [base, view, state, playsThrough]);

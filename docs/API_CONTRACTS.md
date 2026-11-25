@@ -304,6 +304,7 @@ type ConnectionState =
 - No adapter claims a capability it doesn't have. Mocks set `isMock: true`.
 - `prepare` never starts audio. `play` does.
 - Errors surface as typed results or thrown `ProviderError`s with a `code`, never as silent no-ops.
+- A track the provider picked itself after the queue ran out is marked `autoplay: true` in the adapter's state, so the host's phone can report status `autoplay` and the app can label it. Only adapters whose `capabilities().autoplay` is true ever mark one. (Added with the autoplay-label card; the mock does this today.)
 - Nothing about tokens, emails or listening history reaches the logger unredacted.
 
 ## 6. Shared domain types

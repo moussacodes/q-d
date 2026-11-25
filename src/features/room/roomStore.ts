@@ -27,6 +27,11 @@ export type RoomState = {
   playsThrough: MusicProvider | null;
   /** The last switch, so everyone can be told while that song plays. */
   switched: { entryId: string; from: MusicProvider; to: MusicProvider } | null;
+  /**
+   * The queue ran out and this service kept playing songs it picked itself
+   * (`report_playback_state` with status `autoplay`). Null otherwise.
+   */
+  autoplay: MusicProvider | null;
 };
 
 /**
@@ -101,6 +106,7 @@ function seed(ref: RoomRef): RoomState {
     rules: defaultRoomRules,
     playsThrough: null,
     switched: null,
+    autoplay: null,
   };
 }
 
@@ -158,7 +164,8 @@ export function createRoomStore() {
       added += 1;
       const entry: RoomEntry = { ...track, addedBy, entryId: `${roomKey(ref)}/added-${added}` };
       if (!room.nowPlaying) {
-        update(ref, { ...room, nowPlaying: entry, startAtMs: 0 });
+        // The queue takes over from provider autoplay.
+        update(ref, { ...room, nowPlaying: entry, startAtMs: 0, autoplay: null });
         return {
           ok: true,
           entryId: entry.entryId,
@@ -198,13 +205,34 @@ export function createRoomStore() {
      * `advance_queue`: the next queued song becomes now playing. Returns false
      * when `fromEntryId` isn't playing anymore (`stale_state`), so a double
      * tap on Skip, or two screens noticing the same song end, moves on once.
+     *
+     * `autoplay`: the service that kept playing on its own when the song
+     * ended (see `src/domain/autoplay`). It only counts when nothing is
+     * queued: a queued song always comes first.
      */
-    advance(ref: RoomRef, fromEntryId: string, _reason: AdvanceReason): boolean {
+    advance(
+      ref: RoomRef,
+      fromEntryId: string,
+      reason: AdvanceReason,
+      autoplay: MusicProvider | null = null,
+    ): boolean {
       const room = get(ref);
       if (room.nowPlaying?.entryId !== fromEntryId) return false;
       const [next = null, ...rest] = room.queue;
-      update(ref, { ...room, nowPlaying: next, queue: rest, startAtMs: 0 });
+      update(ref, {
+        ...room,
+        nowPlaying: next,
+        queue: rest,
+        startAtMs: 0,
+        autoplay: !next && reason === 'ended' ? autoplay : null,
+      });
       return true;
+    },
+
+    /** `report_playback_state` leaving `autoplay`: the provider stopped picking songs. */
+    stopAutoplay(ref: RoomRef) {
+      const room = get(ref);
+      if (room.autoplay) update(ref, { ...room, autoplay: null });
     },
 
     /**

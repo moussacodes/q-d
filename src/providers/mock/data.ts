@@ -164,6 +164,32 @@ export const mockNowPlaying = track({
   addedBy: 'Maya',
 });
 
+/**
+ * What the mock provider plays by itself once a room's queue runs out, the
+ * way Apple Music and Spotify autoplay. Always these, in this order, so the
+ * mock stays deterministic. The room labels them "Autoplay by …".
+ */
+export const mockAutoplayTracks: MockTrack[] = [
+  track({
+    id: 'ap1',
+    title: 'Get You',
+    artist: 'Daniel Caesar, Kali Uchis',
+    album: 'Freudian',
+    duration: '4:38',
+    provider: 'spotify',
+    addedBy: '',
+  }),
+  track({
+    id: 'ap2',
+    title: 'Best Part',
+    artist: 'Daniel Caesar, H.E.R.',
+    album: 'Freudian',
+    duration: '3:29',
+    provider: 'spotify',
+    addedBy: '',
+  }),
+];
+
 export const mockRooms: MockRoom[] = [
   {
     code: 'QD-7K4F9X',

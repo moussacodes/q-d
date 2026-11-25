@@ -39,6 +39,8 @@ export type PlaybackCapabilities = {
   /** Apple plays inside q’d; Spotify remote-controls the Spotify app. */
   playsInsideApp: boolean;
   backgroundPlayback: boolean;
+  /** The provider keeps playing songs it picks itself once q’d's queue runs out. */
+  autoplay: boolean;
 };
 
 export type ConnectionState = {
@@ -53,6 +55,8 @@ export type PlaybackState = {
   status: 'idle' | 'playing' | 'paused';
   track: ProviderTrack | null;
   positionMs: number;
+  /** Set when the provider picked this track itself, after q’d's queue ran out. */
+  autoplay?: true;
 };
 
 export interface PlaybackAdapter {

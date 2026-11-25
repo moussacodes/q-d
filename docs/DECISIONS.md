@@ -2,6 +2,14 @@
 
 Product and technical decisions that are not obvious from the code. Newest first.
 
+## 2026-11-25 · "Autoplay by Apple Music/Spotify"
+
+- **The mock autoplays now.** This replaces "No autoplay is promised: the mock doesn't autoplay" (2026-11-24 · Empty queue). When the last queued song ends by itself and the host's service keeps playing, the mock plays a fixed list of its own picks. A song that's skipped doesn't start autoplay: the room shows "Nothing playing yet" as before. Whether Apple Music's `ApplicationMusicPlayer` and Spotify App Remote really keep playing after q’d's last song still has to be checked on a device.
+- **Everyone is told whose songs they are.** The room shows an **Autoplay by Spotify** chip instead of "Nothing playing yet". The host sees the song and "The queue ran out, so Spotify is picking songs on your phone. q’d and the room didn’t choose them." Listeners see "Spotify is choosing" and "The queue ran out, so the host’s Spotify is picking songs. q’d and the room didn’t choose them." They don't see the song, because `report_playback_state` sends no song for `autoplay`. Anyone who can add songs also reads "Add a song and the queue takes over." Home's and Settings' mini player read "Autoplay by Spotify".
+- **The queue always wins.** Adding a song during autoplay plays it at once and the label goes away. A host whose phone can't play (service disconnected) stops autoplay too.
+- **Only in `aux`.** `src/domain/autoplay.ts` never labels autoplay in `sync (beta)`, where it stays off (PRODUCT_SPEC.md §5).
+- Whoever the control rule lets in can pause and resume autoplay. There's no Skip for it, because q’d doesn't choose those songs. Figma has no frame for this state; Figma not re-checked.
+
 ## 2026-11-25 · Provider switching between songs
 
 - **A song that isn't on the room's service never starts.** Before, the mock played it anyway. Now the host's player holds it at 0:00 with Play disabled until the host skips it or switches. Because it never started, a switch always happens between songs (PRODUCT_SPEC.md §6).

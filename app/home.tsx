@@ -62,7 +62,7 @@ export default function Home() {
         </View>
       }
       footer={
-        activeRoom?.nowPlaying ? (
+        activeRoom?.nowPlaying || activeRoom?.autoplay ? (
           <RoomMiniPlayer room={activeRoom} playback={playback} canControl={canPlay} />
         ) : undefined
       }
