@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 
+import { hostStatus, type HostStatus } from '@/domain/host-presence';
 import type { MusicProvider } from '@/domain/music-provider';
 import { allows, type RoomRules } from '@/domain/room-rules';
 import { formatArtists } from '@/domain/recording';
@@ -28,6 +29,7 @@ import { entryAvailability } from './availability';
 import { RoomPlayer } from './RoomPlayer';
 import {
   createRoomStore,
+  listenerViews,
   previewRoom,
   roomKey,
   type RoomEntry,
@@ -115,9 +117,23 @@ function playerFor({ store, players }: Rooms, ref: RoomRef, room: MockRoom) {
 
 const noRoom = () => () => {};
 
-/** Who's looking: you, or in the listener preview, the room's first listener. */
+/** The clock, ticking every second while `ticking`, for the reconnecting countdown. */
+function useNow(ticking: boolean) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!ticking) return;
+    // A stale first value only shows more time left: away time is never negative.
+    const timer = setInterval(() => setNow(Date.now()), 1_000);
+    return () => clearInterval(timer);
+  }, [ticking]);
+  return now;
+}
+
+const isListenerView = (view?: RoomView) => !!view && listenerViews.includes(view);
+
+/** Who's looking: you, or in a listener preview, the room's first listener. */
 function viewerOf(room: MockRoom, view?: RoomView): MockPerson | undefined {
-  return view === 'listener'
+  return isListenerView(view)
     ? room.people.find((person) => !person.isHost)
     : room.people.find((person) => person.id === mockUser.id);
 }
@@ -141,6 +157,21 @@ function useLiveRoom(base: MockRoom | null, view?: RoomView) {
     if (!player) return;
     player.load(nowPlaying, startAtMs).then(refresh);
   }, [player, nowPlaying, startAtMs, refresh]);
+
+  // "Host reconnecting" for the grace period, then the room pauses (PRODUCT_SPEC.md §4).
+  const hostPresent = state?.host.present ?? true;
+  const now = useNow(!hostPresent);
+  const host: HostStatus = state ? hostStatus(state.host, now) : { kind: 'connected' };
+  const away = host.kind === 'away';
+  const pausedForHost = state?.pausedForHost ?? false;
+  useEffect(() => {
+    if (ref && away) store.pauseForHost(ref);
+  }, [ref, away, store]);
+  const held = away || pausedForHost;
+  useEffect(() => {
+    if (!player || player.isHeld === held) return;
+    player.hold(held).then(refresh);
+  }, [player, held, refresh]);
 
   const room = useMemo<LiveRoom | null>(() => {
     if (!base || !state) return null;
@@ -171,6 +202,20 @@ function useLiveRoom(base: MockRoom | null, view?: RoomView) {
     canAdd: !!room && allows(room.rules.addSongs, you),
     /** The room's rules let you play, pause, skip, reorder and remove. */
     canControl: !!room && allows(room.rules.control, you),
+    /** Whether the host's phone is in the room. */
+    host,
+    /** The room paused while the host was away, until the host resumes. */
+    pausedForHost,
+    /**
+     * The host resumes after coming back. Mock mode's store is already the
+     * room's state; the real app refetches the room first (API_CONTRACTS.md §4).
+     */
+    resumeAfterHost: async () => {
+      if (!ref || !player || !store.resumeAfterHost(ref)) return;
+      await player.hold(false);
+      await player.play();
+      await refresh();
+    },
   };
 }
 
@@ -183,7 +228,8 @@ export function useRoom(code: string | undefined, view?: RoomView) {
   // The room you started or joined, with the name and service you chose.
   const base = activeRoom && activeRoom.code === code ? activeRoom : findRoom(code);
   const { store } = useRooms();
-  const { room, playback, ref, you, canAdd, canControl } = useLiveRoom(base, view);
+  const { room, playback, ref, you, canAdd, canControl, host, pausedForHost, resumeAfterHost } =
+    useLiveRoom(base, view);
   // There's always a room here: an unknown code shows the sample room.
   const live = room!;
   const at = ref!;
@@ -196,7 +242,7 @@ export function useRoom(code: string | undefined, view?: RoomView) {
      * Only the host invites, sets the rules and plays through their service.
      * Who adds songs and who controls the music follow the rules (PRODUCT_SPEC.md §4).
      */
-    isHost: view === 'listener' ? false : live.youHost,
+    isHost: isListenerView(view) ? false : live.youHost,
     you,
     canAdd,
     canControl,
@@ -204,6 +250,9 @@ export function useRoom(code: string | undefined, view?: RoomView) {
      * How the playing song stands on the room's service: playable, an
      * uncertain match (plays with a warning), unavailable or unresolved.
      */
+    host,
+    pausedForHost,
+    resumeAfterHost,
     nowPlayingAvailability: live.nowPlaying
       ? entryAvailability(live.nowPlaying, live.playsThrough)
       : null,
@@ -244,14 +293,29 @@ export type RoomHandle = ReturnType<typeof useRoom>;
 /** The room you're in, for the mini player on Home and Settings. Null when you aren't in one. */
 export function useActiveRoom() {
   const { activeRoom } = useMockSession();
-  const { room, playback, canControl } = useLiveRoom(activeRoom);
-  return { room, playback, canControl };
+  const { room, playback, canControl, host, pausedForHost } = useLiveRoom(activeRoom);
+  /** Playback waits for the host's phone, or for the returning host to resume in the room. */
+  const waitingForHost = host.kind !== 'connected' || pausedForHost;
+  return { room, playback, canControl, host, pausedForHost, waitingForHost };
 }
 
 /**
  * `create_room`: start hosting with the name, service and rules chosen on
  * Start a room. The room plays through `playsThrough` on this phone.
  */
+/**
+ * Mock mode's stand-in for Realtime Presence: says whether the host's phone
+ * is in the room `code`. The `/dev` toggle uses it to show a host who
+ * disappears and comes back.
+ */
+export function useMockHostPresence() {
+  const { store } = useRooms();
+  return useCallback(
+    (code: string, present: boolean) => store.setHostPresent({ code }, present),
+    [store],
+  );
+}
+
 export function useStartRoom() {
   const { store } = useRooms();
   const { startRoom } = useMockSession();

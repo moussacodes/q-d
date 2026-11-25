@@ -242,7 +242,7 @@ Planned · Initial Supabase migrations card. Shapes are in [API_CONTRACTS.md](AP
 - **Apple Music:** plays inside q’d through MusicKit and keeps playing with the screen locked (background audio).
 - **Spotify:** q’d tells the Spotify app what to play. The host needs Spotify installed and Premium for on-demand playback, and q’d stays in the foreground for the demo.
 - **Switching services:** only between songs, never during one, and only after the host agrees (see [PRODUCT_SPEC.md § 6](PRODUCT_SPEC.md#song-not-on-the-hosts-service)).
-- **Host disconnect:** presence notices the host is gone. Everyone sees "Host reconnecting" for 30 seconds, and then the room pauses. The returning host refetches room state before resuming.
+- **Host disconnect:** presence notices the host is gone. Everyone sees "Host reconnecting" for 30 seconds, and then the room pauses. The returning host refetches room state before resuming. **Built in mock mode** (host reconnecting card): the pure rule is `src/domain/host-presence.ts`; the room store holds the host's presence and whether the room paused for them; `RoomPlayer.hold` pauses the host's player; `HostNotice` shows the states. The `/dev` toggle stands in for Realtime Presence, which is planned (Realtime Broadcast and Presence card).
 - **Autoplay:** when the queue ends, the provider may autoplay, and q’d labels it with the provider's name.
 
 ## 7. Catalog and matching

@@ -2,6 +2,16 @@
 
 Product and technical decisions that are not obvious from the code. Newest first.
 
+## 2026-11-25 · Host reconnecting
+
+- **The grace period is the spec's 30 seconds** (PRODUCT_SPEC.md §4, API_CONTRACTS.md §4), `HOST_RECONNECT_GRACE_MS`. Nothing new to confirm.
+- **One pure rule decides** (`hostStatus` in `src/domain/host-presence.ts`): host present → connected; gone under 30 s → "Host reconnecting" with the seconds left; gone 30 s or more → paused. A host this phone has never seen counts as away, so a listener never sees playback controls for a phone that isn't there. A clock that jumps backwards never shortens the countdown's elapsed time below zero.
+- **What's disabled while the host is away:** play, pause, previous, skip and repeat, on the room screen and the mini player, because in aux the host's phone carries them out. Whoever the control rule lets in sees "Playback controls come back when the host’s phone reconnects." Adding songs and the host's queue edits stay on: they're RPCs to the server, not to the host's phone.
+- **The room pauses, the queue is kept.** After 30 s the host's player pauses and the room is marked paused for the host. Listeners see "Paused" with the room and queue intact.
+- **A returning host resumes by hand.** Within 30 s nothing paused, so the banner just goes. After a pause the host sees "You’re back" and **Resume** (the big Play does the same); listeners see "Paused · <host> is back" and their controls stay off until the host resumes. In mock mode the store already is the room's state; the real app refetches first.
+- **The host's own phone shows it too** ("Reconnecting", then "Paused · you’re offline"), matching API_CONTRACTS.md §4: the host's app pauses its player when it can't reach Supabase for 30 seconds.
+- **Mock mode:** `/dev` has "Host’s phone leaves" and "Host’s phone returns" for the sample room, plus three previews: `?view=reconnecting`, `?view=host-away` (listeners) and `?view=host-back` (host). Realtime Presence wiring is its own card; it calls the store's `setHostPresent`. Figma not re-checked; the banners reuse the 4.3 notice's look.
+
 ## 2026-11-25 · Availability and low-confidence states
 
 - **The stored match decides, not the screen.** Every screen reads a song's `TrackMatch` for the room's service through `availabilityOf` (`src/domain/availability.ts`): `playable`, `uncertain` (a warning is set), `unavailable` (no track) or `unknown` (nothing stored yet). Mock fixtures get their matches from the real matcher run against made-up candidates, so "Way Bigger" is a low-confidence match on Spotify (81/100) and "Ocho Rios" an explicit/clean conflict (95/100).

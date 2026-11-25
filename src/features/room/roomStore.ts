@@ -1,3 +1,8 @@
+import {
+  HOST_RECONNECT_GRACE_MS,
+  nextHostPresence,
+  type HostPresence,
+} from '@/domain/host-presence';
 import { defaultRoomRules, type RoomRules } from '@/domain/room-rules';
 import { findRoom, mockQueue, type MockRoom, type MockTrack } from '@/providers/mock/data';
 
@@ -21,6 +26,13 @@ export type RoomState = {
   startAtMs: number;
   /** Who adds songs and who controls the music. */
   rules: RoomRules;
+  /** What presence says about the host's phone (src/domain/host-presence.ts). */
+  host: HostPresence;
+  /**
+   * The room paused because the host was away past the grace period. It stays
+   * paused, queue kept, until the returning host resumes.
+   */
+  pausedForHost: boolean;
 };
 
 /**
@@ -28,7 +40,31 @@ export type RoomState = {
  * a low-confidence match and the Apple Music colors). `listener` and `apple` only change who's looking
  * or the service, so they share the real room's queue.
  */
-export type RoomView = 'listener' | 'empty' | 'unavailable' | 'uncertain' | 'apple';
+export type RoomView =
+  | 'listener'
+  | 'empty'
+  | 'unavailable'
+  | 'uncertain'
+  | 'apple'
+  /** A listener, just after the host's phone dropped out. */
+  | 'reconnecting'
+  /** A listener, after the host has been away past the grace period. */
+  | 'host-away'
+  /** The host, back after the room paused without them. */
+  | 'host-back';
+
+/** Previews seen by the room's first listener rather than by you, the host. */
+export const listenerViews: readonly RoomView[] = ['listener', 'reconnecting', 'host-away'];
+
+/** Previews that get their own copy of the room, so trying them leaves the real room alone. */
+const ownStateViews: readonly RoomView[] = [
+  'empty',
+  'unavailable',
+  'uncertain',
+  'reconnecting',
+  'host-away',
+  'host-back',
+];
 
 export type RoomRef = { code: string; view?: RoomView };
 
@@ -44,9 +80,7 @@ export const MOCK_START_MS = 100_000;
 
 /** Previews that change the queue get their own state, so trying them leaves the real room alone. */
 export function roomKey({ code, view }: RoomRef): string {
-  return view === 'empty' || view === 'unavailable' || view === 'uncertain'
-    ? `${code}~${view}`
-    : code;
+  return view && ownStateViews.includes(view) ? `${code}~${view}` : code;
 }
 
 /** The sample room as a development preview shows it. */
@@ -67,7 +101,27 @@ export function previewRoom(room: MockRoom, view?: RoomView): MockRoom {
   }
 }
 
-function seed(ref: RoomRef): RoomState {
+/** Where the host's phone stands when a room or preview is first read. */
+function seedHost(
+  view: RoomView | undefined,
+  now: number,
+): Pick<RoomState, 'host' | 'pausedForHost'> {
+  switch (view) {
+    case 'reconnecting':
+      return { host: { present: false, lastSeenAt: now }, pausedForHost: false };
+    case 'host-away':
+      return {
+        host: { present: false, lastSeenAt: now - HOST_RECONNECT_GRACE_MS - 1_000 },
+        pausedForHost: true,
+      };
+    case 'host-back':
+      return { host: { present: true, lastSeenAt: now }, pausedForHost: true };
+    default:
+      return { host: { present: true, lastSeenAt: now }, pausedForHost: false };
+  }
+}
+
+function seed(ref: RoomRef, now: number): RoomState {
   const room = previewRoom(findRoom(ref.code), ref.view);
   const key = roomKey(ref);
   const entry = (track: MockTrack): RoomEntry => ({ ...track, entryId: `${key}/${track.id}` });
@@ -76,12 +130,14 @@ function seed(ref: RoomRef): RoomState {
     queue: room.queue.map(entry),
     startAtMs: room.nowPlaying ? MOCK_START_MS : 0,
     rules: defaultRoomRules,
+    ...seedHost(ref.view, now),
   };
 }
 
 export type RoomStore = ReturnType<typeof createRoomStore>;
 
-export function createRoomStore() {
+/** `now` is the clock presence times use; tests pass their own. */
+export function createRoomStore(now: () => number = Date.now) {
   const rooms = new Map<string, RoomState>();
   const listeners = new Set<() => void>();
   let added = 0;
@@ -94,7 +150,7 @@ export function createRoomStore() {
     const key = roomKey(ref);
     let room = rooms.get(key);
     if (!room) {
-      room = seed(ref);
+      room = seed(ref, now());
       rooms.set(key, room);
     }
     return room;
@@ -188,6 +244,40 @@ export function createRoomStore() {
      */
     setRules(ref: RoomRef, rules: RoomRules) {
       update(ref, { ...get(ref), rules });
+    },
+
+    /**
+     * What Realtime Presence says about the host's phone. This is the input
+     * the Realtime Broadcast and Presence card plugs in: call it on every
+     * presence sync with `hostPresentIn(entries, hostUserId)`. In mock mode
+     * the `/dev` toggle calls it. Repeating the same answer changes nothing.
+     */
+    setHostPresent(ref: RoomRef, present: boolean) {
+      const room = get(ref);
+      const host = nextHostPresence(room.host, present, now());
+      if (host.present === room.host.present && host.lastSeenAt === room.host.lastSeenAt) return;
+      if (present && room.host.present) return;
+      update(ref, { ...room, host });
+    },
+
+    /**
+     * The host has been away past the grace period: the room pauses, with the
+     * queue kept (PRODUCT_SPEC.md §4). The server will record this as the
+     * room's paused playback state. Returns false if it was already paused.
+     */
+    pauseForHost(ref: RoomRef): boolean {
+      const room = get(ref);
+      if (room.pausedForHost) return false;
+      update(ref, { ...room, pausedForHost: true });
+      return true;
+    },
+
+    /** The returning host resumes the room. Returns false if it wasn't paused for them. */
+    resumeAfterHost(ref: RoomRef): boolean {
+      const room = get(ref);
+      if (!room.pausedForHost || !room.host.present) return false;
+      update(ref, { ...room, pausedForHost: false });
+      return true;
     },
   };
 }

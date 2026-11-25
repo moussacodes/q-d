@@ -31,6 +31,7 @@ import {
   TrackInfo,
   UpNextPeek,
 } from '@/features/room/RoomParts';
+import { hostAwayNote, HostNotice } from '@/features/room/HostNotice';
 import { MatchNotice } from '@/features/room/MatchNotice';
 import { UnavailableNotice } from '@/features/room/UnavailableNotice';
 import { roomParams, useRoom, type RoomView } from '@/features/room/useRoom';
@@ -54,6 +55,9 @@ export default function Room() {
     canAdd,
     canControl,
     nowPlayingAvailability: availability,
+    host,
+    pausedForHost,
+    resumeAfterHost,
     skip,
     moveUp,
     moveDown,
@@ -65,6 +69,10 @@ export default function Room() {
   const missing = availability?.kind === 'unavailable';
   // The host's phone doesn't play a song it can't find, so only Skip works.
   const playable = availability?.kind === 'playable' || availability?.kind === 'uncertain';
+  // Only the host's phone plays, so its controls wait for it (PRODUCT_SPEC.md §4).
+  // A returning host's Play resumes the room; everyone else waits for that.
+  const hostAway = host.kind !== 'connected';
+  const waitingForHost = hostAway || (pausedForHost && !isHost);
   useScreenPalette(roomPalette(room));
 
   const { colors } = useTheme();
@@ -159,6 +167,14 @@ export default function Room() {
             </View>
           )}
 
+          <HostNotice
+            host={host}
+            pausedForHost={pausedForHost}
+            isHost={isHost}
+            hostName={room.hostName}
+            onResume={resumeAfterHost}
+          />
+
           {missing ? (
             <UnavailableNotice playsThrough={room.playsThrough} isHost={isHost} onSkip={skip} />
           ) : null}
@@ -176,15 +192,20 @@ export default function Room() {
             <>
               <Timeline positionMs={playback.positionMs} durationMs={playback.durationMs} />
               <Controls
-                canControl={canControl}
+                canControl={canControl && !waitingForHost}
                 canPlay={playable}
                 playing={playback.playing}
                 repeat={repeat}
-                onTogglePlay={playback.togglePlay}
+                onTogglePlay={pausedForHost && isHost ? resumeAfterHost : playback.togglePlay}
                 onSkip={skip}
                 onPrevious={() => playback.seek(0)}
                 onToggleRepeat={() => setRepeat((on) => !on)}
               />
+              {canControl && waitingForHost ? (
+                <Text variant="caption" color="text3" style={styles.center}>
+                  {hostAway ? hostAwayNote : 'Playback controls come back when the host resumes.'}
+                </Text>
+              ) : null}
             </>
           ) : null}
         </View>
@@ -198,6 +219,7 @@ export default function Room() {
 
 const styles = StyleSheet.create({
   gap6: { gap: 6 },
+  center: { textAlign: 'center' },
   // Same gap as Screen's, so wrapping content in a page doesn't move it.
   page: { gap: SCREEN_GAP },
   header: {

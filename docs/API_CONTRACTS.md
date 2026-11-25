@@ -240,6 +240,7 @@ type RoomPresence = {
 - When the host's presence disappears, listeners show "Host reconnecting" for 30 seconds, then "Paused".
 - The host's app also pauses its player if it can't reach Supabase for 30 seconds, so the room and the speaker agree.
 - A returning host refetches the room before resuming.
+- **Built (host reconnecting card, mock mode):** `hostStatus(presence, now)` in `src/domain/host-presence.ts` decides `connected`, `reconnecting` (with the time left) or `away`, using `HOST_RECONNECT_GRACE_MS` (30 s). Its input is `HostPresence = { present, lastSeenAt }`; `hostPresentIn(entries, hostUserId)` reads it from the channel's `RoomPresence` entries and `nextHostPresence` times a leave from the first sync without the host. The Realtime Broadcast and Presence card plugs in by calling the room store's `setHostPresent(room, present)` (or its TanStack replacement) on every presence sync. Proposed for the RPC card: the pause after the grace period is the room's `playback_states` row going to `paused`, written by the server (a listener's phone can't write it), and the host's Resume is `report_playback_state` after a refetch.
 
 ### Versioning
 

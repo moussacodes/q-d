@@ -138,4 +138,38 @@ describe('room player', () => {
       expect((await player.getState()).status).toBe('playing');
     });
   });
+
+  describe('while the host’s phone is away', () => {
+    it('pauses when held, and play does nothing until released', async () => {
+      const { player, entries, wait } = setup();
+      await player.load(entries.nowPlaying, 0);
+      await player.hold(true);
+      expect(player.isHeld).toBe(true);
+      const at = (await player.getState()).positionMs;
+      await player.play();
+      wait(10_000);
+      expect(await player.getState()).toMatchObject({ status: 'paused', positionMs: at });
+
+      await player.hold(false);
+      expect((await player.getState()).status).toBe('paused');
+      await player.play();
+      expect((await player.getState()).status).toBe('playing');
+    });
+
+    it('loads a new song paused while held', async () => {
+      const { player, entries } = setup();
+      await player.hold(true);
+      await player.load(entries.nowPlaying, 100_000);
+      expect(await player.getState()).toMatchObject({ status: 'paused', positionMs: 100_000 });
+    });
+
+    it('never reports a held song as ended', async () => {
+      const { player, ended, entries, wait } = setup();
+      await player.load(entries.nowPlaying, 0);
+      await player.hold(true);
+      wait(600_000);
+      await player.getState();
+      expect(ended).not.toHaveBeenCalled();
+    });
+  });
 });

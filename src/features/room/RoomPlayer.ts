@@ -19,6 +19,8 @@ export class RoomPlayer {
   private loaded: string | null = null;
   /** The entry the player finished loading and started. Cleared once its end is reported. */
   private started: string | null = null;
+  /** Held while the host's phone is away from the room: nothing starts playing. */
+  private held = false;
 
   constructor(
     private readonly player: PlaybackAdapter,
@@ -41,7 +43,7 @@ export class RoomPlayer {
       const track = { ...toProviderTrack(entry), provider: this.player.provider };
       await this.player.prepare(track, startAtMs);
       if (this.loaded !== id) return;
-      await this.player.play();
+      if (!this.held) await this.player.play();
     } else {
       await this.player.disconnect();
     }
@@ -64,7 +66,22 @@ export class RoomPlayer {
     return state;
   }
 
+  /**
+   * Holds or releases the player. Holding pauses it (PRODUCT_SPEC.md §4: the
+   * room pauses once the host has been away for the grace period) and keeps a
+   * newly loaded song paused. Releasing doesn't play; the host resumes.
+   */
+  async hold(on: boolean) {
+    this.held = on;
+    if (on) await this.player.pause();
+  }
+
+  get isHeld() {
+    return this.held;
+  }
+
   play() {
+    if (this.held) return Promise.resolve();
     return this.player.play();
   }
 

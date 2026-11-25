@@ -234,4 +234,95 @@ describe('room store', () => {
       expect(shown.queue.map((t) => t.title)).toEqual(['Butterflies', 'Heartbreak Anniversary']);
     });
   });
+
+  describe('host presence (PRODUCT_SPEC.md §4)', () => {
+    const clocked = () => {
+      let now = 1_000_000;
+      const store = createRoomStore(() => now);
+      return {
+        store,
+        tick: (ms: number) => {
+          now += ms;
+        },
+      };
+    };
+
+    it('starts with the host present and the room not paused', () => {
+      const { store } = clocked();
+      expect(store.get(room).host).toEqual({ present: true, lastSeenAt: 1_000_000 });
+      expect(store.get(room).pausedForHost).toBe(false);
+    });
+
+    it('times the host leaving, and keeps that time while they stay away', () => {
+      const { store, tick } = clocked();
+      tick(5_000);
+      store.setHostPresent(room, false);
+      expect(store.get(room).host).toEqual({ present: false, lastSeenAt: 1_005_000 });
+      tick(10_000);
+      const listener = jest.fn();
+      store.subscribe(listener);
+      store.setHostPresent(room, false);
+      expect(store.get(room).host.lastSeenAt).toBe(1_005_000);
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    it('ignores a repeat "present", so presence syncs cause no re-render', () => {
+      const { store, tick } = clocked();
+      const before = store.get(room);
+      const listener = jest.fn();
+      store.subscribe(listener);
+      tick(1_000);
+      store.setHostPresent(room, true);
+      expect(store.get(room)).toBe(before);
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    it('keeps the queue and what’s playing while the host is away', () => {
+      const { store } = clocked();
+      const before = store.get(room);
+      store.setHostPresent(room, false);
+      expect(store.pauseForHost(room)).toBe(true);
+      expect(store.get(room).nowPlaying).toEqual(before.nowPlaying);
+      expect(store.get(room).queue).toEqual(before.queue);
+      expect(store.get(room).pausedForHost).toBe(true);
+      // Pausing twice changes nothing.
+      expect(store.pauseForHost(room)).toBe(false);
+    });
+
+    it('lets only a host who is back resume, once', () => {
+      const { store } = clocked();
+      store.setHostPresent(room, false);
+      store.pauseForHost(room);
+      expect(store.resumeAfterHost(room)).toBe(false);
+      expect(store.get(room).pausedForHost).toBe(true);
+
+      store.setHostPresent(room, true);
+      expect(store.get(room).pausedForHost).toBe(true);
+      expect(store.resumeAfterHost(room)).toBe(true);
+      expect(store.get(room).pausedForHost).toBe(false);
+      expect(store.resumeAfterHost(room)).toBe(false);
+    });
+
+    it('has nothing to resume when the room never paused', () => {
+      const { store } = clocked();
+      expect(store.resumeAfterHost(room)).toBe(false);
+    });
+
+    it('seeds the host previews apart from the real room', () => {
+      const { store } = clocked();
+      const reconnecting = { code: room.code, view: 'reconnecting' as const };
+      const away = { code: room.code, view: 'host-away' as const };
+      const back = { code: room.code, view: 'host-back' as const };
+      for (const ref of [reconnecting, away, back]) {
+        expect(roomKey(ref)).not.toBe(roomKey(room));
+      }
+      expect(store.get(reconnecting).host).toEqual({ present: false, lastSeenAt: 1_000_000 });
+      expect(store.get(reconnecting).pausedForHost).toBe(false);
+      expect(store.get(away).host.present).toBe(false);
+      expect(1_000_000 - store.get(away).host.lastSeenAt!).toBeGreaterThan(30_000);
+      expect(store.get(away).pausedForHost).toBe(true);
+      expect(store.get(back)).toMatchObject({ host: { present: true }, pausedForHost: true });
+      expect(store.get(room)).toMatchObject({ host: { present: true }, pausedForHost: false });
+    });
+  });
 });

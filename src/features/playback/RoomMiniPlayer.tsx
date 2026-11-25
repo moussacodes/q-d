@@ -16,10 +16,13 @@ export function RoomMiniPlayer({
   room,
   playback,
   canControl,
+  waitingForHost = false,
 }: {
   room: MockRoom;
   playback: Playback;
   canControl: boolean;
+  /** The host's phone is away, or the room is paused until the host resumes. */
+  waitingForHost?: boolean;
 }) {
   const track = room.nowPlaying;
   if (!track) {
@@ -34,7 +37,7 @@ export function RoomMiniPlayer({
         playing={playback.playing}
         progress={playback.progress}
         onPress={() => router.push({ pathname: '/room/[code]', params: { code: room.code } })}
-        onTogglePlay={canControl && playable ? playback.togglePlay : undefined}
+        onTogglePlay={canControl && playable && !waitingForHost ? playback.togglePlay : undefined}
       />
     </View>
   );
