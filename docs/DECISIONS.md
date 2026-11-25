@@ -2,6 +2,14 @@
 
 Product and technical decisions that are not obvious from the code. Newest first.
 
+## 2026-11-24 · Environment validation and feature flags
+
+- **Nothing in `.env` is required.** Mock mode must keep working on any machine, so a missing or invalid variable never stops the app. It's reported by name in a development warning and falls back to a safe default. This is how ARCHITECTURE.md's "fail fast with a clear message" applies while mock mode is the default.
+- **Supabase's key variable is `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`.** It accepts a publishable key (`sb_publishable_…`) or the legacy `anon` JWT. Secret keys (`sb_secret_…`) and `service_role` JWTs are rejected, because every `EXPO_PUBLIC_*` value ships inside the app.
+- **`live` still falls back to mock.** Asking for `live` without valid Supabase values, or before the live data layer exists, keeps mock data and its label. Otherwise `live` would show sample data without the "Mock data" strip.
+- **`sync` is locked off in code,** not just off by default. `EXPO_PUBLIC_FLAG_SYNC=true` is ignored with a warning, and the list of modes a host can pick is always just `aux`.
+- **Flags are read from `EXPO_PUBLIC_FLAG_*` at build time.** They're public and per build, not remote config. Remote flags can come later if the beta needs them.
+
 ## 2026-11-20 · Room screen: expanded cover only
 
 - **A playing song always shows the expanded cover (Figma 3.2).** The resize button is gone, so the smaller-cover layout (3.1) no longer appears while a song plays. The cover is as big as it can be while the song info and playback controls still fit above the Up next bar. The full queue is below them.

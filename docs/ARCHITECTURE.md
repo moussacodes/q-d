@@ -56,7 +56,7 @@ A broadcast that never arrives costs freshness but never correctness, because th
 | Visuals | expo-image, expo-blur, react-native-svg | Built |
 | Server state | TanStack Query | Planned · Supabase client card |
 | Ephemeral state | Zustand, only for small room and player state | Planned |
-| Runtime contracts | Zod for env, RPC results and realtime payloads | Planned · Env validation card |
+| Runtime contracts | Zod for env, RPC results and realtime payloads | Built for env (`src/services/env.ts`). Planned for RPC results and realtime payloads · domain types and RPC cards |
 | Forms | React Hook Form | Planned · Auth cards |
 | Interaction | Reanimated, Gesture Handler, a bottom-sheet library | Planned, added only where Figma needs them |
 | Backend | Supabase Auth, Postgres, RLS, Realtime, Edge Functions, migrations | Planned · Supabase cards |
@@ -85,7 +85,7 @@ src/
   domain/                 Pure types and logic: rooms, queue, recordings, matching
   features/               Feature modules: auth, onboarding, rooms, queue, search, settings
   providers/              Apple, Spotify and mock catalog/playback adapters      (mock built; Apple, Spotify planned)
-  services/               Supabase, env, flags, logging, analytics               (data mode built; rest planned)
+  services/               Supabase, env, flags, logging, analytics               (data mode, env and flags built; rest planned)
   test/                   Fixtures and provider contract helpers
 modules/
   qd-music-kit/           Local Swift Expo module and config plugin             (planned)
@@ -255,16 +255,18 @@ Planned · Initial Supabase migrations card. Shapes are in [API_CONTRACTS.md](AP
 - `app.config.ts` holds the app name `q’d`, the slug and scheme `qd`, the bundle ID `app.qd.mobile`, portrait orientation, a dark interface, typed routes and plugins.
 - `.env.example` lists variable names only. Real values live in `.env` (ignored by git) and in EAS secrets.
 
-**Feature flags** (planned · Env validation card). These are the switches that keep unfinished or blocked features off:
+**Environment.** `src/services/env.ts` validates every variable with Zod at startup. Nothing is required: with no `.env` the app runs on labeled mock data. A missing or invalid value is reported by variable name (never by value) in a development warning, and that part falls back to its safe default instead of crashing. `EXPO_PUBLIC_DATA_MODE=live` without valid Supabase values falls back to mock, and so does `live` until the live data cards land (`LIVE_DATA_AVAILABLE` in `dataMode.ts`). The Supabase key must be the publishable (or legacy `anon`) key: a secret or service-role key is rejected, because every `EXPO_PUBLIC_*` value ships inside the app.
+
+**Feature flags** (built · `src/services/flags.ts`, set with `EXPO_PUBLIC_FLAG_*`). These are the switches that keep unfinished or blocked features off:
 
 | Flag | Default | Why it exists |
 |---|---|---|
 | Real Apple Music | off until the MusicKit bridge works on a device | Lets the mock stand in during development and as a demo fallback |
 | Real Spotify | off until Spotify `aux` works on a device | Same, plus the five-user development-mode limit |
-| `sync` | off, private | Blocked until providers and a legal review approve it |
+| `sync` | off, private, locked | Blocked until providers and a legal review approve it. The build ignores `EXPO_PUBLIC_FLAG_SYNC`, and `enabledPlaybackModes()` returns only `aux` |
 | Playlist import | off | Post-demo feature |
 | Moderation | off for the demo, on for the beta | Beta gate |
-| Analytics | off, and opt-in when on | Privacy |
+| Analytics | off, and opt-in when on | Privacy. `analyticsAllowed()` needs the flag and the person's opt-in |
 
 ## 9. Where the app runs
 
