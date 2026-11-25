@@ -1,4 +1,6 @@
+import { isRoomCode } from '@/domain/room-code';
 import { defaultRoomRules } from '@/domain/room-rules';
+import { mockJoinErrorCodes, mockRooms } from '@/providers/mock/data';
 
 import {
   MOCK_HOSTED_CODE,
@@ -29,6 +31,16 @@ describe('newIdempotencyKey', () => {
     const b = newIdempotencyKey();
     expect(a).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-a[0-9a-f]{3}-[0-9a-f]{12}$/);
     expect(a).not.toBe(b);
+  });
+});
+
+describe('mock room codes', () => {
+  it('only use the room-code alphabet, so each one can be typed on Home', () => {
+    const codes = [...mockRooms.map((room) => room.code), ...Object.keys(mockJoinErrorCodes)];
+    for (const code of codes) {
+      expect(code.startsWith('QD-')).toBe(true);
+      expect(isRoomCode(code.slice(3))).toBe(true);
+    }
   });
 });
 

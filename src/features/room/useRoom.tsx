@@ -281,10 +281,18 @@ function useCall<A, T>(
       if (busy.current) return null;
       busy.current = true;
       setState({ status: 'pending' });
-      const result = await call(args, newIdempotencyKey());
-      busy.current = false;
-      setState(result.ok ? idle : { status: 'failed', error: result.error });
-      return result.ok ? result.value : null;
+      try {
+        const result = await call(args, newIdempotencyKey());
+        setState(result.ok ? idle : { status: 'failed', error: result.error });
+        return result.ok ? result.value : null;
+      } catch {
+        // A call that throws (not an RPC error) must not leave the button
+        // stuck on busy. The RPC cards map unexpected errors to copy.
+        setState(idle);
+        return null;
+      } finally {
+        busy.current = false;
+      }
     },
     [call],
   );

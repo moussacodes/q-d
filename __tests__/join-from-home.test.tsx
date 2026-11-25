@@ -223,6 +223,38 @@ describe('while joining', () => {
     expect(field().props.editable).toBe(true);
   });
 
+  it.each([
+    ['profile_incomplete', 'Finish your profile before joining a room.'],
+    ['not_authenticated', 'Sign in again to join a room.'],
+    ['stale_state', 'Couldn’t join right now. Try again.'],
+  ] as const)('explains %s in words, never the raw code', async (code, words) => {
+    const { release } = holdJoin();
+    await signIn();
+    await typeCode('9M2XR4');
+    await press('Join');
+    await act(async () => {
+      release({ ok: false, error: { code } });
+    });
+    expect(screen.getByRole('alert')).toHaveTextContent(words);
+    expect(screen.queryByText(new RegExp(code))).toBeNull();
+    expect(screen).toHavePathname('/home');
+  });
+
+  it('turns the field and the button back on if the call throws', async () => {
+    const spy = jest
+      .spyOn(MockRoomServer.prototype, 'joinRoomByCode')
+      .mockRejectedValueOnce(new Error('network'));
+    await signIn();
+    await typeCode('9M2XR4');
+    await press('Join');
+    expect(screen.queryByText(/^Joining/)).toBeNull();
+    expect(joinButton()).toBeEnabled();
+    expect(field().props.editable).toBe(true);
+    await press('Join');
+    expect(spy).toHaveBeenCalledTimes(2);
+    expect(screen).toHavePathname('/room/QD-9M2XR4');
+  });
+
   it('uses a new idempotency key for each tap', async () => {
     const spy = jest.spyOn(MockRoomServer.prototype, 'joinRoomByCode');
     await signIn();
