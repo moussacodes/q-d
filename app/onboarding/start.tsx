@@ -42,8 +42,7 @@ export default function OnboardingStart() {
         <Option
           icon="hash"
           title="Join with a code"
-          body="Got a code like QD-7K4F9X? Pop it in."
-          href="/join"
+          body="Got a code like QD-7K4F9X? Pop it in on Home."
         />
       </View>
     </Screen>
@@ -59,7 +58,8 @@ function Option({
   icon: IconName;
   title: string;
   body: string;
-  href: Href;
+  /** Opens on top of Home. Without one, the option goes to Home itself. */
+  href?: Href;
 }) {
   const { colors } = useTheme();
   const { finishOnboarding } = useMockSession();

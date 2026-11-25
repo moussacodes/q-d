@@ -16,6 +16,7 @@ import {
   useScreenPalette,
 } from '@/components';
 import { typography, useTheme } from '@/design';
+import { ROOM_CODE_LENGTH, roomCodeFromInput } from '@/domain/room-code';
 import { RoomMiniPlayer } from '@/features/playback/RoomMiniPlayer';
 import { roomPalette } from '@/features/playback/palette';
 import { useActiveRoom } from '@/features/room/useRoom';
@@ -29,16 +30,32 @@ function greeting(date = new Date()) {
   return 'Evening';
 }
 
-/** 2.1 Home (nothing playing) and 2.2 Home (mini player while a room plays). */
+/** In the mock, a complete code that isn't a sample room's finds Kitchen Disco. */
+const roomForCode = (code: string) =>
+  mockRooms.find((room) => room.code === `QD-${code}`) ?? mockRooms[1];
+
+/**
+ * 2.1 Home (nothing playing) and 2.2 Home (mini player while a room plays).
+ * Joining happens here: a complete code opens the room straight away.
+ */
 export default function Home() {
-  const { user } = useMockSession();
+  const { user, enterRoom } = useMockSession();
   const { room: activeRoom, playback, canControl } = useActiveRoom();
   useScreenPalette(roomPalette(activeRoom));
   const { colors } = useTheme();
   const [code, setCode] = useState('');
+  const complete = code.length === ROOM_CODE_LENGTH;
 
   const openRoom = (room: MockRoom) =>
     router.push({ pathname: '/room/[code]', params: { code: room.code } });
+
+  const join = () => {
+    if (!complete) return;
+    const room = roomForCode(code);
+    enterRoom(room.code);
+    setCode('');
+    openRoom(room);
+  };
 
   return (
     <Screen
@@ -109,18 +126,13 @@ export default function Home() {
               </Text>
               <TextInput
                 value={code}
-                onChangeText={(t) =>
-                  setCode(
-                    t
-                      .toUpperCase()
-                      .replace(/[^A-Z0-9]/g, '')
-                      .slice(0, 6),
-                  )
-                }
+                onChangeText={(t) => setCode(roomCodeFromInput(t))}
+                onSubmitEditing={join}
                 placeholder="XXXXXX"
                 placeholderTextColor={colors.text3}
                 autoCapitalize="characters"
                 autoCorrect={false}
+                returnKeyType="go"
                 accessibilityLabel="Room code"
                 keyboardAppearance="dark"
                 style={[styles.codeText, typography.mono, { color: colors.text }]}
@@ -129,7 +141,8 @@ export default function Home() {
             <IconButton
               icon="arrow-right"
               accessibilityLabel="Join"
-              onPress={() => router.push({ pathname: '/join', params: { code } })}
+              disabled={!complete}
+              onPress={join}
             />
           </View>
         </Panel>

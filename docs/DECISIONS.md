@@ -37,6 +37,15 @@ Product and technical decisions that are not obvious from the code. Newest first
 - **The wordmark says q’d with the curly apostrophe.** The Logo drew `q'd` with a straight one, although its accessibility label was already curly (PRODUCT_SPEC.md §9).
 - **Still mock:** the email form accepts any input, and "Forgot password?" does nothing. Validation and password reset come with the email auth card.
 
+## 2026-11-20 · Join with a code on Home
+
+- **The Join with a code screen (Figma 2.3, `/join`) is gone.** Baron asked for it. People type the code in Home's "Join with a code" field. Once all six characters are in, the arrow (or the keyboard's Go key) opens the room. There's no "Room found" preview step before it. Back from the room goes to Home.
+- **Pasting a whole code works.** The field drops a pasted `QD-` prefix and anything that isn't a letter or digit (`src/domain/room-code.ts`), so `QD-7K4F9X` from a message lands as `7K4F9X`. The Join screen's "Paste from clipboard" chip went with the screen.
+- **Mock mode.** A sample room's code opens that room. Any other complete code opens Kitchen Disco, as the Join screen did. The real `join_room_by_code` will say when a code doesn't exist.
+- **Onboarding step 3.** "Join with a code" finishes onboarding on Home, where the code field is.
+- **Copy.** The Join screen said guests don't need a music service. Welcome and onboarding step 2 still say it.
+- **Figma** still has frame 2.3. It needs removing there too.
+
 ## 2026-11-20 · Room screen: expanded cover only
 
 - **A playing song always shows the expanded cover (Figma 3.2).** The resize button is gone, so the smaller-cover layout (3.1) no longer appears while a song plays. The cover is as big as it can be while the song info and playback controls still fit above the Up next bar. The full queue is below them.
@@ -109,7 +118,7 @@ Product and technical decisions that are not obvious from the code. Newest first
 - **Three sign-in states.** Signed out, onboarding (signed in, profile not finished) and ready. They live in the mock session for now; Supabase Auth and the profile row decide them once the auth cards land.
 - **Route guards, not redirects in screens.** `app/_layout.tsx` puts every screen in one `Stack.Protected` group per state. Opening a screen from another state's group lands on that state's first screen: Welcome, onboarding step 1 or Home. Welcome stays at `/`.
 - **Mock sign-in.** "Continue with Apple" or "Google" on Welcome, and "Create account", start a new account and go to onboarding. Sign in (form, Apple or Google) is a returning user and goes to Home. Real auth decides new versus returning.
-- **Step 3 finishes onboarding.** "Start a room" and "Join with a code" open that screen with Home underneath, so Back goes Home. "I’ll do this later" goes Home.
+- **Step 3 finishes onboarding.** "Start a room" opens that screen with Home underneath, so Back goes Home. "Join with a code" and "I’ll do this later" go Home. *(Join with a code opened its own screen until 2026-11-20.)*
 - **Sign out** leaves the room and returns to Welcome.
 - **Every launch starts signed out** in mock mode. Nothing is persisted.
 - **`/dev` switches state.** Opening a screen from the screen index switches the mock session to the state that screen needs, so every screen can still be reviewed.
@@ -172,7 +181,7 @@ The Figma page `20 · Mobile` is an initial direction. Where it conflicts with p
   - Copy now says the host's phone plays the music, and that guests don't need a music service: Welcome, onboarding step 2, Join, Invite, empty room and Add a song.
   - **4.3 "Not on your service"** is shown from the host's side. The song isn't on the service the host's phone plays through, so the host can skip it or switch services for the next song (plan.md §2). A listener no longer "sits it out".
   - Settings no longer has "When a song isn't on your service" (Play via YouTube Music / Sit it out).
-- **Room codes have six characters** (QD-7K4F9X), not four. The Join screen has six code boxes.
+- **Room codes have six characters** (QD-7K4F9X), not four. The Join screen has six code boxes. *(The Join screen was removed on 2026-11-20; the code is entered on Home.)*
 - **Demo room rules are fixed.** *Replaced on 2026-11-20 by "Room rules the host chooses".*
   - Everyone can add songs. Only the host can play, skip, reorder or remove.
   - Start a room and Listeners show these rules as text. "Chosen people", "Ask before people join" and per-person skip chips are post-demo, so they're absent.

@@ -24,7 +24,6 @@ const sections: { title: string; links: { label: string; href: Href; enter?: boo
     links: [
       { label: '2.1 Home · nothing playing', href: '/home' },
       { label: '2.2 Home · room playing (mini player)', href: '/home', enter: true },
-      { label: '2.3 Join with a code', href: '/join' },
       { label: '2.4 Start a room', href: '/create-room' },
     ],
   },
