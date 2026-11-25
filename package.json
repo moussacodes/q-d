@@ -10,7 +10,7 @@
     "start": "expo start",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p supabase/tests",
     "lint": "expo lint --max-warnings 0",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -48,8 +48,10 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "0.5.15",
     "@testing-library/react-native": "^14.1.0",
     "@types/jest": "30.0.0",
+    "@types/node": "^26.6.6",
     "@types/react": "~19.3.0",
     "eslint": "^9.39.5",
     "eslint-config-expo": "~58.0.4",
@@ -61,13 +63,40 @@
     "typescript": "~6.0.3"
   },
   "jest": {
-    "preset": "jest-expo",
-    "moduleNameMapper": {
-      "^@/(.*)$": "<rootDir>/src/$1"
-    },
-    "testPathIgnorePatterns": [
-      "/node_modules/",
-      "/.maestro/"
+    "projects": [
+      {
+        "displayName": "app",
+        "preset": "jest-expo",
+        "moduleNameMapper": {
+          "^@/(.*)$": "<rootDir>/src/$1"
+        },
+        "testPathIgnorePatterns": [
+          "/node_modules/",
+          "/.maestro/",
+          "<rootDir>/supabase/"
+        ]
+      },
+      {
+        "displayName": "db",
+        "testEnvironment": "node",
+        "testMatch": [
+          "<rootDir>/supabase/tests/**/*.test.ts"
+        ],
+        "transform": {
+          "\\.ts$": [
+            "babel-jest",
+            {
+              "presets": [
+                "babel-preset-expo"
+              ]
+            }
+          ],
+          "[/\\\\]node_modules[/\\\\]@electric-sql[/\\\\].+\\.c?js$": "<rootDir>/supabase/tests/harness/pglite-transform.js"
+        },
+        "transformIgnorePatterns": [
+          "[/\\\\]node_modules[/\\\\](?!@electric-sql[/\\\\])"
+        ]
+      }
     ]
   }
 }

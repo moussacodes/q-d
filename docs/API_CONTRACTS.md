@@ -2,7 +2,7 @@
 
 The contracts between the app, the database and the music providers: RPC functions, realtime events, provider adapters and shared types.
 
-> **Status: proposed.** Nothing here is implemented yet. The RPC contracts card, the Supabase migrations card, the domain types card and the provider adapters card turn this into code. If the implementation needs a different shape, change this file in the same PR. Items marked **Added** aren't in the original plan's operation list. They're proposed because the product rules need them, and reviewers should confirm them.
+> **Status: confirmed by the RPC contracts card (2026-11-24).** The conventions in §1 and the error codes in §2 are built (`supabase/migrations/20261124000200_rpc_foundation.sql`). Each operation in §3 is built by its own card; until then it's the agreed shape. If the implementation needs a different shape, change this file in the same PR. Items marked **Added** aren't in the original plan's operation list. The product rules need them, and the RPC contracts card confirmed them all.
 
 Why it's shaped this way: [ARCHITECTURE.md § 4.10](ARCHITECTURE.md#410-client-vs-server-authority).
 
@@ -10,20 +10,28 @@ Why it's shaped this way: [ARCHITECTURE.md § 4.10](ARCHITECTURE.md#410-client-v
 
 - **RPC = a Postgres function**, called with `supabase.rpc('<name>', { ...args })`. Names and arguments are `snake_case`. TypeScript types use `camelCase` and are mapped at the edge in `src/services`.
 - **Clients never insert into, update or delete from room tables directly.** RLS only lets members read. Every write goes through a function below.
-- **Every function checks in this order:**
-  1. signed in,
-  2. the room exists and is in the right state,
-  3. the caller is a member,
-  4. the caller's role allows the action,
-  5. capacity,
+- **Every function checks in this order** (helpers in the `private` schema, which the API doesn't expose):
+  1. signed in (`private.require_user()`; also `private.require_complete_profile()` where the operation needs a finished profile),
+  2. the room exists and is in the right state (`private.lock_room()`, which also locks the room row so mutations of one room run one at a time),
+  3. the caller is a member (`private.require_member()`),
+  4. the caller's role allows the action (`private.require_host()`, or `private.require_allowed()` for the room rules),
+  5. capacity (the 15-person cap is also a trigger on `room_members`),
   6. idempotency,
   7. the operation's own rules.
+- **A replay is answered first.** Right after the sign-in check, `private.idempotency_replay()` looks up the key. A stored result is returned before checks 2–7 run, because the state they read may have changed since (for example, retrying `end_room` after the room ended must still succeed). A new key goes through every check.
+- **Functions return `jsonb`** objects with the snake_case fields listed under Returns, so a stored result replays exactly. Argument names are exactly the ones listed under Input, because `supabase.rpc` passes arguments by name.
 - **Idempotency.** Every mutation takes `idempotency_key uuid`. The client creates one key per user intent (one tap) and reuses it on retries.
   - The server stores `(user_id, operation, idempotency_key)` with the successful result. A repeat call returns the stored result without repeating the effect.
   - The same key with different arguments fails with `idempotency_conflict`.
   - Only successful results are stored, so a rejected call (for example `already_in_queue`) can be retried with the same key.
-  - Keys are kept for at least 24 hours.
+  - Keys are kept for at least 24 hours (`idempotency_keys.expires_at`). After that the key counts as new. `private.purge_expired_idempotency_keys()` deletes expired rows; a scheduled job should call it.
+  - Arguments are compared by a SHA-256 hash of their `jsonb` form, which is canonical.
+  - A transaction-level lock on the key makes a second request with the same key wait for the first to finish.
 - **Errors** carry a stable string `code` from [§ 2](#2-error-codes). The app maps codes to copy and never shows raw database messages.
+  - The database raises them with `private.raise_error(code, details)`: SQLSTATE `P0001`, the code as the message, extra fields as JSON in the detail, and the hint `qd`. Through `supabase-js` that's `error.message === 'room_full'`, `error.hint === 'qd'` and `JSON.parse(error.details)` for fields like `retry_after_seconds`. Anything without the `qd` hint is unexpected and maps to generic copy.
+  - Edge Functions answer with the same codes as JSON: `{ "code": "not_authenticated" }`.
+  - **Errors that must keep a side effect** (a failed join attempt, which the attempt limits count) are answered with `private.error_response(code, details)` instead: the function sets PostgREST's `response.status` to 400 and returns `{ code: 'P0001', message: <code>, details, hint: 'qd' }`. PostgREST commits a transaction that didn't fail, and supabase-js reports the same `error` a raise would. Used only for a code or invite token that matched nothing.
+  - `private.raise_error` refuses a code that isn't in § 2, and a test checks the list matches the table.
 - **Validation on the way in.** The app parses every RPC result and realtime payload with a Zod schema from `src/domain`. Anything that doesn't parse is logged (redacted) and treated as "refetch".
 - IDs are UUIDs. Times are `timestamptz` from the server clock. Durations and positions are integer milliseconds.
 
@@ -49,7 +57,8 @@ Why it's shaped this way: [ARCHITECTURE.md § 4.10](ARCHITECTURE.md#410-client-v
 | `import_in_progress` | Another playlist import is running in this room |
 | `limit_exceeded` | Over a fixed limit, for example 50 songs per import |
 | `idempotency_conflict` | Same key, different arguments |
-| `feature_disabled` | Behind a feature flag that's off (`sync`, playlist import) |
+| `feature_disabled` | Behind a feature flag that's off (`sync`, playlist import), or not built yet (the `delete-account` placeholder) |
+| `invalid_input` | An argument is missing or out of range, for example a blank room name or no idempotency key. Includes `field`. (Added) |
 
 ## 3. RPC functions
 
@@ -57,21 +66,27 @@ Why it's shaped this way: [ARCHITECTURE.md § 4.10](ARCHITECTURE.md#410-client-v
 
 #### `create_room`
 
+**Built** (`supabase/migrations/20261124000400_create_room.sql`).
+
 - **Caller:** any signed-in user with a finished profile and a connected service (checked against `provider_connections`).
-- **Input:** `name text`, `playback_provider 'apple_music' | 'spotify'`, `add_songs room_audience = 'everyone'`, `control room_audience = 'host'`, `idempotency_key uuid`. `room_audience` is `'everyone' | 'chosen' | 'host'`.
-- **Effect:** creates a room in `aux` mode with the rules chosen on Start a room. Nobody is chosen yet. The caller becomes host and the first member. Generates a unique six-character code with an expiry.
-- **Returns:** `{ room_id, code, code_expires_at }`
-- **Errors:** `profile_incomplete`, `provider_required`
+- **Input:** `name text` (trimmed, 1–40 characters), `playback_provider 'apple_music' | 'spotify'`, `add_songs room_audience = 'everyone'`, `control room_audience = 'host'`, `mode playback_mode = 'aux'`, `idempotency_key uuid`. `room_audience` is `'everyone' | 'chosen' | 'host'`.
+- **Effect:** creates a live room in `aux` mode with the rules chosen on Start a room. Nobody is chosen yet. The caller becomes host and the first member, and the room gets a `stopped` playback state. Generates a six-character code (see § 7), unique among rooms that haven't ended, valid for 24 hours.
+- **Returns:** `{ room_id, code, code_expires_at }`. `code` has no `QD-` prefix; the app adds it for display.
+- **Errors:** `not_authenticated`, `profile_incomplete`, `feature_disabled` (`mode: 'sync'`, `details.flag = 'sync'`), `invalid_input` (`details.field`: `name`, `playback_provider`, `add_songs`, `control`, `mode` or `idempotency_key`), `provider_required` (`details.provider`, when the caller hasn't connected the service the room plays through), `idempotency_conflict`
 - **Note:** `mode` is always `aux`. A `sync` room needs the `sync` flag and fails with `feature_disabled`.
+- **Capacity:** the room starts with one participant. The 15-person cap is enforced when people join.
 
 #### `join_room_by_code`
 
-- **Caller:** any signed-in user.
-- **Input:** `code text`, `idempotency_key uuid`. The code is case-insensitive, and the `QD-` prefix and spaces are optional.
-- **Checks:** strict attempt limits per user and per IP address, applied before looking up the code.
-- **Effect:** adds the caller as a member. If they're already a member, it succeeds without a change.
+**Built** (`supabase/migrations/20261125001000_join_room_by_code.sql`).
+
+- **Caller:** any signed-in user with a finished profile. No music service needed.
+- **Input:** `code text`, `idempotency_key uuid`. The code is case-insensitive, and the `QD-` prefix, spaces and dashes are optional.
+- **Checks:** sign-in, replay, finished profile, then the attempt limits (§ 7) per user and per IP address, applied before looking up the code. The code must belong to a room that hasn't ended, and `code_expires_at` must be later than now.
+- **Effect:** adds the caller as a member and broadcasts `members.changed`. If they're already a member (the host included), it succeeds without a change or a broadcast.
 - **Returns:** `{ room_id }`
-- **Errors:** `code_invalid`, `rate_limited`, `room_full`, `room_ended`, `profile_incomplete`
+- **Errors:** `not_authenticated`, `profile_incomplete`, `invalid_input` (`field: 'idempotency_key'`), `rate_limited` (`retry_after_seconds`), `code_invalid`, `room_full`, `room_ended` (only if the room ends between the lookup and the join; an ended room's code is `code_invalid`), `idempotency_conflict`
+- **Note:** `code_invalid` is answered with `private.error_response()` instead of being raised, so the failed attempt is kept (§ 1, Errors). The client sees the same `error`.
 
 #### `update_room_rules` (Added)
 
@@ -82,17 +97,25 @@ Why it's shaped this way: [ARCHITECTURE.md § 4.10](ARCHITECTURE.md#410-client-v
 
 #### `create_room_invite` (Added)
 
+**Built** (`supabase/migrations/20261125001100_room_invites.sql`).
+
 - **Caller:** host. QR invites need a token separate from the room code, and something has to create it.
 - **Input:** `room_id uuid`, `idempotency_key uuid`
-- **Effect:** creates a high-entropy (at least 128-bit, URL-safe) token with an expiry, which replaces any older one.
-- **Returns:** `{ token, expires_at }`. The QR code encodes `qd://join?invite=<token>`. Universal links can come later.
+- **Effect:** creates a high-entropy token (32 random bytes from two v4 UUIDs, 244 bits, as 43 unpadded base64url characters) that works for 24 hours, and revokes any older invite of the room. Only the token's SHA-256 hash is stored, in `room_invites.token_hash`.
+- **Returns:** `{ token, expires_at }`. The QR code encodes `qd://join?invite=<token>` (`buildInviteLink` and `parseInviteLink` in `src/domain/invite-link.ts`). Universal links can come later.
+- **Errors:** `not_authenticated`, `invalid_input` (`field: 'idempotency_key'`), `room_not_found`, `room_ended`, `not_member`, `not_host`, `idempotency_conflict`
+- **Replay:** the stored result holds the invite's id and expiry, never the token. A replay gives the same invite a fresh token (same row, same `expires_at`) and the token from the lost response stops working. If that invite is no longer live (replaced, expired, or its room ended), the key counts as new and goes through every check.
 
 #### `join_room_by_invite` (Added)
 
-- **Caller:** any signed-in user who scanned a QR code.
+**Built** (`supabase/migrations/20261125001100_room_invites.sql`).
+
+- **Caller:** any signed-in user with a finished profile who scanned a QR code. No music service needed.
 - **Input:** `token text`, `idempotency_key uuid`
-- **Effect, returns:** the same as `join_room_by_code`.
-- **Errors:** `invite_invalid`, `rate_limited`, `room_full`, `room_ended`, `profile_incomplete`
+- **Checks:** sign-in, replay, finished profile, then the attempt limits (§ 7, counted separately from codes) before the lookup.
+- **Effect, returns:** the same as `join_room_by_code`: `{ room_id }`, and `members.changed` for a new member.
+- **Errors:** `not_authenticated`, `profile_incomplete`, `invalid_input` (`field: 'idempotency_key'`), `rate_limited` (`retry_after_seconds`), `invite_invalid` (unknown, malformed, revoked or expired token), `room_ended` (a real token whose room ended), `room_full`, `idempotency_conflict`
+- **Note:** an unknown token is counted as a failed attempt and answered with `private.error_response()` (§ 1, Errors). Malformed, revoked and expired tokens aren't guesses, so they aren't counted.
 
 #### `leave_room` (Added)
 
@@ -103,45 +126,72 @@ Why it's shaped this way: [ARCHITECTURE.md § 4.10](ARCHITECTURE.md#410-client-v
 
 - **Caller:** host. `delete_account` also calls it.
 - **Input:** `room_id uuid`, `idempotency_key uuid`
-- **Effect:** marks the room ended, stops playback and expires its code and invites. History is kept for 90 days.
+- **Built** (`supabase/migrations/20261125001200_end_room.sql`). Since the demo reset card, it ends the room through `private.close_room()` (`20261125005000_reset_demo_accounts.sql`), which `reset_demo_accounts` shares.
+- **Effect:** marks the room ended (`state = 'ended'`, `ended_at`), stops playback (`playback_states.status = 'stopped'`), expires its code (`code_expires_at` no later than `ended_at`; the code is free for new rooms) and revokes its live invite. Broadcasts `room.ended`. Members and the queue are kept as history that members can still read; the 90-day cleanup is a later card.
+- **Returns:** `{ room_id, ended_at }`
+- **Errors:** `not_authenticated`, `invalid_input` (`field: 'idempotency_key'`), `room_not_found`, `room_ended` (with a new key), `not_member`, `not_host`, `idempotency_conflict`
+- **Replay:** answered before the other checks, so a retry with the same key after the room ended returns the stored result and broadcasts nothing again.
 
 ### Queue
 
 #### `enqueue_recording`
 
+**Built** (`supabase/migrations/20261125002000_enqueue_recording.sql`, tests in `supabase/tests/enqueue-recording.test.ts`).
+
 - **Caller:** any member the room's add-songs rule allows (`not_allowed` otherwise). The default is everyone.
 - **Input:** `room_id uuid`, `recording_id uuid`, `allow_duplicate boolean = false`, `idempotency_key uuid`
-- **Effect:** inserts a queue entry at the end, with a position the server assigns while holding a lock on the room's queue.
-- **Returns:** `{ entry_id, position, queue_length }`. The app uses `queue_length` for "Rain Down added · 8th in line".
-- **Errors:** `already_in_queue` (unless `allow_duplicate`), `room_ended`, `not_member`. A song counts as already in the queue while it's queued or playing.
-- **Proposed (Add a song card):** when nothing is playing, the new entry becomes the playing one and `queue_length` is 0, so the toast says "playing now". The mock store does this; the RPC contracts card confirms it.
+- **Effect:** inserts a queue entry at the end, with a position the server assigns while holding the lock on the room row (`private.lock_room`), so additions made at the same moment get one authoritative order. Sends `queue.changed` from inside the transaction.
+- **Returns:** `{ entry_id, position, queue_length }`. The app uses `queue_length` for "Rain Down added · 8th in line". `position` is the entry's place in line (1 = next), or 0 when it started playing.
+- **Errors:** `already_in_queue` (unless `allow_duplicate`; `details.status` is `queued` or `playing`, so the app can ask "Already in queue" or "Playing now"), `room_not_found`, `room_ended`, `not_member`, `not_allowed`, `invalid_input` (`details.field`: `room_id`, `recording_id` (missing or not a known recording), `allow_duplicate` or `idempotency_key`), `idempotency_conflict`, `not_authenticated`. A song counts as already in the queue while it's queued or playing; played and removed entries don't count.
+- **Confirmed (RPC contracts card):** when nothing is playing, the new entry becomes the playing one and `queue_length` is 0, so the toast says "playing now". The mock store does this.
 - **Note:** `recording_id` comes from a catalog search result. How search results become `recordings` rows depends on where search runs ([ARCHITECTURE.md, open decision 1](ARCHITECTURE.md#open-technical-decisions)).
 
-#### `enqueue_batch` (post-demo, `playlist import` flag)
+**Queue positions (decided 2026-11-25).** Queued entries hold dense integer positions `1..n` in play order; the playing entry holds `0`; played and removed entries keep their last position, which means nothing. Only RPCs write positions, always under the room lock, and a unique index on queued positions per room backs it up. Clients sort by `position` and never compute one.
 
-- **Caller:** any member the room's add-songs rule allows.
-- **Input:** `room_id uuid`, `batch_id uuid`, `recording_ids uuid[]` (at most 50, in playlist order), `idempotency_key uuid`
-- **Effect:** adds the entries in order under one `batch_id`. Only one import runs per room at a time.
+#### `enqueue_batch` (post-demo, `playlist_import` flag)
+
+**Built, flag off** (`supabase/migrations/20261125002100_enqueue_batch.sql`, tests in `supabase/tests/enqueue-batch.test.ts`). The app has no entry point to it until the playlist-import card.
+
+- **Caller:** any member the room's add-songs rule allows, who created the batch.
+- **Input:** `room_id uuid`, `batch_id uuid`, `recording_ids uuid[]` (1–50, in playlist order), `idempotency_key uuid`
+- **Before it:** the import preview (playlist-import card) creates the `playlist_import_batches` row in `previewing` status. `enqueue_batch` doesn't create batches.
+- **Effect:** under the room lock, marks the batch `importing`, adds the entries in playlist order under its `batch_id` (the same helper as `enqueue_recording`, so an empty room starts the first song), then marks it `done` with its counts. Songs already queued or playing, and repeats inside the batch, are skipped, because a batch can't ask "Already in queue" per song. Sends one `queue.changed` for the whole batch. Only one import runs per room at a time.
 - **Returns:** `{ batch_id, added, skipped }`
-- **Errors:** `import_in_progress`, `limit_exceeded`, `feature_disabled`
+- **Errors:** `feature_disabled` (`details.flag = 'playlist_import'`), `limit_exceeded` (over 50, `details.limit`), `import_in_progress` (another batch in the room is `importing`), `stale_state` (the batch isn't `previewing` anymore, `details.status`), `invalid_input` (`details.field`: `room_id`, `batch_id` (missing, another room's or another person's), `recording_ids` (missing, empty, a null or an unknown recording) or `idempotency_key`), `not_allowed`, `not_member`, `room_not_found`, `room_ended`, `idempotency_conflict`, `not_authenticated`
 
 #### `undo_batch` (post-demo, Added)
 
+**Built, flag off** (same migration and tests).
+
 - **Caller:** host.
 - **Input:** `room_id uuid`, `batch_id uuid`, `idempotency_key uuid`
-- **Effect:** removes the batch's entries that haven't played yet.
+- **Effect:** marks the batch's entries that are still queued `removed`, closes the gap in positions and marks the batch `undone`. The playing entry and played ones stay. Sends `queue.changed`.
+- **Returns:** `{ batch_id, removed }`
+- **Errors:** `feature_disabled`, `not_host`, `stale_state` (the batch isn't `done`, `details.status`), `invalid_input` (`room_id`, `batch_id`), `not_member`, `room_not_found`, `room_ended`, `idempotency_conflict`
+
+**Feature flags in the database.** `private.feature_flags` holds server-side switches; `private.require_feature(flag)` raises `feature_disabled` with `details.flag`. Only the database owner changes them (a migration or the dashboard). `playlist_import` starts off.
 
 #### `reorder_queue`
 
+**Built** (`supabase/migrations/20261125002200_reorder_remove_queue.sql`, tests in `supabase/tests/reorder-remove-queue.test.ts`).
+
 - **Caller:** any member the room's control rule allows. The default is the host only.
-- **Input:** `room_id uuid`, `entry_id uuid`, `after_entry_id uuid | null` (`null` moves it to the top), `idempotency_key uuid`
-- **Errors:** `entry_not_found`, `not_allowed`
+- **Input:** `room_id uuid`, `entry_id uuid`, `after_entry_id uuid | null` (`null` moves it to the top; the playing entry counts as the top too), `idempotency_key uuid`
+- **Effect:** under the room lock, moves a waiting entry to just after `after_entry_id` and shifts the entries in between, so positions stay `1..n`. A move to where the entry already is changes nothing and sends nothing; otherwise it sends `queue.changed`.
+- **Returns:** `{ entry_id, position, queue_length }` (the entry's new place in line).
+- **Errors:** `not_allowed`, `entry_not_found` (`details.field = 'entry_id'`: removed, played or not in this room; `details.field = 'after_entry_id'`: not in this room), `stale_state` (the entry is playing now, or the entry to follow was removed or played since; `details.field`, `details.status`), `invalid_input` (`room_id`, `entry_id`, `after_entry_id` equal to `entry_id`, `idempotency_key`), `not_member`, `room_not_found`, `room_ended`, `idempotency_conflict`, `not_authenticated`
 
 #### `remove_queue_entry`
 
-- **Caller:** any member the room's control rule allows. **Proposed (Add a song card):** also the member who added the entry, for the Undo on the "added" toast, while the entry is still queued. The RPC contracts card confirms or drops it.
+**Built** (same migration and tests).
+
+- **Caller:** any member the room's control rule allows. **Confirmed (RPC contracts card):** also the member who added the entry, for the Undo on the "added" toast, while the entry is still queued.
 - **Input:** `room_id uuid`, `entry_id uuid`, `idempotency_key uuid`
-- **Errors:** `entry_not_found`, `not_allowed`
+- **Effect:** under the room lock, marks a waiting entry `removed` (the row stays for history), closes the gap in positions and sends `queue.changed`. The playing entry can't be removed; Skip is `advance_queue`.
+- **Returns:** `{ entry_id, queue_length }`
+- **Errors:** `entry_not_found` (removed, played or not in this room), `stale_state` (the entry is playing now, `details.status`), `not_allowed`, `invalid_input` (`room_id`, `entry_id`, `idempotency_key`), `not_member`, `room_not_found`, `room_ended`, `idempotency_conflict`, `not_authenticated`
+- **Check order:** membership, then the entry, then permission, because whether the caller may depends on who added the entry.
+- **Retries:** a replay returns the stored result. A new key for an entry that's already gone fails with `entry_not_found`, so nothing is removed twice.
 
 ### Playback
 
@@ -177,6 +227,7 @@ Moves the room to the next song when the current one ends, is skipped, or isn't 
 - **Caller:** member. The host always holds slot 1.
 - **Input:** `room_id uuid`, `idempotency_key uuid`
 - **Errors:** `feature_disabled` while `sync` is off, `provider_required`, `limit_exceeded` (15 slots)
+- **Built as placeholders:** both functions exist, check sign-in, and fail with `feature_disabled` (`details.flag = 'sync'`).
 
 ### Matching
 
@@ -202,16 +253,33 @@ Not an RPC: the app calls Supabase Auth through `src/services/auth.ts` only. Bui
 
 Runs as an Edge Function, not a database function, because it needs the service role to delete the auth user and to revoke provider authorizations.
 
+- **Placeholder built:** `supabase/functions/delete-account` accepts `POST` with a bearer token and answers `501 { "code": "feature_disabled" }` until the account-deletion card builds it. Other methods get `405 invalid_input`, and a request without a token gets `401 not_authenticated`.
+
 - **Caller:** the user, after signing in again recently.
 - **Effect:** the steps in [PRODUCT_SPEC.md § 7](PRODUCT_SPEC.md#account-deletion). It ends hosted rooms through `end_room`, replaces attribution with "Deleted user", and retries until cleanup finishes (within 24 hours).
+
+### Operations
+
+Functions for the team, not the app. The app never calls them, and neither `anon` nor `authenticated` can execute them.
+
+#### `reset_demo_accounts` (operator only)
+
+**Built** (`supabase/migrations/20261125005000_reset_demo_accounts.sql`, tests in `supabase/tests/reset-demo-accounts.test.ts`). Called by `supabase/scripts/reset-demo-accounts.js` ([DEMO_RUNBOOK.md § Reset between rehearsals](DEMO_RUNBOOK.md#reset-between-rehearsals)).
+
+- **Caller:** the service role only. Execute is granted to `service_role` alone, and a call that carries a signed-in user fails with `not_allowed` even if a grant is added by mistake. It runs only while the server flag `demo_reset` (`private.feature_flags`) is on, which only the demo project turns on.
+- **Input:** `user_ids uuid[]` (the demo accounts, 1 to 10, repeats count once), `apply boolean` (default `false`: a dry run that changes nothing).
+- **Effect** (when `apply`), for those users only: every room they host that hasn't ended is ended exactly like `end_room` (shared `private.close_room()`: ended, code expired and freed, playback stopped, live invites revoked, one `room.ended` broadcast). The queue entries, import batches and memberships of every room they host are deleted; the ended room rows stay. Their idempotency keys and failed join attempts are deleted. Profiles and provider connections are never changed, and rooms other people host are never touched.
+- **No idempotency key:** the reset is idempotent by itself. A second run finds nothing to do, changes nothing and broadcasts nothing.
+- **Returns:** the same counts for a dry run and a real one, taken before any change: `{ applied, users, rooms_ended, invites_revoked, queue_entries_deleted, import_batches_deleted, memberships_deleted, idempotency_keys_deleted, join_attempts_deleted, memberships_elsewhere, profiles_incomplete, users_without_service }`. The last three are informational: memberships in live rooms other people host (left alone), listed accounts without a finished profile, and listed accounts with no music service connected. No ids, emails or codes.
+- **Errors:** `not_allowed` (a signed-in caller), `feature_disabled` (`details.flag = 'demo_reset'`), `invalid_input` (`details.field = 'user_ids'` with `reason` `empty`, `null_id`, or `unknown_user` with a `count`; or `details.field = 'apply'`), `limit_exceeded` (`details.limit = 10`).
 
 ## 4. Realtime
 
 ### Channels
 
 - One private channel per room: `room:<room_id>`.
-- Realtime Authorization (RLS on `realtime.messages`) lets only room members join and listen.
-- Clients never send room-state broadcasts. The database sends them, either from the RPC or from a trigger on the table it changed.
+- Realtime Authorization (RLS on `realtime.messages`) lets only room members join and listen, and lets them track presence. Built in the RLS card; clients can't send broadcasts at all.
+- Clients never send room-state broadcasts. The RPC that made the change sends them, through `private.broadcast_room_event(room_id, type)`, which calls Supabase's `realtime.send()` on the topic `room:<room_id>` as a private broadcast whose event name is the `type` (ARCHITECTURE.md open decision 2, decided 2026-11-24). Because it runs inside the RPC's transaction, a rolled-back change sends nothing.
 
 ### Broadcast events
 
@@ -407,12 +475,14 @@ type PlaybackSlot = {             // sync (beta) only
 
 | | Room code | QR invite token |
 |---|---|---|
-| Looks like | `QD-7K4F9X` (six characters after the prefix) | A long, URL-safe random string |
-| Entropy | Low by design, so people can type it | At least 128 bits |
-| Protection | Sign-in required, expiry, collision checks, attempt limits per user and per IP | Unguessable, expiry, the host can replace it |
+| Looks like | `QD-7K4F9X` (six characters after the prefix) | 43 URL-safe base64 characters |
+| Entropy | Low by design, so people can type it | 244 bits (at least 128 required) |
+| Protection | Sign-in required, expiry, collision checks, attempt limits per user and per IP | Unguessable, 24-hour expiry, the host can replace it, ending the room revokes it, attempt limits like codes |
 | Stored as | The six characters, uppercase | A hash of the token |
 
-The character set and the expiry length are open questions (see [PRODUCT_SPEC.md § 13](PRODUCT_SPEC.md#13-open-questions)).
+- **Room code character set (decided 2026-11-24):** `23456789ABCDEFGHJKLMNPQRSTUVWXYZ`, 32 characters without `0`, `O`, `1` or `I`, so about 1.07 billion codes. Drawn from `gen_random_uuid()`'s random bytes.
+- **Room code lifetime (decided 2026-11-24):** 24 hours from creation. The room keeps going after its code expires; only joining by code stops. A code is unique among rooms that haven't ended, and an ended room's code can be drawn again.
+- **Attempt limits (decided 2026-11-25):** at most 5 wrong codes per user and 20 per IP address (the first `X-Forwarded-For` entry) in any 10 minutes. Past that, `rate_limited` with `retry_after_seconds` until the oldest failure leaves the window. A success doesn't reset the count. Input that can't be a code isn't counted. Failed attempts are kept in `private.join_attempts`, without the code that was tried and with the IP address hashed.
 
 ## 8. Changing a contract
 

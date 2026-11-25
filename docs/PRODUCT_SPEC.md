@@ -248,6 +248,6 @@ Numbers match the Figma page and the in-app screen index at `/dev`.
 These questions are still open. Record each answer in [DECISIONS.md](DECISIONS.md).
 
 - **Android.** The app has to work in both the App Store and the Play Store eventually. When Android work starts (demo, beta or later) is undecided.
-- **Room codes.** How long a code stays valid, the exact attempt limits, and the character set (for example, whether look-alike characters such as `0`/`O` and `1`/`I` are left out).
+- **Room codes.** Answered: codes stay valid for 24 hours and leave out look-alike characters `0`, `O`, `1` and `I` (2026-11-24), and wrong codes are limited to 5 per user and 20 per IP address in any 10 minutes (2026-11-25). See [DECISIONS.md](DECISIONS.md). A teammate should confirm the numbers.
 - **Expo owner.** Which Expo account slug owns the project (`owner` in `app.config.ts`).
 - **Catalog search for guests.** Where Apple catalog search runs for people without Apple Music, and on Android or the web. See [ARCHITECTURE.md § Open technical decisions](ARCHITECTURE.md#open-technical-decisions).

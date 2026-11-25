@@ -1,5 +1,13 @@
 import { envNames } from './env';
 
+// Demo account reset (supabase/scripts/reset-demo-accounts.js).
+const operatorNames = [
+  'SUPABASE_URL',
+  'SUPABASE_SERVICE_ROLE_KEY',
+  'QD_DEMO_USER_IDS',
+  'QD_DEMO_EMAILS',
+];
+
 const fs = jest.requireActual<{ readFileSync(path: string, encoding: 'utf8'): string }>('fs');
 
 // Jest runs from the repository root.
@@ -16,9 +24,20 @@ describe('.env.example', () => {
     }
   });
 
-  it('lists exactly the variables env.ts validates', () => {
-    const names = lines.map((line) => line.slice(0, -1));
+  it('lists exactly the variables env.ts validates as the public ones', () => {
+    const names = lines
+      .map((line) => line.slice(0, -1))
+      .filter((name) => name.startsWith('EXPO_PUBLIC_'));
     expect(names.sort()).toEqual(Object.values(envNames).sort());
+  });
+
+  // Operator-only sections (appended by the server cards) are read by scripts
+  // or Supabase, never by the app, so they must never carry the public prefix.
+  it('keeps every other variable to the known operator sections', () => {
+    const others = lines
+      .map((line) => line.slice(0, -1))
+      .filter((name) => !name.startsWith('EXPO_PUBLIC_'));
+    expect(others.filter((name) => !operatorNames.includes(name))).toEqual([]);
   });
 
   it('never names a server secret as a public variable', () => {

@@ -70,6 +70,126 @@ Product and technical decisions that are not obvious from the code. Newest first
 - **The wordmark says q’d with the curly apostrophe.** The Logo drew `q'd` with a straight one, although its accessibility label was already curly (PRODUCT_SPEC.md §9).
 - **Still mock:** the email form accepts any input, and "Forgot password?" does nothing. Validation and password reset come with the email auth card.
 
+## 2026-11-25 · Demo account reset
+
+- **Operator scripts live in `supabase/scripts/`.** ARCHITECTURE.md named no place for them, and the runbook asked for the reset "as a script in `supabase/`". The reset script is plain CommonJS JavaScript with no dependencies (`fetch` only), so it runs with `node` on any supported Node, Windows included, without a build step. A `.d.ts` beside it types it for the tests.
+- **The reset is a database function, not a series of queries from the script,** so it runs in one transaction under the room locks and reuses `end_room`'s steps. Both now go through `private.close_room()`; `end_room`'s contract and checks are unchanged.
+- **Only the service role can run it, and only in the demo project.** Execute is granted to `service_role` alone, a call carrying a signed-in user is refused, and it needs the server flag `demo_reset`, which ships off. Someone turns it on by hand in the demo project once. Production never does, so a mix-up of keys can't reset anyone there.
+- **It touches only the ids it's given:** 1 to 10 accounts, every one a real account, never an empty list. Rooms other people host stay as they are, even when a demo account is a member; the result counts those memberships so the operator can leave from the app.
+- **What "clean" means.** The demo accounts' open rooms are ended like End room. The queues, import batches and memberships of every room they host are deleted, so Home has no leftovers and the code is free; the ended room rows stay. Their idempotency keys and failed join attempts are deleted, so a rehearsal's wrong codes can't lock the guest out on stage. **Profiles and music-service connections are kept:** the runbook needs both accounts signed in, onboarded and the host connected. The result counts accounts that aren't, and the runbook says what to do. A teammate should confirm that keeping profiles is the "known state" they want.
+- **Dry run by default, at both ends.** The function's `apply` defaults to `false`, and the script sends `true` only with `--yes`. Both print or return counts only: no emails, ids, room codes, tokens or keys. Server error text isn't printed either, only q’d codes (a snake_case word) and HTTP statuses. The script never follows a redirect, so the key can't be forwarded to another host.
+- **No idempotency key.** The reset is idempotent by itself: a second run finds nothing to do and broadcasts nothing.
+- **The key lives in `.env.demo.local`,** which git ignores, never in the app's `.env` and never under an `EXPO_PUBLIC_` name. `.env.example` lists the names.
+- **Not run against the real demo project yet.** It's tested on PGlite only. The first real run (dry run first) is part of the Dec 1 setup.
+
+## 2026-11-25 · end_room
+
+- **`end_room` returns `{ room_id, ended_at }`.** The contract listed no result. A replay returns the same values.
+- **Ending a room expires its code** by moving `code_expires_at` back to the end time if it was later, and frees the code for new rooms. **It revokes the live invite,** so a scanned QR code answers `room_ended`.
+- **Playback stops in the database** (`stopped`, reported by the host). The host's phone stops its player when it gets `room.ended`; the client card builds that.
+- **History stays as it is.** Members keep reading the ended room, its members and its queue. The queue isn't rewritten (a playing entry stays `playing`), and the 90-day cleanup is a later card.
+- **No finished profile is needed,** because `delete_account` calls it for a user who's leaving.
+
+## 2026-11-25 · QR invitations
+
+- **A QR invite works for 24 hours,** like a room code, counted from when the host creates it. Each new invite revokes the older one, as the contract says, so a room has one live invite. **A teammate should confirm the length.**
+- **The token is 32 random bytes** (two v4 UUIDs, 244 random bits) written as 43 unpadded base64url characters. Only its SHA-256 hash is stored. A salt isn't needed: the token itself can't be guessed.
+- **The database never holds the token, not even for idempotency.** `create_room_invite` stores the invite's id and expiry under the key instead. A replay (the app retried because the response was lost) gives the same invite a fresh token: same row, same expiry. The token from the lost response stops working, which is harmless because nobody received it. If that invite isn't live any more, the key counts as new.
+- **Unknown tokens count toward the attempt limits** like wrong codes, with their own count (5 per user, 20 per IP address in 10 minutes), so a lockout on one doesn't block the other. Malformed, revoked and expired tokens answer `invite_invalid` without counting: they aren't guesses.
+- **A real token of an ended room answers `room_ended`,** not `invite_invalid`. The token proves the caller was invited, so telling them the room is over gives nothing away. (Ending the room also revokes the invite.)
+- **The link helper is pure** (`src/domain/invite-link.ts`): `buildInviteLink(token)` gives `qd://join?invite=<token>` and `parseInviteLink(url)` reads a token back, or null. It never accepts a room code as a token.
+- **Not built here:** the QR on the Invite sheet, the screen that handles `qd://join?invite=…`, and the feature hook that calls these RPCs. Those belong to the Invite/QR screen card.
+
+## 2026-11-25 · join_room_by_code
+
+- **Attempt limits: 5 wrong codes per user and 20 per IP address in any 10 minutes.** The next try fails with `rate_limited` and `retry_after_seconds` until the oldest failure is ten minutes old. With a billion codes, five guesses per ten minutes can't find a room. This answers the last part of PRODUCT_SPEC.md § 13 "Room codes"; **a teammate should confirm the numbers.**
+- **The limits are checked before the code is looked up,** so a locked-out caller can't join even with the right code, and a locked-out call isn't counted again.
+- **A successful join doesn't reset the count.** Otherwise anyone could clear it between guesses with their own room's code. The count resets only as failures age out of the window.
+- **Only wrong codes count.** Input that can't be a code (wrong length, or a character outside the code alphabet such as `0`, `O`, `1` or `I`) answers `code_invalid` too, but isn't counted: it can't match a room, so it tells nobody anything, and a typo shouldn't use up a guess. Look-alikes aren't mapped to other characters, because none of them is ever in a code.
+- **Input is forgiving:** case doesn't matter, and spaces, dashes and the `QD-` prefix are optional. A code can itself start with `QD`, so the prefix is dropped only from eight characters.
+- **A wrong guess is kept although the call fails.** A raised error rolls everything back, the record of the guess included. So `code_invalid` is answered by `private.error_response()`: the function returns normally, the failed attempt commits, and PostgREST answers HTTP 400 with the same body a raised error has (`message: 'code_invalid'`, `hint: 'qd'`). supabase-js reports it as `error` like any other. This is the one exception to "RPCs raise their errors", and only for errors whose side effect must survive. PostgREST commits every transaction that doesn't fail, whatever `response.status` says.
+- **Failed attempts live in `private.join_attempts`,** which no API role can read or write. It never holds the code that was tried, and holds the IP address only as a SHA-256 hash. `private.purge_join_attempts()` deletes rows older than a day; a scheduled job should call it.
+- **The IP address is the first `X-Forwarded-For` entry** PostgREST passes in `request.headers`. A client can put its own entries in front, so the per-user limit is the one that can't be dodged. **Check on a real Supabase project** which entry the gateway sets.
+- **An ended room's code is a wrong code,** not `room_ended`: ending a room frees its code (2026-11-24), so the code no longer names that room, and saying otherwise would tell a guesser which codes were in use. `room_ended` still comes back if the room ends between the lookup and the join.
+- **Someone already in the room succeeds without a change,** the host included, and no broadcast is sent. A new member makes the RPC broadcast `members.changed`.
+- **`room_full` is checked by the RPC** under the room lock, so it comes back as a q’d error (`hint: 'qd'`). The trigger on `room_members` still backs it up.
+
+## 2026-11-25 · Queue concurrency and idempotency tests
+
+- **PGlite can't run two transactions at once,** so "several people add at once" is tested as bursts of requests fired together, which PGlite runs one whole transaction at a time in arrival order. The tests check what must hold in any order: one playing entry, queued positions `1..n`, each success applied once, replays returning the first result, and the same key with other arguments failing with `idempotency_conflict`.
+- **The lock itself is checked structurally.** A test reads each queue RPC's source and fails if it touches the queue before `private.lock_room()`, and another checks that `lock_room` holds the room row for the rest of the transaction. True parallel blocking needs the same suite on the Supabase local stack (Mac, `supabase start`).
+- **The random burst is seeded,** so a failure can be replayed exactly.
+
+## 2026-11-25 · reorder_queue and remove_queue_entry
+
+- **The control rule decides, not "host only".** The Trello card says only the host may reorder or remove. The newer decisions win: the control rule (Everyone / Chosen / Only you, 2026-11-20) governs both, and its default is still the host only. The person who added an entry may remove it while it's queued (the Undo, 2026-11-24).
+- **Undo ends when the song starts.** Removing a playing entry fails with `stale_state` for everyone, the host included. Skip is `advance_queue`, so a stale Remove can't skip a song.
+- **`stale_state` means "you saw an old queue".** Reordering or removing an entry that's playing now, or moving after an entry that was removed or played since, is `stale_state` (refetch and retry). An entry that's gone is `entry_not_found`, as the contract says.
+- **"After the playing song" is the top.** If the entry the user dropped below has started playing, the move goes to the top, which is where the user meant.
+- **A no-op move succeeds quietly.** Moving an entry to where it already is returns its position and sends no broadcast.
+- **Removed entries stay as rows** with status `removed`, so history and attribution survive; positions of the rest close up.
+- **Returns.** The contract had none: `reorder_queue` returns `{ entry_id, position, queue_length }` and `remove_queue_entry` returns `{ entry_id, queue_length }`.
+
+## 2026-11-25 · enqueue_batch
+
+- **Server-side feature flags live in `private.feature_flags`.** `enqueue_batch` and `undo_batch` check `playlist_import`, which is off, and fail with `feature_disabled`. Clients can't read or change the table. The app-side flag (ARCHITECTURE.md § 8) is still the Env validation card's job; the database refuses even if a modified client calls the RPC.
+- **The import preview creates the batch, not `enqueue_batch`.** The contract passes a `batch_id`, so the batch already exists: the post-demo import card's preview creates it in `previewing` with the playlist's provider and name. `enqueue_batch` adds the confirmed songs, then marks it `done`. Only the person who created the batch can import it.
+- **A batch skips songs already in the queue.** It can't ask "Already in queue" for each song, so songs already queued or playing, and repeats inside the playlist, are skipped and counted in `skipped`. **A teammate should confirm**; the alternative is adding duplicates silently.
+- **A batch already imported is `stale_state`,** with `details.status`. A retry with the same key still gets the stored result.
+- **One broadcast per batch,** not one per song.
+- **`undo_batch` stays host-only,** as the contract says. Undo takes back only songs still waiting; the playing one and played ones stay.
+- **No app entry point yet.** Nothing in the app calls these until the playlist-import card, so nothing is exposed for the demo.
+
+## 2026-11-25 · enqueue_recording
+
+- **Queue positions are dense integers** (ARCHITECTURE.md open decision 3). Queued entries are `1..n` in play order and the playing entry is `0`, so `position` is also the place in line the toast shows. Queues are short (tens of songs), so renumbering on a reorder or removal is cheap, and it's easier to test and reason about than gaps or fractional ranks. A unique index on queued positions per room makes a repeated position impossible.
+- **The room lock decides the order.** `enqueue_recording` locks the room row before reading the last position, so additions made at the same moment are placed one after another in the order they took the lock.
+- **"Already in queue" says which kind.** `already_in_queue` carries `details.status` (`queued` or `playing`), so the app can ask "Already in queue. Add it again?" or "Playing now. Add it again?" (2026-11-19 · Search / add-song overlay) without a second request.
+- **"Nothing playing" starts the song.** The contract's rule is applied literally: if no entry is playing, the new one plays at once (position 0, `queue_length` 0). With today's RPCs a queue never has waiting songs while nothing plays, so this only happens in an empty room.
+- **An unknown `recording_id` is `invalid_input`** (`details.field = 'recording_id'`), like a missing one. Search results always come from `recordings`, so this means a client bug, not a user situation.
+- **No profile check.** Members already finished onboarding to join, so `enqueue_recording` doesn't repeat `profile_incomplete`.
+
+## 2026-11-24 · create_room
+
+- **Room codes leave out look-alike characters.** Codes use `23456789ABCDEFGHJKLMNPQRSTUVWXYZ` (no `0`, `O`, `1` or `I`), so a code read aloud or typed from a screen can't be misread. Six characters still give about a billion codes. This answers part of PRODUCT_SPEC.md § 13; **a teammate should confirm it**.
+- **A room code works for 24 hours.** Long enough for an evening, short enough that old codes stop working. The room itself keeps going; only joining by code stops. A way to refresh the code can come with the join card if hosts need it. **A teammate should confirm the length.**
+- **A collision draws again,** up to ten times, then fails with an internal error. With a billion codes that should never happen.
+- **`create_room` takes an optional `mode`** (default `aux`). `sync` fails with `feature_disabled`, as the contract says, without needing a flag table yet.
+- **The name is trimmed** and must be 1–40 characters (`invalid_input` otherwise).
+- **One host may run several live rooms.** Nothing in the product rules limits it.
+
+## 2026-11-24 · Row level security
+
+- **Clients only read.** Direct inserts, updates and deletes on room, queue, playback, catalog and system tables fail with permission denied for everyone, the host included. Play, pause, skip, reorder and remove go through RPCs that check the control rule; by default only the host passes it.
+- **Three things a user writes directly:** their own profile's onboarding fields (`display_name`, `color`, `adult_confirmed_at`), their own `provider_connections` rows, and their own `blocks`. Onboarding and Settings need these, and none of them is shared room state.
+- **`create_room` trusts `provider_connections`.** The server can't verify a connection, because provider tokens stay on the device. A modified client could claim one, but it still couldn't play anything without a real provider account.
+- **Members see each other's profiles,** so Listeners and the queue can show names and colors. Outsiders see only their own.
+- **Only the host reads the invite row.** It holds a hash, never the token.
+- **`anon` gets nothing,** not even empty results: every table read fails with permission denied.
+- **Guard tests** fail when a new table keeps Supabase's default grants, so the next migrations can't expose a table by accident.
+
+## 2026-11-24 · RPC contracts
+
+- **The proposals are confirmed.** Every operation marked Added in API_CONTRACTS.md (`update_room_rules`, `create_room_invite`, `join_room_by_invite`, `leave_room`, `undo_batch`, `report_playback_state`, `request_playback`, `advance_queue`, `override_track_match`) stays. Two smaller proposals are confirmed too: adding to an empty room starts that song, and the person who added a queued entry may remove it (the Undo on the "added" toast).
+- **One error transport.** RPCs raise SQLSTATE `P0001` with the code as the message, extra fields as JSON in the detail, and the hint `qd`. Edge Functions return `{ "code": … }`. An unknown code can't be raised, and a test keeps the code list and API_CONTRACTS.md § 2 identical.
+- **New code `invalid_input`** for a missing or out-of-range argument (a blank room name, no idempotency key). The contract had no code for it.
+- **A replay is answered before the other checks,** right after sign-in. Otherwise retrying `end_room` after it succeeded would fail with `room_ended`. A new key goes through every check.
+- **The RPC sends the broadcast** (open decision 2), from inside its transaction with `realtime.send()`, so a rolled-back change announces nothing.
+- **Shared checks live in a `private` schema** the API doesn't expose. Nothing there is executable by `anon` or `authenticated`; public RPCs are `security definer` with a pinned `search_path`. A test fails if any q’d function lacks a pinned `search_path` or is executable by `anon`.
+- **`claim_playback_slot` and `release_playback_slot` exist** and fail with `feature_disabled` while `sync` is off. The `delete-account` Edge Function exists as a placeholder that answers `feature_disabled`.
+
+## 2026-11-24 · Initial Supabase migrations
+
+- **The schema follows ARCHITECTURE.md §5 names**: `recordings`, `provider_tracks` and `track_matches`, not "canonical recordings" or "mappings". `track_matches` and `track_match_overrides` point at a provider track by `(provider, provider_track_id)`, the provider's own id, like the `TrackMatch` domain type.
+- **Row level security is on for every table from the first migration,** with no policies. Everything is denied until the RLS migration opens reads, so there's never a window where Supabase's default grants expose a table.
+- **No credentials in Postgres.** `provider_connections` holds the provider, when it was connected or last checked, and a storefront. A test fails if any public column is named like a token, secret, password or credential, except the invite's `token_hash`.
+- **Every auth user gets an empty profile row** from a trigger on `auth.users`. The profile is complete when `display_name`, `color` and `adult_confirmed_at` are set. `color` has no default, because the first swatch belongs to the design tokens, not the database.
+- **The 15-person cap is a trigger on `room_members`,** under a lock on the room row, so it holds however a member is added. It raises `room_full`.
+- **A room code is unique among rooms that haven't ended.** Ending a room frees its code.
+- **The queue is batch-ready.** `queue_entries.batch_id` points at `playlist_import_batches`, which allows one running import per room. `blocks`, `reports` and `analytics_events` are placeholders for the beta.
+- **Idempotency keys get their own table** (`idempotency_keys`) instead of a column on each table, so every RPC uses the same machinery.
+- **Database tests run on PGlite inside Jest** (ARCHITECTURE.md § Database tests), because Windows has no Docker or Supabase CLI. A test-only shim provides Supabase's roles, `auth` and `realtime`. The same tests should also run against `supabase start` on the Mac.
+
 ## 2026-11-20 · Room screen: expanded cover only
 
 - **A playing song always shows the expanded cover (Figma 3.2).** The resize button is gone, so the smaller-cover layout (3.1) no longer appears while a song plays. The cover is as big as it can be while the song info and playback controls still fit above the Up next bar. The full queue is below them.
