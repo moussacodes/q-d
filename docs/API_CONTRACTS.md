@@ -186,6 +186,8 @@ Moves the room to the next song when the current one ends, is skipped, or isn't 
 - **Input:** `room_id uuid`, `recording_id uuid`, `provider`, `provider_track_id text`, `idempotency_key uuid`
 - **Effect:** stores a `track_match_overrides` row with who changed it and when, and uses it for this room from then on.
 
+**Built (matching card):** the server stores what `matchRecording` in `src/domain/matching` decides. Its `match` is a `TrackMatch` (§6): `method: 'isrc' | 'score' | 'override'`, `confidence` 0–100, and `warning` set whenever the match isn't automatic. An unavailable recording has `providerTrackId: null` and `confidence: 0`.
+
 ### Account
 
 #### `delete_account` (Edge Function)

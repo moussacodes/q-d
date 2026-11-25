@@ -150,7 +150,7 @@ ESLint enforces these rules (`no-restricted-imports` in `eslint.config.js`), so 
 
 - **Rule:** pure TypeScript only. That means types (`MusicProvider`, `PlaybackMode`, `Room`, `QueueEntry`, `CanonicalRecording`, `TrackMatch` and so on), Zod schemas and pure functions such as matching scores, text normalization and room-code formatting. No React, no I/O.
 - **Why:** this is the contract that the app, the providers, the database and a future SwiftUI client all agree on. Pure code is easy to unit-test, and the matching rules in particular need exhaustive tests (ISRC, durations, explicit/clean, version markers).
-- Status: **Built** (domain types card): Zod schemas with inferred types for every shape in [API_CONTRACTS.md § 6](API_CONTRACTS.md#6-shared-domain-types) (`music-provider.ts`, `room.ts`, `recording.ts`, `queue.ts`, `playback.ts`, `primitives.ts`), and the versioned realtime payload parsers from [§ 4](API_CONTRACTS.md#4-realtime) (`realtime.ts`). Matching is planned under the matching card.
+- Status: **Built** (domain types card): Zod schemas with inferred types for every shape in [API_CONTRACTS.md § 6](API_CONTRACTS.md#6-shared-domain-types) (`music-provider.ts`, `room.ts`, `recording.ts`, `queue.ts`, `playback.ts`, `primitives.ts`), and the versioned realtime payload parsers from [§ 4](API_CONTRACTS.md#4-realtime) (`realtime.ts`). Matching is built in `matching/` (matching card).
 
 ### 4.6 Providers (`src/providers/`)
 
@@ -249,7 +249,8 @@ Planned · Initial Supabase migrations card. Shapes are in [API_CONTRACTS.md](AP
 
 - Apple's catalog is canonical. Search results become `recordings`. When a song has to play, the host's provider resolves a `provider_track` and stores a `track_match`.
 - Matching is a pure function in `src/domain` (normalize, then score). The thresholds and rules are in [PRODUCT_SPEC.md § 6](PRODUCT_SPEC.md#6-catalog-and-matching). Results and overrides are stored in Postgres, so every phone sees the same answer and overrides are audited.
-- Planned · Canonical search card, matching card.
+- **Built** (matching card): `src/domain/matching` (`text.ts` normalizes and reads version markers, `match.ts` ranks candidates and decides). `matchRecording(recording, candidates, { provider, overrideTrackId })` returns the `TrackMatch` to store, a status (`matched`, `needs_review` or `unavailable`), the reasons and every candidate ranked for "Wrong version?". The numbers are in [DECISIONS.md](DECISIONS.md) (2026-11-24 · Track matching).
+- Planned · Canonical search card (where search runs, and storing matches in Postgres).
 
 ## 8. Configuration, environments and flags
 
