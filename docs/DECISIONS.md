@@ -2,6 +2,16 @@
 
 Product and technical decisions that are not obvious from the code. Newest first.
 
+## 2026-11-24 · Provider adapter interfaces and mocks
+
+- **The adapters follow API_CONTRACTS.md §5,** with the changes marked there: `getState` returns a `PlayerState` (one device's player) rather than the room's `PlaybackState`, `ConnectionState` keeps `isMock`, `ProviderTrack` gains `album`, and the error codes are listed.
+- **Apple Music and Spotify are stubs that say "not in this build".** They connect to `not_in_this_build`, reject everything else with that code and claim no capability, so they can't pass for a working integration. Their cards replace them after a real-device test. The app keeps using the mocks.
+- **Mocks claim no capability.** A mock plays no audio, so it reports `inAppAudio`, `backgroundPlayback`, `requiresExternalApp` and `autoplay` as `false`, and `isMock` as `true`. The old mock said Apple played inside q’d, which no mock does.
+- **A player only takes its own provider's tracks** (`wrong_provider`). In mock mode the room player plays each fixture through the room's service, standing in for the provider track matching resolves later. This keeps the "plays through Apple Music" preview working.
+- **Positions must be finite and not negative** (`invalid_argument`); fractional milliseconds are rounded.
+- **Share links are parsed by hand,** not with `URL`, because React Native's `URL` lacks `hostname`, `pathname` and `searchParams` on some platforms. The mock catalog resolves a few made-up link ids to fixtures and says so; a real link to a song it doesn't have is `not_found`.
+- **Mock results are copies,** so a caller can't change the catalog. Fixture tracks have no ISRC and aren't explicit, so nothing pretends to be real provider metadata.
+
 ## 2026-11-24 · Shared domain types and realtime events
 
 - **Zod is a dependency now,** and `src/domain` may import it (ARCHITECTURE.md §4). The domain types card writes every shape in API_CONTRACTS.md §6 as a Zod schema and infers the TypeScript type from it, so the runtime check and the type can't drift apart.

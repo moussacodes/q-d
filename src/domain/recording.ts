@@ -28,6 +28,8 @@ export const providerTrackSchema = z.object({
   providerTrackId: z.string().min(1),
   title: z.string().min(1),
   artists: z.array(z.string().min(1)).min(1),
+  /** Added by the provider adapters card: matching scores album context. */
+  album: z.string().nullable(),
   durationMs: millisecondsSchema,
   isrc: isrcSchema.nullable(),
   explicit: z.boolean(),
@@ -36,6 +38,11 @@ export const providerTrackSchema = z.object({
   artworkBackgroundColor: z.string().nullable(),
 });
 export type ProviderTrack = z.infer<typeof providerTrackSchema>;
+
+/** Artists as one line of text: `['Delerium', 'Sarah McLachlan']` → "Delerium, Sarah McLachlan". */
+export function formatArtists(artists: readonly string[]): string {
+  return artists.join(', ');
+}
 
 export const trackMatchMethods = ['isrc', 'score', 'override'] as const;
 export const trackMatchWarnings = ['low_confidence', 'explicit_conflict'] as const;

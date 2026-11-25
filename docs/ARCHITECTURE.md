@@ -84,7 +84,7 @@ src/
   design/                 Tokens: colors, type, spacing, Now playing palettes, ThemeProvider
   domain/                 Pure types and logic: rooms, queue, recordings, matching
   features/               Feature modules: auth, onboarding, rooms, queue, search, settings
-  providers/              Apple, Spotify and mock catalog/playback adapters      (mock built; Apple, Spotify planned)
+  providers/              Apple, Spotify and mock catalog/playback adapters      (interfaces, mocks and Apple/Spotify stubs built; live Apple, Spotify planned)
   services/               Supabase, env, flags, logging, analytics               (data mode built; rest planned)
   test/                   Fixtures and provider contract helpers
 modules/
@@ -163,6 +163,7 @@ ESLint enforces these rules (`no-restricted-imports` in `eslint.config.js`), so 
   - **Apple:** wraps `modules/qd-music-kit` (MusicKit `ApplicationMusicPlayer`, background audio, queue observation).
   - **Spotify:** controls an installed or active Spotify client through App Remote and the Web API. q’d never streams Spotify audio itself.
   - **Mock:** deterministic adapters for web and Windows development, UI work, automated tests and the demo fallback. They're labeled in the UI and switched by feature flags, so a mock can never pass for a live integration.
+- **Status: Built** (provider adapters card): both interfaces, `ProviderError`, the share-link parser, the mocks, and Apple Music and Spotify stubs that report "not in this build" until their cards land. The shared contract suite runs against all of them. See [API_CONTRACTS.md § 5](API_CONTRACTS.md#5-provider-adapters).
 - `capabilities()` reports what each adapter can do (for example in-app audio, background playback or autoplay), and the UI asks it instead of checking which provider it is.
 
 ### 4.7 Services (`src/services/`)
@@ -284,7 +285,7 @@ Jest, React Native Testing Library and the Maestro folder are set up. Each featu
 | Layer | Tool | What it proves |
 |---|---|---|
 | Domain | Jest | Matching (ISRC, durations, explicit/clean, version tokens), room-code formatting, queue ordering helpers |
-| Providers | Shared contract suite in `src/test` | Apple, Spotify and mock adapters behave the same through the interface |
+| Providers | Shared contract suite in `src/test` (Built: `src/test/providerContract.ts`) | Apple, Spotify and mock adapters behave the same through the interface |
 | Database | Supabase tests in `supabase/tests` | RLS denies outsiders, host/member permissions, idempotent enqueue/reorder/remove, concurrent adds, code collisions, expiry and rate limits |
 | Components and screens | React Native Testing Library | Loading, offline, empty, unavailable, reconnecting and provider-required states |
 | End to end | Maestro | Smoke flows: sign in, create a room, join, add a song |

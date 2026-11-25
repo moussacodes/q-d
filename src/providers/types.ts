@@ -1,25 +1,15 @@
 import type { MusicProvider } from '@/domain/music-provider';
+import type { PlaybackCapabilities } from '@/domain/playback';
+import type { ProviderTrack } from '@/domain/recording';
 
 /**
- * The provider adapter contracts from plan.md §3, trimmed to what the mock
- * adapters implement today. The provider-adapter card extends them; Apple,
- * Spotify and the mocks all implement the same interfaces.
+ * The provider adapter contracts (docs/API_CONTRACTS.md §5). Apple Music,
+ * Spotify and the mocks all implement the same two interfaces. Catalog and
+ * playback are separate because anyone can search, but only the phone that
+ * plays needs a player (ARCHITECTURE.md §4.6).
  */
 
-/** A recording as one provider knows it. */
-export type ProviderTrack = {
-  provider: MusicProvider;
-  providerTrackId: string;
-  title: string;
-  artist: string;
-  album: string;
-  durationMs: number;
-  explicit: boolean;
-  isrc?: string;
-  artworkUrl?: string | null;
-  /** Apple supplies a background color with its artwork; Spotify doesn't. */
-  artworkBackgroundColor?: string | null;
-};
+export type { MusicProvider, PlaybackCapabilities, ProviderTrack };
 
 /** A canonical-catalog search result and where it can play. */
 export type CatalogResult = {
@@ -28,28 +18,55 @@ export type CatalogResult = {
   availableOn: MusicProvider[];
 };
 
+/** What a pasted Apple Music or Spotify link points at. */
+export type ProviderEntity =
+  | { kind: 'track'; track: ProviderTrack }
+  | { kind: 'playlist'; provider: MusicProvider; playlistId: string };
+
+/** One page of a playlist's tracks (post-demo playlist import). */
+export type PlaylistPage = {
+  provider: MusicProvider;
+  playlistId: string;
+  name: string;
+  tracks: ProviderTrack[];
+  /** Pass to the next call for the next page; `null` on the last page. */
+  nextCursor: string | null;
+};
+
 export interface CatalogAdapter {
   provider: MusicProvider;
   search(query: string, market: 'US'): Promise<CatalogResult[]>;
+  resolveLink(url: string): Promise<ProviderEntity>;
   getTrack(id: string): Promise<ProviderTrack>;
+  getPlaylist?(id: string, cursor?: string): Promise<PlaylistPage>;
 }
 
-export type PlaybackCapabilities = {
-  canSeek: boolean;
-  /** Apple plays inside q’d; Spotify remote-controls the Spotify app. */
-  playsInsideApp: boolean;
-  backgroundPlayback: boolean;
-};
+/**
+ * Whether this phone can play through a provider. Every state says whether it
+ * comes from a mock, so the UI never shows a mock as a real account.
+ */
+export type ConnectionState = { isMock: boolean } & (
+  | {
+      status: 'connected';
+      /** e.g. "baron.li · Premium". Mocks say "Mock account". */
+      accountLabel?: string;
+    }
+  | { status: 'needs_authorization' }
+  /** e.g. no Apple Music subscription or no Spotify Premium. */
+  | { status: 'needs_subscription' }
+  /** Spotify: the Spotify app isn't installed. */
+  | { status: 'app_not_installed' }
+  | { status: 'error'; code: ProviderErrorCode }
+);
 
-export type ConnectionState = {
-  status: 'connected' | 'disconnected';
-  /** e.g. "baron.li · Premium". */
-  accountLabel?: string;
-  /** True for mock adapters, so the UI never shows them as a real account. */
-  isMock: boolean;
-};
+export type ConnectionStatus = ConnectionState['status'];
 
-export type PlaybackState = {
+/**
+ * What the local player is doing. This is the adapter's view of one device;
+ * the room's shared `PlaybackState` (src/domain/playback.ts) is what the host
+ * reports to the server.
+ */
+export type PlayerState = {
   status: 'idle' | 'playing' | 'paused';
   track: ProviderTrack | null;
   positionMs: number;
@@ -59,11 +76,25 @@ export interface PlaybackAdapter {
   provider: MusicProvider;
   capabilities(): PlaybackCapabilities;
   connect(): Promise<ConnectionState>;
+  /** Loads a track without starting audio. `play` starts it. */
   prepare(track: ProviderTrack, startPositionMs?: number): Promise<void>;
   play(): Promise<void>;
   pause(): Promise<void>;
   seek(positionMs: number): Promise<void>;
   enqueue(tracks: ProviderTrack[]): Promise<void>;
-  getState(): Promise<PlaybackState>;
+  getState(): Promise<PlayerState>;
   disconnect(): Promise<void>;
 }
+
+/** Stable codes for `ProviderError`. */
+export type ProviderErrorCode =
+  /** The real Apple Music or Spotify adapter isn't part of this build yet. */
+  | 'not_in_this_build'
+  /** No such track or playlist. */
+  | 'not_found'
+  /** Not an Apple Music or Spotify link q’d understands. */
+  | 'unsupported_link'
+  /** The track belongs to a different provider than the player. */
+  | 'wrong_provider'
+  /** An argument is out of range, e.g. a negative seek position. */
+  | 'invalid_argument';

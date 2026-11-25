@@ -17,6 +17,7 @@ import {
 } from './queue';
 import {
   canonicalRecordingSchema,
+  formatArtists,
   providerTrackSchema,
   trackMatchSchema,
   type CanonicalRecording,
@@ -74,6 +75,7 @@ const track = {
   providerTrackId: '1440857781',
   title: 'Rain Down',
   artists: ['Delerium', 'Sarah McLachlan'],
+  album: 'Karma',
   durationMs: 225_400,
   isrc: 'CAA019700123',
   explicit: false,
@@ -205,13 +207,14 @@ const cases: Case[] = [
     alsoValid: [
       [
         'a Spotify track with no color',
-        { provider: 'spotify', artworkBackgroundColor: null, isrc: null },
+        { provider: 'spotify', artworkBackgroundColor: null, isrc: null, album: null },
       ],
     ],
     invalid: [
       ['an empty provider id', { providerTrackId: '' }],
       ['an unknown provider', { provider: 'tidal' }],
       ['a missing artwork url', { artworkUrl: undefined }],
+      ['a missing album', { album: undefined }],
     ],
   },
   {
@@ -369,5 +372,15 @@ describe('primitives', () => {
     ['7K4 F9', false],
   ])('room code %s → %s', (value, ok) => {
     expect(roomCodeSchema.safeParse(value).success).toBe(ok);
+  });
+});
+
+describe('formatArtists', () => {
+  it.each([
+    [['Delerium'], 'Delerium'],
+    [['Delerium', 'Sarah McLachlan'], 'Delerium, Sarah McLachlan'],
+    [[], ''],
+  ])('%p → %p', (artists, line) => {
+    expect(formatArtists(artists)).toBe(line);
   });
 });

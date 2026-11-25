@@ -268,9 +268,15 @@ interface PlaybackAdapter {
   pause(): Promise<void>;
   seek(positionMs: number): Promise<void>;
   enqueue(tracks: ProviderTrack[]): Promise<void>;
-  getState(): Promise<PlaybackState>;
+  getState(): Promise<PlayerState>;
   disconnect(): Promise<void>;
 }
+
+type PlayerState = {            // this device's player, not the room's PlaybackState (§6)
+  status: 'idle' | 'playing' | 'paused';
+  track: ProviderTrack | null;
+  positionMs: number;
+};
 
 type PlaybackCapabilities = {
   inAppAudio: boolean;          // Apple: true. Spotify: false (the Spotify app plays).
@@ -280,13 +286,43 @@ type PlaybackCapabilities = {
   isMock: boolean;              // true only for mock adapters; the UI labels them
 };
 
-type ConnectionState =
-  | { status: 'connected' }
+type ConnectionState = { isMock: boolean } & (  // isMock: the UI labels mock connections
+  | { status: 'connected'; accountLabel?: string }
   | { status: 'needs_authorization' }
   | { status: 'needs_subscription' }   // e.g. no Apple Music subscription or Spotify Premium
   | { status: 'app_not_installed' }    // Spotify
-  | { status: 'error'; code: string };
+  | { status: 'error'; code: ProviderErrorCode }
+);
+
+type CatalogResult = { track: ProviderTrack; availableOn: MusicProvider[] };
+type ProviderEntity =
+  | { kind: 'track'; track: ProviderTrack }
+  | { kind: 'playlist'; provider: MusicProvider; playlistId: string };
+type PlaylistPage = {
+  provider: MusicProvider;
+  playlistId: string;
+  name: string;
+  tracks: ProviderTrack[];
+  nextCursor: string | null;
+};
+
+type ProviderErrorCode =
+  | 'not_in_this_build'  // the real adapter isn't in this build yet
+  | 'not_found'
+  | 'unsupported_link'   // not an Apple Music or Spotify link q’d reads
+  | 'wrong_provider'     // e.g. a Spotify track given to the Apple player
+  | 'invalid_argument';  // e.g. a negative seek position
 ```
+
+**Built (provider adapters card)** in `src/providers`: the interfaces (`types.ts`), `ProviderError` (`errors.ts`), the share-link parser (`links.ts`), the mocks (`mock/`), and Apple Music and Spotify stubs (`apple/`, `spotify/`, `unavailable.ts`). Changes from the sketch above, marked here for review:
+
+- **`getState` returns `PlayerState`,** not `PlaybackState`. The adapter knows one device's player; `PlaybackState` (§6) is the room's state the host reports, with a room and entry id the adapter doesn't have.
+- **`ConnectionState` carries `isMock`,** and a connected state may carry an `accountLabel`. The error `code` is a `ProviderErrorCode`.
+- **`ProviderTrack` gained `album`** (§6), because matching scores album context.
+- **`getPlaylist` takes an optional cursor** for the next page.
+- **Mocks claim no capability.** They play no audio, so every capability is `false` and `isMock` is `true`.
+- **The Apple Music and Spotify adapters are stubs** until their cards land and are tested on an iPhone. `connect` returns `{ status: 'error', code: 'not_in_this_build', isMock: false }`, every other call rejects with that code, they claim no capability, and `disconnect` resolves (nothing to undo). The app still uses the mocks, because `mock` is the only data mode.
+- The shared contract suite is `src/test/providerContract.ts`. `src/providers/contract.test.ts` runs it against the mocks and both stubs.
 
 **Rules every adapter follows** (the shared contract test suite checks these):
 
@@ -347,6 +383,7 @@ type ProviderTrack = {
   providerTrackId: string;
   title: string;
   artists: string[];
+  album: string | null;           // Added (provider adapters card): matching scores album context
   durationMs: number;
   isrc: string | null;
   explicit: boolean;

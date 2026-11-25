@@ -1,12 +1,20 @@
 import type { MusicProvider } from '@/domain/music-provider';
+import type { PlaybackCapabilities } from '@/domain/playback';
 
-import type {
-  ConnectionState,
-  PlaybackAdapter,
-  PlaybackCapabilities,
-  PlaybackState,
-  ProviderTrack,
-} from '../types';
+import { ProviderError } from '../errors';
+import type { ConnectionState, PlaybackAdapter, PlayerState, ProviderTrack } from '../types';
+
+/**
+ * A mock plays no audio, so it claims no real capability. `isMock` lets the UI
+ * label it, and it never stands in for what Apple Music or Spotify can do.
+ */
+export const mockCapabilities: PlaybackCapabilities = Object.freeze({
+  inAppAudio: false,
+  backgroundPlayback: false,
+  requiresExternalApp: false,
+  autoplay: false,
+  isMock: true,
+});
 
 /**
  * A pretend player for web, Windows and tests. It keeps time with a clock you
@@ -16,7 +24,7 @@ import type {
 export class MockPlaybackAdapter implements PlaybackAdapter {
   private queue: ProviderTrack[] = [];
   private track: ProviderTrack | null = null;
-  private status: PlaybackState['status'] = 'idle';
+  private status: PlayerState['status'] = 'idle';
   /** Position when playback last started, paused or seeked. */
   private baseMs = 0;
   /** Clock time when playback last started or seeked while playing. */
@@ -28,15 +36,17 @@ export class MockPlaybackAdapter implements PlaybackAdapter {
   ) {}
 
   capabilities(): PlaybackCapabilities {
-    const apple = this.provider === 'apple_music';
-    return { canSeek: true, playsInsideApp: apple, backgroundPlayback: apple };
+    return { ...mockCapabilities };
   }
 
   async connect(): Promise<ConnectionState> {
     return { status: 'connected', accountLabel: 'Mock account', isMock: true };
   }
 
+  /** Loads the track paused. It never starts audio; `play` does. */
   async prepare(track: ProviderTrack, startPositionMs = 0) {
+    this.check(track);
+    this.checkPosition(startPositionMs);
     this.track = track;
     this.status = 'paused';
     this.baseMs = this.clamp(startPositionMs);
@@ -59,16 +69,18 @@ export class MockPlaybackAdapter implements PlaybackAdapter {
   }
 
   async seek(positionMs: number) {
+    this.checkPosition(positionMs);
     this.advance();
     this.baseMs = this.clamp(positionMs);
     this.startedAt = this.now();
   }
 
   async enqueue(tracks: ProviderTrack[]) {
+    tracks.forEach((track) => this.check(track));
     this.queue.push(...tracks);
   }
 
-  async getState(): Promise<PlaybackState> {
+  async getState(): Promise<PlayerState> {
     this.advance();
     return { status: this.status, track: this.track, positionMs: this.position() };
   }
@@ -80,12 +92,25 @@ export class MockPlaybackAdapter implements PlaybackAdapter {
     this.baseMs = 0;
   }
 
+  /** A player only plays its own provider's tracks. */
+  private check(track: ProviderTrack) {
+    if (track.provider !== this.provider) {
+      throw new ProviderError('wrong_provider', this.provider, 'Track is from another provider');
+    }
+  }
+
+  private checkPosition(positionMs: number) {
+    if (!Number.isFinite(positionMs) || positionMs < 0) {
+      throw new ProviderError('invalid_argument', this.provider, 'Position must be ms ≥ 0');
+    }
+  }
+
   private position() {
     return this.status === 'playing' ? this.baseMs + (this.now() - this.startedAt) : this.baseMs;
   }
 
   private clamp(positionMs: number) {
-    return Math.min(Math.max(positionMs, 0), this.track?.durationMs ?? 0);
+    return Math.min(Math.round(positionMs), this.track?.durationMs ?? 0);
   }
 
   /** Roll over to the next song for any time spent past the end of the current one. */

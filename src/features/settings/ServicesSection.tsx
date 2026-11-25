@@ -15,7 +15,10 @@ const hints: Record<MusicProvider, string> = {
 };
 
 /** A mock connection says so, so it's never mistaken for a real account. */
-function describe(provider: MusicProvider, connection: ConnectionState | undefined) {
+function describe(
+  provider: MusicProvider,
+  connection: Extract<ConnectionState, { status: 'connected' }> | undefined,
+) {
   if (!connection) return hints[provider];
   if (connection.isMock) return `Mock connection · no ${providerNames[provider]} account used`;
   return connection.accountLabel ?? 'Connected';

@@ -1,18 +1,18 @@
 import { useCallback, useEffect, useState } from 'react';
 
-import type { PlaybackAdapter, PlaybackState } from '@/providers';
+import type { PlaybackAdapter, PlayerState } from '@/providers';
 
 const POLL_MS = 500;
 
 /** What the playback hook needs from a player. */
 export type PlayerControls = Pick<PlaybackAdapter, 'getState' | 'play' | 'pause' | 'seek'>;
 
-const idle: PlaybackState = { status: 'idle', track: null, positionMs: 0 };
+const idle: PlayerState = { status: 'idle', track: null, positionMs: 0 };
 
 /** A player's state, refreshed twice a second, plus play/pause and seek. */
 export function usePlayback(player: PlayerControls | null) {
   // Tagged with its player, so switching rooms never shows the old room's state.
-  const [snapshot, setSnapshot] = useState<{ player: PlayerControls; state: PlaybackState }>();
+  const [snapshot, setSnapshot] = useState<{ player: PlayerControls; state: PlayerState }>();
 
   const refresh = useCallback(async () => {
     if (!player) return;
