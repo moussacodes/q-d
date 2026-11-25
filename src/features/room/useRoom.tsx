@@ -102,10 +102,14 @@ function useRooms() {
 }
 
 function playerFor({ store, players }: Rooms, ref: RoomRef, room: MockRoom) {
-  const key = roomKey(ref);
+  // The service the room plays through as this view shows it: the `apple`
+  // preview shares the room's queue but plays through Apple Music, so it
+  // needs its own player, or it would decide what plays with Spotify's matches.
+  const { playsThrough } = previewRoom(room, ref.view);
+  const key = `${roomKey(ref)}@${playsThrough}`;
   let player = players.get(key);
   if (!player) {
-    player = new RoomPlayer(createPlayback(room.playsThrough), (entryId) =>
+    player = new RoomPlayer(createPlayback(playsThrough), (entryId) =>
       store.advance(ref, entryId, 'ended'),
     );
     players.set(key, player);
