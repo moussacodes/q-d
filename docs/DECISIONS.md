@@ -2,6 +2,15 @@
 
 Product and technical decisions that are not obvious from the code. Newest first.
 
+## 2026-11-24 · Settings: music services and account
+
+- **Settings can disconnect a service** (PRODUCT_SPEC.md §3: connect, change and disconnect). In Settings a connected service shows **Disconnect** where the other screens show the Connected chip. Onboarding step 2 and Start a room still only connect. Disconnecting the service rooms play through hands "Play rooms through" to the other one, or hides it when none is left, so Start a room asks for a service again. Mock only: the real flow also has to revoke the provider authorization and remove the `provider_connections` row, which `API_CONTRACTS.md` doesn't cover yet. That's for the provider and RPC cards.
+- **Only Apple Music and Spotify appear.** Figma's "YouTube Music · Ready" is illustrative copy, and tests check that no other service, "Ready" or "Soon" appears.
+- **"Change your color" works.** It opens onboarding step 1's six swatches, and a pick is saved at once. "Done" closes them.
+- **"Delete account" says it isn't available yet** instead of looking like a link that does nothing. Account deletion (PRODUCT_SPEC.md §7) needs Supabase and comes before the public beta.
+- **A blank display name shows "You"** in the header while you type. As before, it isn't saved.
+- A person still compares both tabs with Figma `20 · Mobile`.
+
 ## 2026-11-24 · Empty queue and unavailable song states
 
 - **"Switch for next song" appears only when the host has connected the other service** (PRODUCT_SPEC.md §6). Without it, the 4.3 notice asks the host to skip ("Skip it to keep the room going.") and no longer offers a switch the host can't make. The button still does nothing; switching is the provider-switching card.
