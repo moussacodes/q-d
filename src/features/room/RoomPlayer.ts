@@ -1,4 +1,4 @@
-import type { PlaybackAdapter, PlaybackState } from '@/providers';
+import type { PlaybackAdapter, PlayerState } from '@/providers';
 import { toProviderTrack } from '@/providers/mock/catalog';
 
 import type { RoomEntry } from './roomStore';
@@ -27,7 +27,10 @@ export class RoomPlayer {
     this.loaded = id;
     this.started = null;
     if (entry) {
-      await this.player.prepare(toProviderTrack(entry), startAtMs);
+      // The room's service plays the song. Mock fixtures stand in for the
+      // provider track that matching resolves once the real adapters land.
+      const track = { ...toProviderTrack(entry), provider: this.player.provider };
+      await this.player.prepare(track, startAtMs);
       if (this.loaded !== id) return;
       await this.player.play();
     } else {
@@ -37,7 +40,7 @@ export class RoomPlayer {
   }
 
   /** The player's state. The first read after the song ends reports the end, once. */
-  async getState(): Promise<PlaybackState> {
+  async getState(): Promise<PlayerState> {
     const started = this.started;
     const state = await this.player.getState();
     if (started && started === this.started && state.status === 'idle') {

@@ -15,7 +15,9 @@ import { createPlayback, type ConnectionState } from '@/providers';
  * `provider_connections` rows and secure storage replace this state.
  */
 
-type Connections = Partial<Record<MusicProvider, ConnectionState>>;
+/** Only connected services are kept. */
+type Connected = Extract<ConnectionState, { status: 'connected' }>;
+type Connections = Partial<Record<MusicProvider, Connected>>;
 
 /** Display order. Only Apple Music and Spotify are supported (plan.md §2). */
 export const supportedProviders: readonly MusicProvider[] = ['spotify', 'apple_music'];
@@ -69,6 +71,7 @@ export function ProviderConnectionsProvider({ children }: { children: ReactNode 
       playsThrough,
       connect: async (provider) => {
         const connection = await createPlayback(provider).connect();
+        if (connection.status !== 'connected') return;
         update((current) => ({
           ...current,
           connections: { ...current.connections, [provider]: connection },

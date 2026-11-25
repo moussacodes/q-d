@@ -6,10 +6,13 @@ const track = (id: string, durationMs: number): ProviderTrack => ({
   provider: 'spotify',
   providerTrackId: id,
   title: id,
-  artist: 'Artist',
+  artists: ['Artist'],
   album: 'Album',
   durationMs,
+  isrc: null,
   explicit: false,
+  artworkUrl: null,
+  artworkBackgroundColor: null,
 });
 
 describe('MockPlaybackAdapter', () => {
@@ -58,8 +61,62 @@ describe('MockPlaybackAdapter', () => {
     expect(await player.getState()).toEqual({ status: 'idle', track: null, positionMs: 0 });
   });
 
-  it('only plays inside q’d for Apple Music', () => {
-    expect(new MockPlaybackAdapter('apple_music').capabilities().playsInsideApp).toBe(true);
-    expect(new MockPlaybackAdapter('spotify').capabilities().playsInsideApp).toBe(false);
+  it('is labeled a mock and claims no real capability, for either provider', () => {
+    for (const provider of ['apple_music', 'spotify'] as const) {
+      expect(new MockPlaybackAdapter(provider).capabilities()).toEqual({
+        inAppAudio: false,
+        backgroundPlayback: false,
+        requiresExternalApp: false,
+        autoplay: false,
+        isMock: true,
+      });
+    }
+  });
+
+  it('rounds a fractional position to whole milliseconds', async () => {
+    const player = new MockPlaybackAdapter('spotify', clock);
+    await player.prepare(track('a', 10_000), 1_234.6);
+    expect((await player.getState()).positionMs).toBe(1_235);
+  });
+
+  it('pausing twice or playing twice changes nothing', async () => {
+    const player = new MockPlaybackAdapter('spotify', clock);
+    await player.prepare(track('a', 10_000));
+    await player.play();
+    now = 1_000;
+    await player.play();
+    now = 2_000;
+    await player.pause();
+    await player.pause();
+    expect(await player.getState()).toMatchObject({ status: 'paused', positionMs: 2_000 });
+  });
+
+  it('is deterministic: the same calls at the same times give the same states', async () => {
+    const run = async () => {
+      let time = 0;
+      const player = new MockPlaybackAdapter('apple_music', () => time);
+      const states = [];
+      await player.prepare({ ...track('a', 10_000), provider: 'apple_music' }, 2_000);
+      await player.enqueue([{ ...track('b', 4_000), provider: 'apple_music' }]);
+      await player.play();
+      for (const step of [3_000, 4_000, 2_500, 1_000]) {
+        time += step;
+        states.push(await player.getState());
+      }
+      await player.seek(500);
+      states.push(await player.getState());
+      return states;
+    };
+    const first = await run();
+    expect(await run()).toEqual(first);
+    expect(
+      first.map((state) => [state.status, state.track?.providerTrackId, state.positionMs]),
+    ).toEqual([
+      ['playing', 'a', 5_000],
+      ['playing', 'a', 9_000],
+      ['playing', 'b', 1_500],
+      ['playing', 'b', 2_500],
+      ['playing', 'b', 500],
+    ]);
   });
 });

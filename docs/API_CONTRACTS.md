@@ -186,6 +186,8 @@ Moves the room to the next song when the current one ends, is skipped, or isn't 
 - **Input:** `room_id uuid`, `recording_id uuid`, `provider`, `provider_track_id text`, `idempotency_key uuid`
 - **Effect:** stores a `track_match_overrides` row with who changed it and when, and uses it for this room from then on.
 
+**Built (matching card):** the server stores what `matchRecording` in `src/domain/matching` decides. Its `match` is a `TrackMatch` (§6): `method: 'isrc' | 'score' | 'override'`, `confidence` 0–100, and `warning` set whenever the match isn't automatic. An unavailable recording has `providerTrackId: null` and `confidence: 0`.
+
 ### Account
 
 #### `delete_account` (Edge Function)
@@ -241,6 +243,7 @@ type RoomPresence = {
 
 - `v` increases only for a breaking change to an envelope. A client that sees an unknown `type` or a newer `v` ignores the payload and refetches.
 - Add new event types instead of changing the meaning of old ones.
+- **Built (domain types card):** `parseRoomEvent(payload, expectedRoomId?)` and `parseRoomPresence(payload)` in `src/domain/realtime.ts`. They never throw. They return `{ ok: true, value }` or `{ ok: false, reason, issues }`, where `reason` is `unsupported_version` (any `v` other than 1), `unknown_type`, `wrong_room` (the event names another room than the channel's) or `invalid`. `issues` holds field paths and Zod issue codes only, never payload values, so it's safe to log. Every `ok: false` means "ignore it and refetch". Unknown extra fields are stripped, so nothing personal that a payload carries by mistake reaches the app.
 
 ## 5. Provider adapters
 
@@ -267,9 +270,15 @@ interface PlaybackAdapter {
   pause(): Promise<void>;
   seek(positionMs: number): Promise<void>;
   enqueue(tracks: ProviderTrack[]): Promise<void>;
-  getState(): Promise<PlaybackState>;
+  getState(): Promise<PlayerState>;
   disconnect(): Promise<void>;
 }
+
+type PlayerState = {            // this device's player, not the room's PlaybackState (§6)
+  status: 'idle' | 'playing' | 'paused';
+  track: ProviderTrack | null;
+  positionMs: number;
+};
 
 type PlaybackCapabilities = {
   inAppAudio: boolean;          // Apple: true. Spotify: false (the Spotify app plays).
@@ -279,13 +288,43 @@ type PlaybackCapabilities = {
   isMock: boolean;              // true only for mock adapters; the UI labels them
 };
 
-type ConnectionState =
-  | { status: 'connected' }
+type ConnectionState = { isMock: boolean } & (  // isMock: the UI labels mock connections
+  | { status: 'connected'; accountLabel?: string }
   | { status: 'needs_authorization' }
   | { status: 'needs_subscription' }   // e.g. no Apple Music subscription or Spotify Premium
   | { status: 'app_not_installed' }    // Spotify
-  | { status: 'error'; code: string };
+  | { status: 'error'; code: ProviderErrorCode }
+);
+
+type CatalogResult = { track: ProviderTrack; availableOn: MusicProvider[] };
+type ProviderEntity =
+  | { kind: 'track'; track: ProviderTrack }
+  | { kind: 'playlist'; provider: MusicProvider; playlistId: string };
+type PlaylistPage = {
+  provider: MusicProvider;
+  playlistId: string;
+  name: string;
+  tracks: ProviderTrack[];
+  nextCursor: string | null;
+};
+
+type ProviderErrorCode =
+  | 'not_in_this_build'  // the real adapter isn't in this build yet
+  | 'not_found'
+  | 'unsupported_link'   // not an Apple Music or Spotify link q’d reads
+  | 'wrong_provider'     // e.g. a Spotify track given to the Apple player
+  | 'invalid_argument';  // e.g. a negative seek position
 ```
+
+**Built (provider adapters card)** in `src/providers`: the interfaces (`types.ts`), `ProviderError` (`errors.ts`), the share-link parser (`links.ts`), the mocks (`mock/`), and Apple Music and Spotify stubs (`apple/`, `spotify/`, `unavailable.ts`). Changes from the sketch above, marked here for review:
+
+- **`getState` returns `PlayerState`,** not `PlaybackState`. The adapter knows one device's player; `PlaybackState` (§6) is the room's state the host reports, with a room and entry id the adapter doesn't have.
+- **`ConnectionState` carries `isMock`,** and a connected state may carry an `accountLabel`. The error `code` is a `ProviderErrorCode`.
+- **`ProviderTrack` gained `album`** (§6), because matching scores album context.
+- **`getPlaylist` takes an optional cursor** for the next page.
+- **Mocks claim no capability.** They play no audio, so every capability is `false` and `isMock` is `true`.
+- **The Apple Music and Spotify adapters are stubs** until their cards land and are tested on an iPhone. `connect` returns `{ status: 'error', code: 'not_in_this_build', isMock: false }`, every other call rejects with that code, they claim no capability, and `disconnect` resolves (nothing to undo). The app still uses the mocks, because `mock` is the only data mode.
+- The shared contract suite is `src/test/providerContract.ts`. `src/providers/contract.test.ts` runs it against the mocks and both stubs.
 
 **Rules every adapter follows** (the shared contract test suite checks these):
 
@@ -297,6 +336,14 @@ type ConnectionState =
 ## 6. Shared domain types
 
 These are sketches. The domain types card writes them as Zod schemas in `src/domain`, and the TypeScript types are inferred from them.
+
+**Built (domain types card).** Every type below is a Zod schema in `src/domain` (`room.ts`, `recording.ts`, `queue.ts`, `playback.ts`, with `MusicProvider` and `PlaybackMode` in `music-provider.ts`), and `PlaybackCapabilities` from § 5 is in `playback.ts`. What the sketches left open, the schemas pin down:
+
+- IDs are UUIDs and times are ISO 8601 with `Z` or an offset (Postgres `timestamptz`). Durations, positions and counts are non-negative integers. `QueueEntry.position` is any number, because the position representation is still open ([ARCHITECTURE.md, open decision 3](ARCHITECTURE.md#open-technical-decisions)).
+- `Room.code` is the six stored characters, uppercase letters and digits, without `QD-`. The character set is still an open question, so the schema only checks the length and case.
+- ISRCs are stored in their compact uppercase form (`USRC17607839`). Version tags are lowercase snake case (`sped_up`).
+- `PlaylistImportBatch` rejects `addedCount + skippedCount > itemCount`. `PlaybackSlot.slot` is 1–15.
+- Unknown extra fields are stripped, so adding a column doesn't break older clients.
 
 ```ts
 type Room = {
@@ -338,6 +385,7 @@ type ProviderTrack = {
   providerTrackId: string;
   title: string;
   artists: string[];
+  album: string | null;           // Added (provider adapters card): matching scores album context
   durationMs: number;
   isrc: string | null;
   explicit: boolean;

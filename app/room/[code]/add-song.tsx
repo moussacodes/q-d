@@ -17,6 +17,7 @@ import {
 } from '@/components';
 import { useTheme } from '@/design';
 import { providerNames, type MusicProvider } from '@/domain/music-provider';
+import { formatArtists } from '@/domain/recording';
 import { formatDuration } from '@/domain/time';
 import { useRoom, type RoomView } from '@/features/room/useRoom';
 import { useCatalogSearch, type SearchResult } from '@/features/search/useCatalogSearch';
@@ -164,7 +165,9 @@ export default function AddSongSheet() {
                     {track.title}
                   </Text>
                   <Text variant="caption" color="text2" numberOfLines={1}>
-                    {track.artist} · {track.album} · {formatDuration(track.durationMs)}
+                    {[formatArtists(track.artists), track.album, formatDuration(track.durationMs)]
+                      .filter(Boolean)
+                      .join(' · ')}
                   </Text>
                   <View style={styles.availability}>
                     <View
