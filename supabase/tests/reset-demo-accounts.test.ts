@@ -578,4 +578,194 @@ describe('end_room through the shared helper', () => {
       db.query('select private.close_room($1, $2)', [room.roomId, host.id]),
     ).rejects.toThrow(/already ended/);
   });
+
+  it('keeps security definer, the pinned search_path and its grants after the replace', async () => {
+    const [fn] = await db.query(
+      `select p.prosecdef as definer, array_to_string(p.proconfig, ',') as config,
+              has_function_privilege('anon', p.oid, 'execute') as anon,
+              has_function_privilege('authenticated', p.oid, 'execute') as authenticated,
+              (select bool_or(acl.grantee = 0) from aclexplode(p.proacl) acl) as public
+         from pg_proc p
+        where p.oid = 'public.end_room(uuid, uuid)'::regprocedure`,
+    );
+    expect(fn).toEqual({
+      definer: true,
+      config: 'search_path=""',
+      anon: false,
+      authenticated: true,
+      public: false,
+    });
+  });
+
+  it('close_room is a plain helper: not security definer, search_path pinned', async () => {
+    const [fn] = await db.query(
+      `select p.prosecdef as definer, array_to_string(p.proconfig, ',') as config
+         from pg_proc p where p.oid = 'private.close_room(uuid, uuid)'::regprocedure`,
+    );
+    expect(fn).toEqual({ definer: false, config: 'search_path=""' });
+  });
+
+  it('a replay after the room ended returns the first result and broadcasts once', async () => {
+    const { host } = await cast();
+    const room = await createRoom(host);
+    const key = newKey();
+    const args = { room_id: room.roomId, idempotency_key: key };
+    const first = await db.as(host).rpc('end_room', args);
+    expect(await db.as(host).rpc('end_room', args)).toEqual(first);
+    expect(await endedBroadcasts(room.roomId)).toHaveLength(1);
+    await expect(
+      db.as(host).rpc('end_room', { room_id: room.roomId, idempotency_key: newKey() }),
+    ).rejects.toMatchObject({ code: 'room_ended' });
+  });
+});
+
+describe('reset_demo_accounts: nothing else changes', () => {
+  /** Tables the reset may write to. Every other table must come out identical. */
+  const WRITABLE = new Set([
+    'public.rooms',
+    'public.playback_states',
+    'public.room_invites',
+    'public.queue_entries',
+    'public.playlist_import_batches',
+    'public.room_members',
+    'public.room_rule_members',
+    'public.playback_slots',
+    'public.idempotency_keys',
+    'private.join_attempts',
+    'realtime.messages',
+  ]);
+
+  /** One fingerprint per table: its rows as text, sorted. */
+  async function fingerprints() {
+    const tables = await db.query<{ name: string }>(
+      `select n.nspname || '.' || c.relname as name
+         from pg_class c join pg_namespace n on n.oid = c.relnamespace
+        where c.relkind in ('r', 'p') and n.nspname in ('public', 'private', 'auth', 'realtime')
+        order by 1`,
+    );
+    const out: Record<string, string> = {};
+    for (const { name } of tables) {
+      const [row] = await db.query<{ fp: string }>(
+        `select md5(coalesce(string_agg(t::text, '|' order by t::text), '')) as fp from ${name} t`,
+      );
+      out[name] = row.fp;
+    }
+    return out;
+  }
+
+  /** Every row of these rooms and users, as text. */
+  const slice = (roomIds: string[], userIds: string[]) =>
+    db.query(
+      `select 'room' as t, r::text as row from public.rooms r where r.id = any($1::uuid[])
+       union all select 'member', m::text from public.room_members m
+        where m.room_id = any($1::uuid[]) or m.user_id = any($2::uuid[])
+       union all select 'rule', x::text from public.room_rule_members x
+        where x.room_id = any($1::uuid[]) or x.user_id = any($2::uuid[])
+       union all select 'slot', s::text from public.playback_slots s
+        where s.room_id = any($1::uuid[]) or s.user_id = any($2::uuid[])
+       union all select 'queue', e::text from public.queue_entries e
+        where e.room_id = any($1::uuid[])
+       union all select 'batch', b::text from public.playlist_import_batches b
+        where b.room_id = any($1::uuid[])
+       union all select 'invite', i::text from public.room_invites i
+        where i.room_id = any($1::uuid[])
+       union all select 'playback', p::text from public.playback_states p
+        where p.room_id = any($1::uuid[])
+       union all select 'key', k::text from public.idempotency_keys k
+        where k.user_id = any($2::uuid[])
+       union all select 'attempt', a::text from private.join_attempts a
+        where a.user_id = any($2::uuid[])
+       order by 1, 2`,
+      [roomIds, userIds],
+    );
+
+  it('writes only its tables, and nothing of a bystander’s room or account', async () => {
+    const { host, guest, other } = await cast();
+    const demoRoom = await busyRoom(host, guest);
+    const otherRoom = await busyRoom(other, guest);
+    const otherOnly = await createRoom(other);
+    // A chosen-people rule and a (beta) slot in both shared rooms, so the
+    // membership cascades run on each side.
+    for (const r of [
+      { roomId: demoRoom.roomId, owner: host },
+      { roomId: otherRoom.roomId, owner: other },
+    ]) {
+      await db.query(
+        `insert into public.room_rule_members (room_id, rule, user_id) values ($1, 'control', $2)`,
+        [r.roomId, guest.id],
+      );
+      await db.query(
+        `insert into public.playback_slots (room_id, slot, user_id, provider)
+         values ($1, 1, $2, 'spotify')`,
+        [r.roomId, r.owner.id],
+      );
+    }
+    await db.query(
+      `update public.playback_states p set entry_id = e.id, status = 'playing'
+         from public.queue_entries e
+        where p.room_id = $1 and e.room_id = $1 and e.status = 'playing'`,
+      [demoRoom.roomId],
+    );
+    await wrongGuess(other);
+    const before = await fingerprints();
+    const bystander = await slice([otherRoom.roomId, otherOnly.roomId], [other.id]);
+
+    await reset([host, guest], true);
+
+    const after = await fingerprints();
+    const changed = Object.keys(after).filter((name) => after[name] !== before[name]);
+    expect(changed.filter((name) => !WRITABLE.has(name))).toEqual([]);
+    expect(await slice([otherRoom.roomId, otherOnly.roomId], [other.id])).toEqual(bystander);
+
+    const [demo] = await db.query(
+      `select (select count(*)::int from public.room_rule_members where room_id = $1) as rules,
+              (select count(*)::int from public.playback_slots where room_id = $1) as slots,
+              (select entry_id from public.playback_states where room_id = $1) as entry`,
+      [demoRoom.roomId],
+    );
+    expect(demo).toEqual({ rules: 0, slots: 0, entry: null });
+  });
+
+  it('a dry run writes nothing anywhere, broadcasts included', async () => {
+    const { host, guest } = await cast();
+    await busyRoom(host, guest);
+    await wrongGuess(guest);
+    const before = await fingerprints();
+    await reset([host, guest]);
+    expect(await fingerprints()).toEqual(before);
+  });
+
+  it('a refused call writes nothing anywhere', async () => {
+    const { host } = await cast();
+    await createRoom(host);
+    const before = await fingerprints();
+    await expect(reset([host, newKey()], true)).rejects.toMatchObject({ code: 'invalid_input' });
+    expect(await fingerprints()).toEqual(before);
+  });
+
+  it('a demo host who is a guest in someone else’s room keeps that membership', async () => {
+    const { host, other } = await cast();
+    const otherRoom = await createRoom(other);
+    await join(host, otherRoom.code);
+    const result = await reset([host], true);
+    expect(result.memberships_elsewhere).toBe(1);
+    expect(await roomState(otherRoom.roomId)).toMatchObject({ state: 'live', members: 2 });
+  });
+
+  it('memberships in ended rooms other people host are not reported', async () => {
+    const { host, guest, other } = await cast();
+    const otherRoom = await createRoom(other);
+    await join(guest, otherRoom.code);
+    await db.as(other).rpc('end_room', { room_id: otherRoom.roomId, idempotency_key: newKey() });
+    expect((await reset([host, guest])).memberships_elsewhere).toBe(0);
+  });
+
+  it('a bystander’s key used in the demo room is kept, so its replay still answers', async () => {
+    const { host, guest, other } = await cast();
+    const room = await busyRoom(host, guest);
+    const args = { code: room.code, idempotency_key: newKey() };
+    const first = await db.as(other).rpc('join_room_by_code', args);
+    await reset([host, guest], true);
+    expect(await db.as(other).rpc('join_room_by_code', args)).toEqual(first);
+  });
 });

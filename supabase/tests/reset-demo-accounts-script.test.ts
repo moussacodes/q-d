@@ -371,6 +371,14 @@ describe('describeError', () => {
     expect(text).not.toContain(HOST_ID);
   });
 
+  it('treats a "qd" body whose message isn’t a code as server text, and never prints it', () => {
+    for (const message of [`duplicate key ${HOST_ID}`, 'NOT_A_CODE', '', 42, null]) {
+      const error = new RequestError(400, { hint: 'qd', message, details: null });
+      expect(error.qdCode).toBeUndefined();
+      expect(describeError(error)).toBe('The request failed (HTTP 400).');
+    }
+  });
+
   it('copes with a body that isn’t JSON', () => {
     expect(new RequestError(502, null).message).toBe('HTTP 502');
     expect(
@@ -394,6 +402,19 @@ describe('main', () => {
       headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' },
       body: { user_ids: [HOST_ID, GUEST_ID], apply: false },
     });
+  });
+
+  it('never follows a redirect, so the key can’t be sent elsewhere', async () => {
+    const inits: { redirect?: string }[] = [];
+    const { fetch } = fakeSupabase({ users: [{ id: GUEST_ID, email: GUEST_EMAIL }] });
+    const spy: FetchLike = async (url, init) => {
+      inits.push(init);
+      return fetch(url, init);
+    };
+    const env = baseEnv({ QD_DEMO_EMAILS: GUEST_EMAIL });
+    expect((await runScript(['--yes'], env, spy)).code).toBe(0);
+    expect(inits).toHaveLength(2);
+    for (const init of inits) expect(init.redirect).toBe('error');
   });
 
   it('applies with --yes', async () => {
