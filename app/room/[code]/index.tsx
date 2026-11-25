@@ -31,6 +31,7 @@ import {
   TrackInfo,
   UpNextPeek,
 } from '@/features/room/RoomParts';
+import { ServiceMissingNotice } from '@/features/room/ServiceMissingNotice';
 import { UnavailableNotice } from '@/features/room/UnavailableNotice';
 import { roomParams, useRoom, type RoomView } from '@/features/room/useRoom';
 
@@ -46,10 +47,19 @@ import { roomParams, useRoom, type RoomView } from '@/features/room/useRoom';
  */
 export default function Room() {
   const params = useLocalSearchParams<{ code: string; view?: RoomView }>();
-  const { room, playback, isHost, canAdd, canControl, skip, moveUp, moveDown, remove } = useRoom(
-    params.code,
-    params.view,
-  );
+  const {
+    room,
+    playback,
+    isHost,
+    canAdd,
+    canControl,
+    canPlay,
+    serviceMissing,
+    skip,
+    moveUp,
+    moveDown,
+    remove,
+  } = useRoom(params.code, params.view);
   const track = room.nowPlaying;
   // 4.3: the song isn't on the service the host's phone plays through.
   // The host is asked to skip it; everyone else is told why it can't play.
@@ -148,6 +158,10 @@ export default function Room() {
             </View>
           )}
 
+          {serviceMissing && isHost ? (
+            <ServiceMissingNotice playsThrough={room.playsThrough} />
+          ) : null}
+
           {missing ? (
             <UnavailableNotice playsThrough={room.playsThrough} isHost={isHost} onSkip={skip} />
           ) : null}
@@ -157,6 +171,7 @@ export default function Room() {
               <Timeline positionMs={playback.positionMs} durationMs={playback.durationMs} />
               <Controls
                 canControl={canControl}
+                canPlay={canPlay}
                 playing={playback.playing}
                 repeat={repeat}
                 onTogglePlay={playback.togglePlay}

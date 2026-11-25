@@ -94,6 +94,7 @@ export function Timeline({ positionMs, durationMs }: { positionMs: number; durat
  */
 export function Controls({
   canControl,
+  canPlay = canControl,
   playing,
   repeat,
   onTogglePlay,
@@ -102,6 +103,8 @@ export function Controls({
   onToggleRepeat,
 }: {
   canControl: boolean;
+  /** Play and Pause, when the host's phone can't play right now. Defaults to `canControl`. */
+  canPlay?: boolean;
   playing: boolean;
   /** Repeat the current song when it ends. */
   repeat: boolean;
@@ -118,7 +121,7 @@ export function Controls({
         icon={playing ? 'pause' : 'play'}
         label={playing ? 'Pause' : 'Play'}
         big
-        disabled={!canControl}
+        disabled={!canPlay}
         onPress={onTogglePlay}
       />
       <ControlButton icon="skip" label="Skip" disabled={!canControl} onPress={onSkip} />

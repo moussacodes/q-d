@@ -2,6 +2,15 @@
 
 Product and technical decisions that are not obvious from the code. Newest first.
 
+## 2026-11-25 · Music-service settings: connect, change, disconnect
+
+- **A connect only counts once it worked.** A service shows as connected only when its adapter answers `connected`. While a connect runs, the card says "Connecting Spotify…" and its Connect button is disabled, so a second tap can't start another. A connect that fails or throws says "Couldn’t connect Spotify. Try again." and keeps Connect. Before, any answer from the adapter showed as connected. This applies wherever the service cards appear (onboarding step 2, Start a room, Settings).
+- **Disconnecting the service your live room plays through asks first.** In aux only the host's phone plays, so it would stop the room's music. Settings shows "Disconnect Spotify?" under the card: "Sunday Slow Burn plays through Spotify on this phone. Disconnecting pauses the music for everyone in the room. The room and its queue stay, and you can reconnect any time." with **Disconnect and pause** and **Keep connected**. Disconnecting any other service, or one while you're only a listener, happens at once as before.
+- **After that, the room holds.** The host's player pauses where it was and starts no other song, and Play is disabled in the room and the mini player. Only the host sees "Spotify isn’t connected" with **Reconnect Spotify**. Listeners see the music paused, which is all their phones would know. Reconnecting doesn't resume by itself; the host presses Play. Real mode reports the pause with `report_playback_state` once that exists.
+- **"Play rooms through" is for the next room.** While you host, Settings says "Sunday Slow Burn keeps playing through Spotify. This choice is for rooms you start next." A live room changes service only through the provider-switching prompt.
+- **Not merged: provider logos** (`feat/provider-logos`). Apple's and Spotify's brand guidelines limit how their marks may be recolored and placed, and nobody has checked the WIP against them yet, so the services keep their color dots.
+- Mock only. The real connect and disconnect (OAuth, revoking authorization, the `provider_connections` row) come with the provider cards. Figma not re-checked.
+
 ## 2026-11-24 · Settings: music services and account
 
 - **Settings can disconnect a service** (PRODUCT_SPEC.md §3: connect, change and disconnect). In Settings a connected service shows **Disconnect** where the other screens show the Connected chip. Onboarding step 2 and Start a room still only connect. Disconnecting the service rooms play through hands "Play rooms through" to the other one, or hides it when none is left, so Start a room asks for a service again. Mock only: the real flow also has to revoke the provider authorization and remove the `provider_connections` row, which `API_CONTRACTS.md` doesn't cover yet. That's for the provider and RPC cards.

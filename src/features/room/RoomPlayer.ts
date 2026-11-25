@@ -36,6 +36,25 @@ export class RoomPlayer {
     if (this.loaded === id) this.started = id;
   }
 
+  /**
+   * Stops the music without moving the room on, for when this phone can't
+   * play right now (its service was disconnected). The song that was playing
+   * pauses where it is; any other song isn't started. A later `load` of the
+   * paused song leaves it paused, so the music only resumes when the host
+   * presses Play.
+   */
+  async hold(entry: RoomEntry | null) {
+    const id = entry?.entryId ?? null;
+    // Only a song that finished loading can pause; one still loading is stopped.
+    if (id !== null && this.started === id) {
+      await this.player.pause();
+      return;
+    }
+    this.loaded = null;
+    this.started = null;
+    await this.player.disconnect();
+  }
+
   /** The player's state. The first read after the song ends reports the end, once. */
   async getState(): Promise<PlaybackState> {
     const started = this.started;

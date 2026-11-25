@@ -194,6 +194,7 @@ ESLint enforces these rules (`no-restricted-imports` in `eslint.config.js`), so 
 
 - **Rule:** Supabase Auth handles q’d accounts (Apple, Google, email). Connecting Apple Music or Spotify is a separate flow that stores tokens on the device in SecureStore. The database's `provider_connections` table holds connection metadata only, never plaintext credentials.
 - **Why:** most people in a room never play anything, so they never need a music service. Keeping the two flows separate lets guests skip it entirely, and it also keeps provider tokens out of the shared database.
+- **Built in mock mode:** Settings connects, changes and disconnects services (`features/connections`, `features/settings/ServicesSection`). A service counts as connected only when its adapter answers `connected`. Disconnecting the service a live hosted room plays through asks first and holds that room's player (`RoomPlayer.hold`) until the host reconnects. The real OAuth, revocation and `provider_connections` rows come with the provider cards.
 - Server-side provider secrets (for example an Apple developer signing key or a Spotify client secret) live only in Edge Function secrets, never in the app bundle. Anything named `EXPO_PUBLIC_*` ships inside the app and is public.
 
 ### 4.12 Server state vs. ephemeral state

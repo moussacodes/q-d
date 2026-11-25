@@ -12,6 +12,7 @@ import {
 import type { MusicProvider } from '@/domain/music-provider';
 import { allows, type RoomRules } from '@/domain/room-rules';
 import { formatDuration, parseDuration } from '@/domain/time';
+import { useProviderConnections } from '@/features/connections/ProviderConnections';
 import { usePlayback, type Playback } from '@/features/playback/usePlayback';
 import { useMockSession } from '@/features/session/MockSession';
 import { createPlayback, type CatalogResult } from '@/providers';
@@ -127,11 +128,17 @@ function useLiveRoom(base: MockRoom | null, view?: RoomView) {
 
   const nowPlaying = state?.nowPlaying ?? null;
   const startAtMs = state?.startAtMs ?? 0;
+  // The host's phone plays through the room's service. If you host this room
+  // and that service isn't connected on this phone any more, the music holds
+  // until it's reconnected (docs/DECISIONS.md, "Music-service settings").
+  const { connections } = useProviderConnections();
+  const serviceMissing = !!base?.youHost && !connections[base.playsThrough];
   const { refresh } = playback;
   useEffect(() => {
     if (!player) return;
-    player.load(nowPlaying, startAtMs).then(refresh);
-  }, [player, nowPlaying, startAtMs, refresh]);
+    const next = serviceMissing ? player.hold(nowPlaying) : player.load(nowPlaying, startAtMs);
+    next.then(refresh);
+  }, [player, nowPlaying, startAtMs, serviceMissing, refresh]);
 
   const room = useMemo<LiveRoom | null>(() => {
     if (!base || !state) return null;
@@ -162,6 +169,11 @@ function useLiveRoom(base: MockRoom | null, view?: RoomView) {
     canAdd: !!room && allows(room.rules.addSongs, you),
     /** The room's rules let you play, pause, skip, reorder and remove. */
     canControl: !!room && allows(room.rules.control, you),
+    /**
+     * You host this room, but the service it plays through isn't connected on
+     * this phone, so nothing can play until it's reconnected.
+     */
+    serviceMissing,
   };
 }
 
@@ -174,7 +186,7 @@ export function useRoom(code: string | undefined, view?: RoomView) {
   // The room you started or joined, with the name and service you chose.
   const base = activeRoom && activeRoom.code === code ? activeRoom : findRoom(code);
   const { store } = useRooms();
-  const { room, playback, ref, you, canAdd, canControl } = useLiveRoom(base, view);
+  const { room, playback, ref, you, canAdd, canControl, serviceMissing } = useLiveRoom(base, view);
   // There's always a room here: an unknown code shows the sample room.
   const live = room!;
   const at = ref!;
@@ -191,6 +203,9 @@ export function useRoom(code: string | undefined, view?: RoomView) {
     you,
     canAdd,
     canControl,
+    /** Play and pause work only while the host's phone can play. */
+    canPlay: canControl && !serviceMissing,
+    serviceMissing,
     /** `update_room_rules`. Only the host sees the controls for it. */
     setRules: (rules: RoomRules) => store.setRules(at, rules),
     skip: () => {
@@ -228,8 +243,8 @@ export type RoomHandle = ReturnType<typeof useRoom>;
 /** The room you're in, for the mini player on Home and Settings. Null when you aren't in one. */
 export function useActiveRoom() {
   const { activeRoom } = useMockSession();
-  const { room, playback, canControl } = useLiveRoom(activeRoom);
-  return { room, playback, canControl };
+  const { room, playback, canControl, serviceMissing } = useLiveRoom(activeRoom);
+  return { room, playback, canControl, canPlay: canControl && !serviceMissing };
 }
 
 /**
