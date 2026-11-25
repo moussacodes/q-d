@@ -92,7 +92,7 @@ modules/
 supabase/
   config.toml             Supabase CLI settings for a local stack
   migrations/             Schema, RPC functions, triggers, RLS                   (schema built)
-  functions/              Edge Functions                                          (planned)
+  functions/              Edge Functions                    (delete-account placeholder built)
   tests/                  Database and RLS tests on PGlite, plus the harness      (built)
 assets/icons/             The 34 Figma icons, unmodified SVG
 docs/                     These documents and the pitch deck
@@ -189,7 +189,8 @@ ESLint enforces these rules (`no-restricted-imports` in `eslint.config.js`), so 
 - **Rule:** Postgres is the source of truth for rooms, membership, the queue and playback state. Every change goes through a server-side RPC (a Postgres function) that validates membership, room state, permission, capacity and idempotency. Clients never write those tables directly. RLS allows only reads to members.
 - **Why:** several phones change one queue at the same time on flaky networks. If the server decides positions and permissions, two people adding at once can't corrupt the order, a retried request can't add a duplicate, and a modified client can't skip the host's rules.
 - **Realtime is a notification layer, not a data layer.** Broadcast events tell clients what changed so they refetch. Presence shows who's here and whether the host is connected. If an event is lost, a refetch fixes it.
-- Broadcasts are sent by the database (by the RPC or a trigger on the table it changes), not by the client that made the change. That way no client can announce a change that didn't happen. The exact mechanism is decided in the RPC card.
+- Broadcasts are sent by the database, from inside the RPC that made the change (`private.broadcast_room_event()`), not by the client. That way no client can announce a change that didn't happen, and a rolled-back change announces nothing.
+- Built (RPC contracts card): the shared checks, the error convention and the idempotency machinery live in the `private` schema (`supabase/migrations/20261124000200_rpc_foundation.sql`). Each RPC is a `security definer` function in `public` with a pinned `search_path`, and `anon` can't execute any of them.
 
 ### 4.11 q’d sign-in vs. music-service authorization
 
@@ -317,7 +318,7 @@ Post-demo, private, behind the `sync` flag. Nothing here ships publicly without 
 Record each answer in [DECISIONS.md](DECISIONS.md) and update this file.
 
 1. **Where canonical (Apple catalog) search runs.** Guests without Apple Music, and Android or web clients, can't use on-device MusicKit search. An Edge Function holding an Apple Music API developer token would serve everyone the same results. On-device MusicKit is simpler but works only on iOS. Decided in the canonical search card.
-2. **How broadcasts are sent.** Either a database trigger or the RPC itself sends the broadcast. Decided in the RPC card.
+2. **How broadcasts are sent.** Decided 2026-11-24 (RPC contracts card): the RPC itself sends it, through `private.broadcast_room_event()` and `realtime.send()`. See [API_CONTRACTS.md § 4](API_CONTRACTS.md#4-realtime).
 3. **Queue position representation.** For example, integers with gaps or fractional ranks. Decided in the queue card. Clients never compute positions in either case.
 4. **Bottom-sheet library.** Pick one only when an interaction needs gestures that a modal route can't provide.
 5. **Future SwiftUI client.** After the demo, a SwiftUI client is planned against the same Supabase schema and contracts. The React Native app stays as the reference client and the eventual Android path, and the backend isn't rewritten. This is why `domain/` and the RPC contracts are kept platform-neutral.

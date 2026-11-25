@@ -2,7 +2,7 @@
 
 The contracts between the app, the database and the music providers: RPC functions, realtime events, provider adapters and shared types.
 
-> **Status: proposed.** Nothing here is implemented yet. The RPC contracts card, the Supabase migrations card, the domain types card and the provider adapters card turn this into code. If the implementation needs a different shape, change this file in the same PR. Items marked **Added** aren't in the original plan's operation list. They're proposed because the product rules need them, and reviewers should confirm them.
+> **Status: confirmed by the RPC contracts card (2026-11-24).** The conventions in §1 and the error codes in §2 are built (`supabase/migrations/20261124000200_rpc_foundation.sql`). Each operation in §3 is built by its own card; until then it's the agreed shape. If the implementation needs a different shape, change this file in the same PR. Items marked **Added** aren't in the original plan's operation list. The product rules need them, and the RPC contracts card confirmed them all.
 
 Why it's shaped this way: [ARCHITECTURE.md § 4.10](ARCHITECTURE.md#410-client-vs-server-authority).
 
@@ -10,20 +10,27 @@ Why it's shaped this way: [ARCHITECTURE.md § 4.10](ARCHITECTURE.md#410-client-v
 
 - **RPC = a Postgres function**, called with `supabase.rpc('<name>', { ...args })`. Names and arguments are `snake_case`. TypeScript types use `camelCase` and are mapped at the edge in `src/services`.
 - **Clients never insert into, update or delete from room tables directly.** RLS only lets members read. Every write goes through a function below.
-- **Every function checks in this order:**
-  1. signed in,
-  2. the room exists and is in the right state,
-  3. the caller is a member,
-  4. the caller's role allows the action,
-  5. capacity,
+- **Every function checks in this order** (helpers in the `private` schema, which the API doesn't expose):
+  1. signed in (`private.require_user()`; also `private.require_complete_profile()` where the operation needs a finished profile),
+  2. the room exists and is in the right state (`private.lock_room()`, which also locks the room row so mutations of one room run one at a time),
+  3. the caller is a member (`private.require_member()`),
+  4. the caller's role allows the action (`private.require_host()`, or `private.require_allowed()` for the room rules),
+  5. capacity (the 15-person cap is also a trigger on `room_members`),
   6. idempotency,
   7. the operation's own rules.
+- **A replay is answered first.** Right after the sign-in check, `private.idempotency_replay()` looks up the key. A stored result is returned before checks 2–7 run, because the state they read may have changed since (for example, retrying `end_room` after the room ended must still succeed). A new key goes through every check.
+- **Functions return `jsonb`** objects with the snake_case fields listed under Returns, so a stored result replays exactly. Argument names are exactly the ones listed under Input, because `supabase.rpc` passes arguments by name.
 - **Idempotency.** Every mutation takes `idempotency_key uuid`. The client creates one key per user intent (one tap) and reuses it on retries.
   - The server stores `(user_id, operation, idempotency_key)` with the successful result. A repeat call returns the stored result without repeating the effect.
   - The same key with different arguments fails with `idempotency_conflict`.
   - Only successful results are stored, so a rejected call (for example `already_in_queue`) can be retried with the same key.
-  - Keys are kept for at least 24 hours.
+  - Keys are kept for at least 24 hours (`idempotency_keys.expires_at`). After that the key counts as new. `private.purge_expired_idempotency_keys()` deletes expired rows; a scheduled job should call it.
+  - Arguments are compared by a SHA-256 hash of their `jsonb` form, which is canonical.
+  - A transaction-level lock on the key makes a second request with the same key wait for the first to finish.
 - **Errors** carry a stable string `code` from [§ 2](#2-error-codes). The app maps codes to copy and never shows raw database messages.
+  - The database raises them with `private.raise_error(code, details)`: SQLSTATE `P0001`, the code as the message, extra fields as JSON in the detail, and the hint `qd`. Through `supabase-js` that's `error.message === 'room_full'`, `error.hint === 'qd'` and `JSON.parse(error.details)` for fields like `retry_after_seconds`. Anything without the `qd` hint is unexpected and maps to generic copy.
+  - Edge Functions answer with the same codes as JSON: `{ "code": "not_authenticated" }`.
+  - `private.raise_error` refuses a code that isn't in § 2, and a test checks the list matches the table.
 - **Validation on the way in.** The app parses every RPC result and realtime payload with a Zod schema from `src/domain`. Anything that doesn't parse is logged (redacted) and treated as "refetch".
 - IDs are UUIDs. Times are `timestamptz` from the server clock. Durations and positions are integer milliseconds.
 
@@ -49,7 +56,8 @@ Why it's shaped this way: [ARCHITECTURE.md § 4.10](ARCHITECTURE.md#410-client-v
 | `import_in_progress` | Another playlist import is running in this room |
 | `limit_exceeded` | Over a fixed limit, for example 50 songs per import |
 | `idempotency_conflict` | Same key, different arguments |
-| `feature_disabled` | Behind a feature flag that's off (`sync`, playlist import) |
+| `feature_disabled` | Behind a feature flag that's off (`sync`, playlist import), or not built yet (the `delete-account` placeholder) |
+| `invalid_input` | An argument is missing or out of range, for example a blank room name or no idempotency key. Includes `field`. (Added) |
 
 ## 3. RPC functions
 
@@ -114,7 +122,7 @@ Why it's shaped this way: [ARCHITECTURE.md § 4.10](ARCHITECTURE.md#410-client-v
 - **Effect:** inserts a queue entry at the end, with a position the server assigns while holding a lock on the room's queue.
 - **Returns:** `{ entry_id, position, queue_length }`. The app uses `queue_length` for "Rain Down added · 8th in line".
 - **Errors:** `already_in_queue` (unless `allow_duplicate`), `room_ended`, `not_member`. A song counts as already in the queue while it's queued or playing.
-- **Proposed (Add a song card):** when nothing is playing, the new entry becomes the playing one and `queue_length` is 0, so the toast says "playing now". The mock store does this; the RPC contracts card confirms it.
+- **Confirmed (RPC contracts card):** when nothing is playing, the new entry becomes the playing one and `queue_length` is 0, so the toast says "playing now". The mock store does this.
 - **Note:** `recording_id` comes from a catalog search result. How search results become `recordings` rows depends on where search runs ([ARCHITECTURE.md, open decision 1](ARCHITECTURE.md#open-technical-decisions)).
 
 #### `enqueue_batch` (post-demo, `playlist import` flag)
@@ -139,7 +147,7 @@ Why it's shaped this way: [ARCHITECTURE.md § 4.10](ARCHITECTURE.md#410-client-v
 
 #### `remove_queue_entry`
 
-- **Caller:** any member the room's control rule allows. **Proposed (Add a song card):** also the member who added the entry, for the Undo on the "added" toast, while the entry is still queued. The RPC contracts card confirms or drops it.
+- **Caller:** any member the room's control rule allows. **Confirmed (RPC contracts card):** also the member who added the entry, for the Undo on the "added" toast, while the entry is still queued.
 - **Input:** `room_id uuid`, `entry_id uuid`, `idempotency_key uuid`
 - **Errors:** `entry_not_found`, `not_allowed`
 
@@ -177,6 +185,7 @@ Moves the room to the next song when the current one ends, is skipped, or isn't 
 - **Caller:** member. The host always holds slot 1.
 - **Input:** `room_id uuid`, `idempotency_key uuid`
 - **Errors:** `feature_disabled` while `sync` is off, `provider_required`, `limit_exceeded` (15 slots)
+- **Built as placeholders:** both functions exist, check sign-in, and fail with `feature_disabled` (`details.flag = 'sync'`).
 
 ### Matching
 
@@ -192,6 +201,8 @@ Moves the room to the next song when the current one ends, is skipped, or isn't 
 
 Runs as an Edge Function, not a database function, because it needs the service role to delete the auth user and to revoke provider authorizations.
 
+- **Placeholder built:** `supabase/functions/delete-account` accepts `POST` with a bearer token and answers `501 { "code": "feature_disabled" }` until the account-deletion card builds it. Other methods get `405 invalid_input`, and a request without a token gets `401 not_authenticated`.
+
 - **Caller:** the user, after signing in again recently.
 - **Effect:** the steps in [PRODUCT_SPEC.md § 7](PRODUCT_SPEC.md#account-deletion). It ends hosted rooms through `end_room`, replaces attribution with "Deleted user", and retries until cleanup finishes (within 24 hours).
 
@@ -201,7 +212,7 @@ Runs as an Edge Function, not a database function, because it needs the service 
 
 - One private channel per room: `room:<room_id>`.
 - Realtime Authorization (RLS on `realtime.messages`) lets only room members join and listen.
-- Clients never send room-state broadcasts. The database sends them, either from the RPC or from a trigger on the table it changed.
+- Clients never send room-state broadcasts. The RPC that made the change sends them, through `private.broadcast_room_event(room_id, type)`, which calls Supabase's `realtime.send()` on the topic `room:<room_id>` as a private broadcast whose event name is the `type` (ARCHITECTURE.md open decision 2, decided 2026-11-24). Because it runs inside the RPC's transaction, a rolled-back change sends nothing.
 
 ### Broadcast events
 

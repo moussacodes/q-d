@@ -16,3 +16,7 @@ enabled = true
 [auth]
 enabled = true
 site_url = "qd://"
+
+# Edge Functions. Supabase checks the caller's JWT before the function runs.
+[functions.delete-account]
+verify_jwt = true

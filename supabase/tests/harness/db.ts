@@ -45,13 +45,16 @@ export class DbError extends Error {
   readonly sqlstate: string | undefined;
   /** Parsed `detail` JSON when the error carries extra fields. */
   readonly details: unknown;
+  /** `qd` for errors raised by private.raise_error. */
+  readonly hint: string | undefined;
 
   constructor(cause: unknown) {
-    const err = cause as { message?: string; code?: string; detail?: string };
+    const err = cause as { message?: string; code?: string; detail?: string; hint?: string };
     super(err.message ?? String(cause));
     this.name = 'DbError';
     this.code = err.message ?? String(cause);
     this.sqlstate = err.code;
+    this.hint = err.hint;
     let details: unknown = err.detail;
     if (typeof err.detail === 'string') {
       try {
@@ -76,6 +79,12 @@ export type CreateUserOptions = {
 
 type Row = Record<string, unknown>;
 
+export type RoomBroadcast = {
+  event: string;
+  payload: { v: number; type: string; roomId: string; at: string };
+  private: boolean;
+};
+
 export type Session = {
   /** Run SQL as this session. Returns the rows. */
   query<T = Row>(sql: string, params?: unknown[]): Promise<T[]>;
@@ -88,10 +97,14 @@ export type Session = {
 
 export type TestDb = Session & {
   pg: PGlite;
+  /** Run several SQL statements as the superuser (setup only). */
+  exec(sql: string): Promise<void>;
   as(user: TestUser | string): Session;
   asAnon(): Session;
   asServiceRole(): Session;
   createUser(options?: CreateUserOptions): Promise<TestUser>;
+  /** Broadcasts sent on a room's channel (`room:<id>`), oldest first. */
+  broadcasts(roomId: string): Promise<RoomBroadcast[]>;
   close(): Promise<void>;
 };
 
@@ -163,6 +176,9 @@ export async function createTestDb(): Promise<TestDb> {
   return {
     pg,
     ...superuser,
+    async exec(sql) {
+      await pg.exec(sql);
+    },
     as: (user) =>
       session(pg, { role: 'authenticated', sub: typeof user === 'string' ? user : user.id }),
     asAnon: () => session(pg, { role: 'anon', sub: null }),
@@ -192,6 +208,13 @@ export async function createTestDb(): Promise<TestDb> {
         );
       }
       return { id };
+    },
+    async broadcasts(roomId) {
+      const rows = await pg.query<RoomBroadcast>(
+        `select event, payload, private from realtime.messages where topic = $1 order by id`,
+        [`room:${roomId}`],
+      );
+      return rows.rows;
     },
     close: () => pg.close(),
   };
