@@ -205,6 +205,11 @@ export async function signUpWithEmail(
  * Codes already being exchanged, so a redirect that reaches the app twice
  * (the browser hands it back and the deep link also opens the callback
  * route) is exchanged once. A PKCE code works only once.
+ *
+ * A failed exchange is forgotten once it settles, so the link can be tried
+ * again after a network failure. A successful one is remembered only until
+ * the next sign-out: after that, reopening the same link must fail honestly
+ * instead of reporting a session that no longer exists.
  */
 const exchanges = new Map<string, Promise<AuthOutcome<SignedInUser>>>();
 
@@ -238,6 +243,9 @@ export function exchangeAuthCode(
     }
   })();
   exchanges.set(code, exchange);
+  void exchange.then((result) => {
+    if (!result.ok && exchanges.get(code) === exchange) exchanges.delete(code);
+  });
   return exchange;
 }
 
@@ -408,6 +416,8 @@ export function onAuthChange(
   if (!client) return () => {};
   let active = true;
   const { data } = client.auth.onAuthStateChange((event, session) => {
+    // A code exchanged for the session that just ended can't sign in again.
+    if (event === 'SIGNED_OUT') exchanges.clear();
     const change: AuthChange = {
       event: event as AuthChangeEvent,
       user: session?.user ? summarize(session.user) : null,

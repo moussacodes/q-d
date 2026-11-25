@@ -10,6 +10,7 @@ import {
   completeAuthRedirect,
   exchangeAuthCode,
   mapAuthError,
+  onAuthChange,
   providerNameOf,
   resetCodeExchanges,
   signInWithGoogle,
@@ -83,6 +84,41 @@ describe('exchangeAuthCode', () => {
       code,
     });
     expect(JSON.stringify(entries)).not.toContain('secret-code-value');
+  });
+
+  it('tries a failed code again, so a network failure isn’t final', async () => {
+    fake.auth.exchangeCodeForSession.mockResolvedValueOnce({
+      data: { user: null, session: null },
+      error: new AuthRetryableFetchError('Failed to fetch', 0),
+    } as never);
+    await expect(exchangeAuthCode('code-retry', fake.client)).resolves.toEqual({
+      ok: false,
+      code: 'network',
+    });
+    await expect(exchangeAuthCode('code-retry', fake.client)).resolves.toMatchObject({
+      ok: true,
+    });
+    expect(fake.auth.exchangeCodeForSession).toHaveBeenCalledTimes(2);
+  });
+
+  it('forgets a used code on sign-out, so reopening the link can’t fake a session', async () => {
+    const stop = onAuthChange(() => {}, fake.client);
+    await expect(exchangeAuthCode('code-used', fake.client)).resolves.toMatchObject({ ok: true });
+    // Same session: the duplicate shares the first exchange.
+    await exchangeAuthCode('code-used', fake.client);
+    expect(fake.auth.exchangeCodeForSession).toHaveBeenCalledTimes(1);
+
+    fake.emit('SIGNED_OUT', null);
+    fake.auth.exchangeCodeForSession.mockResolvedValueOnce({
+      data: { user: null, session: null },
+      error: apiError('Not found', 404, 'flow_state_not_found'),
+    } as never);
+    await expect(exchangeAuthCode('code-used', fake.client)).resolves.toEqual({
+      ok: false,
+      code: 'link_invalid',
+    });
+    expect(fake.auth.exchangeCodeForSession).toHaveBeenCalledTimes(2);
+    stop();
   });
 
   it('turns a thrown error into an outcome, and needs a client', async () => {
