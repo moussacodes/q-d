@@ -2,6 +2,13 @@
 
 Product and technical decisions that are not obvious from the code. Newest first.
 
+## 2026-11-24 · qd-music-kit skeleton
+
+- **The module's JavaScript wrapper lives in `modules/qd-music-kit`,** not in `src/providers`. The Apple `PlaybackAdapter` (provider cards) wraps it, so Apple specifics still reach the app only through `src/providers`.
+- **Missing native module means "unavailable", never a fake player.** In Expo Go, on the web, on Android and in Jest the wrapper claims no capabilities, `connect()` resolves to `{ status: 'error', code: 'unavailable' }` and player calls throw `QdMusicKitError('unavailable')`. That keeps the Expo Go and web previews working and makes a missing build visible.
+- **The Swift stubs claim nothing.** Every capability is `false` and every player method throws `ERR_QD_NOT_IMPLEMENTED` until the Apple Music playback card builds it and it's tested on an iPhone.
+- **Config plugin, no entitlements.** `app.plugin.js` adds `NSAppleMusicUsageDescription` ("q’d plays your room’s queue through Apple Music when you host from this iPhone.") and the `audio` background mode. MusicKit has no entitlement key: it's turned on as an App Service for `app.qd.mobile` in the Apple Developer portal. The usage text is a first draft for the team to confirm.
+
 ## 2026-11-24 · EAS build profiles
 
 - **Three iOS-only profiles in `eas.json`.** `development` is a dev-client build for internal distribution (registered iPhones), `preview` is an internal release build, and `production` is a store build for TestFlight that bumps the build number on EAS (`appVersionSource: remote`). They share a `base` profile that pins Node 22.13.0, the same version as CI. There are no Android settings; build with `--platform ios`.

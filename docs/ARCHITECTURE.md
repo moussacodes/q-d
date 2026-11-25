@@ -61,7 +61,7 @@ A broadcast that never arrives costs freshness but never correctness, because th
 | Interaction | Reanimated, Gesture Handler, a bottom-sheet library | Planned, added only where Figma needs them |
 | Backend | Supabase Auth, Postgres, RLS, Realtime, Edge Functions, migrations | Planned · Supabase cards |
 | Device storage | Supabase's recommended Expo session storage, plus SecureStore for provider credentials | Planned · Supabase client card |
-| Apple playback | Local Swift Expo module around MusicKit | Planned · qd-music-kit card |
+| Apple playback | Local Swift Expo module around MusicKit | Skeleton built · `modules/qd-music-kit` (wrapper, Swift stubs, config plugin). MusicKit playback planned · Apple Music playback card |
 | Spotify playback | Spotify iOS SDK (App Remote) and the Web API | Planned · Spotify cards |
 | Tests | Jest/jest-expo, React Native Testing Library, Supabase integration tests, Maestro | Built: Jest, React Native Testing Library, `.maestro/` smoke flow (first runs with a development build). Planned: Supabase tests · Supabase cards |
 | Quality gates | ESLint, Prettier, `tsc`, Jest, Expo Doctor, GitHub Actions, Git pre-push hook | Built · `npm run check`, `.github/workflows/ci.yml`, `.githooks/pre-push` (every push) |
@@ -88,7 +88,7 @@ src/
   services/               Supabase, env, flags, logging, analytics               (data mode built; rest planned)
   test/                   Fixtures and provider contract helpers
 modules/
-  qd-music-kit/           Local Swift Expo module and config plugin             (planned)
+  qd-music-kit/           Local Swift Expo module and config plugin             (skeleton built; playback planned)
 supabase/
   migrations/             Schema, RPC functions, triggers, RLS                   (planned)
   functions/              Edge Functions                                          (planned)
@@ -176,6 +176,7 @@ ESLint enforces these rules (`no-restricted-imports` in `eslint.config.js`), so 
 
 - **Rule:** all Swift and MusicKit code lives in this local Expo module and its config plugin. JavaScript reaches it only through the Apple `PlaybackAdapter` (and the Apple `CatalogAdapter` if search runs on the device).
 - **Why:** native code needs a Mac, Xcode and a development build. Isolating it means the rest of the app still runs in Expo Go and on the web from Windows. Moussa owns this module, because it's Mac-only work.
+- **What's there (skeleton):** `expo-module.config.json` (Apple only, autolinked from `modules/`), `ios/QdMusicKitModule.swift` with one stub per `PlaybackAdapter` method (they throw `ERR_QD_NOT_IMPLEMENTED` and claim no capabilities), the TypeScript wrapper `index.ts` and `app.plugin.js`. The wrapper loads the native module with `requireOptionalNativeModule`. Without it (Expo Go, web, Android, Jest) it reports `unavailable`: no capabilities, `connect()` resolves to `{ status: 'error', code: 'unavailable' }` and player calls throw `QdMusicKitError`. The plugin adds `NSAppleMusicUsageDescription` and the `audio` background mode. MusicKit needs no entitlement key; it's an App Service on the bundle ID.
 
 ### 4.9 Generated native code vs. committed config
 
