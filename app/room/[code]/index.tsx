@@ -229,7 +229,7 @@ function Room() {
               playsThrough={room.playsThrough}
               plan={plan}
               isHost={isHost}
-              onSkip={skip}
+              onSkip={playbackLive ? skip : undefined}
               onSwitch={switchProvider}
             />
           ) : null}
@@ -242,7 +242,7 @@ function Room() {
               availability={availability}
               playsThrough={room.playsThrough}
               isHost={isHost}
-              onSkip={skip}
+              onSkip={playbackLive ? skip : undefined}
             />
           ) : null}
 

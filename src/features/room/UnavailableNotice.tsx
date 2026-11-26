@@ -23,7 +23,8 @@ export function UnavailableNotice({
   playsThrough: MusicProvider;
   plan: SongPlan;
   isHost: boolean;
-  onSkip: () => void;
+  /** Absent while Skip isn't on the server (live rooms): the button shows, turned off. */
+  onSkip?: () => void;
   onSwitch: (to: MusicProvider) => void;
 }) {
   const { colors } = useTheme();
@@ -53,7 +54,13 @@ export function UnavailableNotice({
       </View>
       {isHost ? (
         <View style={styles.actions}>
-          <Button size="small" label="Skip" accessibilityLabel="Skip this song" onPress={onSkip} />
+          <Button
+            size="small"
+            label="Skip"
+            accessibilityLabel="Skip this song"
+            disabled={!onSkip}
+            onPress={onSkip}
+          />
           {to ? (
             <Button
               size="small"

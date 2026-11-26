@@ -226,6 +226,20 @@ describe('the room, live', () => {
     expect(screen.getByLabelText('Repeat this song')).toBeDisabled();
   });
 
+  it.each([
+    ['isn’t on the room’s service', 'Not on Spotify', { provider_track_id: null, confidence: 0 }],
+    ['has an uncertain match', 'Might be a different version', { warning: 'low_confidence' }],
+  ])(
+    'never offers the host a Skip that does nothing when the song %s',
+    async (_case, title, change) => {
+      mockData.update('track_matches', (row) => row.recording_id === ids.recA, change);
+      await openRoom(ids.host);
+      expect(await screen.findByText(title)).toBeVisible();
+      expect(screen.getByLabelText('Skip this song')).toBeDisabled();
+      expect(screen.getByText(/Skip comes with it/)).toBeVisible();
+    },
+  );
+
   it('says a room you aren’t in isn’t open to you', async () => {
     await signInAs(ids.guest, '/room/QD-ZZZZZZ');
     expect(await screen.findByText('This room isn’t open to you')).toBeVisible();
@@ -242,6 +256,35 @@ describe('the room, live', () => {
     mockData.fail('rooms', false);
     await press('Try again');
     expect(await screen.findByText('Late Night Live')).toBeVisible();
+  });
+
+  it('says it couldn’t load the room when only the queue can’t be read, never an empty queue', async () => {
+    mockData.fail('queue_entries');
+    await signInAs(ids.host, `/room/QD-${liveCode}`);
+    expect(
+      await screen.findByText('Couldn’t load the room', {}, { timeout: 20_000 }),
+    ).toBeVisible();
+    expect(screen.queryByText(/first song/i)).toBeNull();
+    mockData.fail('queue_entries', false);
+    await press('Try again');
+    expect(await screen.findByText('Glass Harbor')).toBeVisible();
+  });
+
+  it('keeps showing the room when a refetch fails after it loaded', async () => {
+    await openRoom();
+    await joinChannel();
+    mockData.fail('queue_entries');
+    const before = mockData.reads.filter((table) => table === 'queue_entries').length;
+    await broadcast('queue.changed');
+    // The refetch was tried and failed; the room stays as it was read.
+    await waitFor(() =>
+      expect(mockData.reads.filter((table) => table === 'queue_entries').length).toBeGreaterThan(
+        before,
+      ),
+    );
+    expect(screen.getByText('Late Night Live')).toBeVisible();
+    expect(screen.getByText('Static Bloom')).toBeVisible();
+    expect(screen.queryByText('Couldn’t load the room')).toBeNull();
   });
 
   it('joins the room’s private channel and tracks only the user id and role', async () => {
