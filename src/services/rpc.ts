@@ -2,6 +2,7 @@ import type { z } from 'zod';
 
 import { isRpcErrorCode, type RpcCallError } from '@/domain/rpc-error';
 
+import { loggableDbCode, zodIssueFields } from './logFields';
 import { log } from './logger';
 
 /**
@@ -100,42 +101,34 @@ export function rpcErrorFrom(
 }
 
 /**
- * Calls the RPC `name` with snake_case `args` and parses its result with
+ * Calls the RPC `operation` with snake_case `args` and parses its result with
  * `schema`. Logs the operation and our code, never the arguments, the
  * server's message or the result (they can hold codes, tokens or names).
  */
 export async function callRpc<T>(
   client: RpcClientLike,
-  name: string,
+  operation: string,
   args: Record<string, unknown>,
   schema: z.ZodType<T>,
 ): Promise<RpcCallResult<T>> {
   let answer: Awaited<ReturnType<RpcClientLike['rpc']>>;
   try {
-    answer = await client.rpc(name, args);
+    answer = await client.rpc(operation, args);
   } catch (error) {
-    rpcLog.warn('RPC call threw', { operation: name, error });
+    rpcLog.warn('RPC call threw', { operation, error });
     return { ok: false, error: { code: 'network' }, details: {} };
   }
   if (answer.error) {
     const failure = rpcErrorFrom(answer.error, answer.status);
-    rpcLog.info('RPC refused', {
-      operation: name,
-      result: failure.error.code,
-      status: answer.status,
-      postgresCode: answer.error.code,
-    });
+    // Our own RpcErrorCode enum, never server text.
+    const result = failure.error.code;
+    const postgresCode = loggableDbCode(answer.error.code);
+    rpcLog.info('RPC refused', { operation, result, status: answer.status, postgresCode });
     return { ok: false, ...failure };
   }
   const parsed = schema.safeParse(answer.data);
   if (!parsed.success) {
-    rpcLog.warn('RPC result did not parse', {
-      operation: name,
-      issues: parsed.error.issues.map((issue) => ({
-        path: issue.path.join('.'),
-        code: issue.code,
-      })),
-    });
+    rpcLog.warn('RPC result did not parse', { operation, issues: zodIssueFields(parsed.error) });
     return { ok: false, error: { code: 'unexpected' }, details: {} };
   }
   return { ok: true, value: parsed.data };

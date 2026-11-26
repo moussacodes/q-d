@@ -92,6 +92,15 @@ function errorBody(data: unknown): SpotifyErrorBody {
 const NOT_APPROVED =
   /not (been |be )?registered|developer\.spotify\.com\/dashboard|developer dashboard|not approved|allowlist/i;
 
+/**
+ * Spotify's `reason` is a machine code (`PREMIUM_REQUIRED`). Anything else is
+ * logged as `other`, because free text there could name a song.
+ */
+function loggableSpotifyReason(reason: string | undefined): string | undefined {
+  if (reason === undefined) return undefined;
+  return /^[A-Z_]{1,40}$/.test(reason) ? reason : 'other';
+}
+
 /** Maps a failed response to a code. Exported for tests. */
 export function errorCodeFor(status: number, data: unknown, path: string): ProviderErrorCode {
   const { message = '', reason } = errorBody(data);
@@ -205,7 +214,7 @@ export function createSpotifyApi(deps: SpotifyApiDeps): SpotifyApi {
         if (code !== 'no_active_device' && !reason?.startsWith('ALREADY_')) {
           apiLog.warn('Spotify request failed', {
             status: response.status,
-            reason,
+            reason: loggableSpotifyReason(reason),
             method: request.method,
             endpoint: request.path,
           });

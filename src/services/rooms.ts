@@ -5,6 +5,7 @@ import { idSchema } from '@/domain/primitives';
 import type { TrackMatch } from '@/domain/recording';
 import type { Audience } from '@/domain/room-rules';
 
+import { zodIssueFields } from './logFields';
 import { log } from './logger';
 import { callRpc, type RpcCallResult, type RpcClientLike } from './rpc';
 
@@ -210,10 +211,7 @@ async function selectRows<T>(
     else
       roomsLog.warn('Dropped a row that did not parse', {
         table,
-        issues: parsed.error.issues.map((issue) => ({
-          path: issue.path.join('.'),
-          code: issue.code,
-        })),
+        issues: zodIssueFields(parsed.error),
       });
   }
   return rows;
