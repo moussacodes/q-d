@@ -270,6 +270,25 @@ describe('Settings → Account in live mode', () => {
     expect(screen.getByLabelText('Color 1 of 6')).toBeSelected();
   });
 
+  it('a second color picked while the first is saving sends nothing', async () => {
+    let answer: (value: unknown) => void = () => {};
+    mockSupabase.profileWrite.writeProfile.mockImplementationOnce(
+      () => new Promise((resolve) => (answer = resolve)) as never,
+    );
+    await openAccount();
+    await openColors();
+    await press('Color 3 of 6');
+    expect(await screen.findByText('Saving…')).toBeVisible();
+    expect(screen.getByLabelText('Display name')).not.toBeEnabled();
+    await press('Color 5 of 6');
+    expect(mockSupabase.profileWrite.update).toHaveBeenCalledTimes(1);
+
+    await act(async () => answer({ data: [{ id: 'user-1' }], error: null }));
+    expect(screen.queryByText('Saving…')).toBeNull();
+    expect(screen.getByLabelText('Color 3 of 6')).toBeSelected();
+    expect(screen.getByLabelText('Color 5 of 6')).not.toBeSelected();
+  });
+
   it('the name is written once, when the field is left, not per keystroke', async () => {
     await openAccount();
     const field = screen.getByLabelText('Display name');

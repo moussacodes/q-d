@@ -54,8 +54,9 @@ function errorFrom(error: { message?: string; code?: string }): ProfileWriteErro
   // 23514 check_violation, 22001 too long, 42501 permission denied,
   // 23502 not null, 22P02 bad input.
   if (['23514', '22001', '42501', '23502', '22P02'].includes(error.code ?? '')) return 'rejected';
-  // PGRST301: the JWT expired or is invalid.
-  if (error.code === 'PGRST301') return 'not_signed_in';
+  // PGRST301 / PGRST303: the JWT is invalid or expired (PostgREST 12 reports
+  // an expired one as PGRST303).
+  if (error.code === 'PGRST301' || error.code === 'PGRST303') return 'not_signed_in';
   return 'unknown';
 }
 

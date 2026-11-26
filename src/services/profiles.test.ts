@@ -82,6 +82,7 @@ describe('saveOnboardingProfile', () => {
     ['23502', 'rejected'],
     ['22P02', 'rejected'],
     ['PGRST301', 'not_signed_in'],
+    ['PGRST303', 'not_signed_in'],
     ['XX000', 'unknown'],
   ] as const)('maps database code %s to %s', async (code, error) => {
     const fake = fakeClient({ data: null, error: { code, message: 'whatever' } });
@@ -102,6 +103,18 @@ describe('saveOnboardingProfile', () => {
       });
     },
   );
+
+  it('reports supabase-js’s fetch failure (an empty code) as network', async () => {
+    // What postgrest-js returns when fetch itself fails.
+    const fake = fakeClient({
+      data: null,
+      error: { code: '', message: 'TypeError: Network request failed' },
+    });
+    expect(await saveOnboardingProfile(USER, profile, { client: fake.client })).toEqual({
+      ok: false,
+      error: 'network',
+    });
+  });
 
   it('reports a thrown request as network', async () => {
     const fake = fakeClient(() => Promise.reject(new TypeError('Network request failed')));

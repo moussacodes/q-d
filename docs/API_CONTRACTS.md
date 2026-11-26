@@ -294,7 +294,7 @@ Not an RPC: one of the three direct writes row level security allows (DECISIONS 
 
 - `saveOnboardingProfile(userId, { displayName, color })` sends `update profiles set display_name, color, adult_confirmed_at = now() where id = userId` and asks for the `id` back. `updateProfile(userId, { displayName?, color? })` (Settings) sends only what changed and never touches `adult_confirmed_at`.
 - The grant is `update (display_name, color, adult_confirmed_at)` to `authenticated`, and the policy allows only `id = auth.uid()`. The table checks `display_name` (1–30 characters, trimmed) and `color` (`#rrggbb`). The app checks the same first, and the color against the design tokens' `avatarSwatches` (`src/domain/profile.ts`).
-- Each returns `{ ok: true } | { ok: false, error }` and never throws. `error` is `not_configured`, `not_signed_in` (no row matched: RLS hid it, or `PGRST301`), `network` (no answer, nothing may have been saved), `rejected` (`23514`, `22001`, `42501`, `23502`, `22P02`) or `unknown`.
+- Each returns `{ ok: true } | { ok: false, error }` and never throws. `error` is `not_configured`, `not_signed_in` (no row matched: RLS hid it, or `PGRST301`/`PGRST303`), `network` (no answer, nothing may have been saved), `rejected` (`23514`, `22001`, `42501`, `23502`, `22P02`) or `unknown`.
 - `fetchSavedProfile(userId)` (above) reads it back; a finished profile sends sign-in and restart to Home.
 
 #### `delete_account` (Edge Function)
