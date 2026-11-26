@@ -25,6 +25,7 @@ import {
   useMockSession,
   type SignInMethod,
 } from '@/features/session/MockSession';
+import { useProfileSave } from '@/features/session/useProfileSave';
 import { AvatarColorPicker } from '@/features/settings/AvatarColorPicker';
 import { ServicesSection } from '@/features/settings/ServicesSection';
 
@@ -36,15 +37,23 @@ const methodIcons: Record<SignInMethod, IconName> = {
   email: 'mail',
 };
 
-/** 5.1 Settings · Music services and 5.2 Settings · Account. */
+/**
+ * 5.1 Settings · Music services and 5.2 Settings · Account. In mock auth mode
+ * the name saves as it's typed. In live auth mode a name saves when the field
+ * is left or submitted, and a color when it's picked; each waits for the
+ * server and says so if it fails.
+ */
 export default function Settings() {
-  const { user, signOut, saveProfile } = useMockSession();
+  const { user, signOut } = useMockSession();
+  const profile = useProfileSave();
   const { room: activeRoom, playback, canPlay, waitingForHost } = useActiveRoom();
   useScreenPalette(roomPalette(activeRoom));
   const params = useLocalSearchParams<{ tab?: Tab }>();
   const [tab, setTab] = useState<Tab>(params.tab === 'account' ? 'account' : 'services');
   const [name, setName] = useState(user.name);
   const [pickingColor, setPickingColor] = useState(false);
+  // Live: the saved name, so an unsaved edit never looks saved.
+  const shownName = profile.live ? user.name : name.trim();
 
   return (
     <Screen
@@ -81,9 +90,9 @@ export default function Settings() {
       ) : (
         <>
           <View style={styles.profile}>
-            <Avatar initial={name.trim()[0] ?? 'Y'} color={user.color} size={40} />
+            <Avatar initial={shownName[0] ?? 'Y'} color={user.color} size={40} />
             <View>
-              <Text variant="heading">{name.trim() || 'You'}</Text>
+              <Text variant="heading">{shownName || 'You'}</Text>
               <Pressable
                 accessibilityRole="button"
                 accessibilityState={{ expanded: pickingColor }}
@@ -99,7 +108,9 @@ export default function Settings() {
           {pickingColor ? (
             <AvatarColorPicker
               value={user.color}
-              onChange={(color) => saveProfile({ name: user.name, color })}
+              onChange={(color) => {
+                if (!profile.saving) void profile.saveChange({ color });
+              }}
             />
           ) : null}
           <TextField
@@ -108,10 +119,27 @@ export default function Settings() {
             maxLength={MAX_NAME_LENGTH}
             onChangeText={(text) => {
               setName(text);
+              profile.clearError();
               // An empty name isn't saved; the last one stays until a new one is typed.
-              if (text.trim()) saveProfile({ name: text.trim(), color: user.color });
+              if (!profile.live && text.trim()) void profile.saveChange({ displayName: text });
             }}
+            onBlur={() => {
+              if (!profile.live) return;
+              // Nothing changed, or blank: keep the saved name and show it again.
+              if (!name.trim()) setName(user.name);
+              else if (name.trim() !== user.name) void profile.saveChange({ displayName: name });
+            }}
+            editable={!profile.saving}
           />
+          {profile.saving ? (
+            <Text variant="caption" color="text2">
+              Saving…
+            </Text>
+          ) : profile.errorMessage ? (
+            <Text variant="caption" color="danger" accessibilityRole="alert">
+              {profile.errorMessage}
+            </Text>
+          ) : null}
           <TextField label="Email" value={user.email} editable={false} />
           <View style={styles.group}>
             <SectionLabel>Signed in with</SectionLabel>

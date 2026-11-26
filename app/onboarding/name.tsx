@@ -16,34 +16,51 @@ import {
   Toggle,
   useScreenPalette,
 } from '@/components';
-import { useTheme } from '@/design';
+import { avatarSwatches, useTheme } from '@/design';
 import { MAX_NAME_LENGTH, useMockSession } from '@/features/session/MockSession';
-import { avatarColors } from '@/test/fixtures/mock-data';
+import { useProfileSave } from '@/features/session/useProfileSave';
 
 /**
  * 1.3 Onboarding step 1: display name, color and 18+ confirmation
- * (plan.md §2). Continue saves the profile; all three are required.
- * Back cancels sign-up and returns to Welcome.
+ * (plan.md §2). Continue saves the profile; all three are required. In live
+ * auth mode it waits for the server and stays here, saying why, if the save
+ * fails. Back cancels sign-up and returns to Welcome.
  */
 export default function OnboardingName() {
   useScreenPalette();
   const { colors } = useTheme();
-  const { suggestedName, saveProfile, signOut } = useMockSession();
+  const { suggestedName, signOut } = useMockSession();
+  const { saveOnboarding, saving, errorMessage, clearError } = useProfileSave();
   const [name, setName] = useState(suggestedName);
-  const [color, setColor] = useState(avatarColors[0]);
+  const [color, setColor] = useState<string>(avatarSwatches[0]);
   const [adult, setAdult] = useState(false);
   const trimmed = name.trim();
   const displayName = trimmed || 'You';
 
-  const next = () => {
-    saveProfile({ name: trimmed, color });
-    router.push('/onboarding/services');
+  const next = async () => {
+    if (await saveOnboarding({ displayName: name, color, adultConfirmed: adult })) {
+      router.push('/onboarding/services');
+    }
   };
 
   return (
     <Screen
       header={<ScreenHeader center={<Stepper step={1} />} onBack={signOut} />}
-      footer={<Button block label="Continue" disabled={!trimmed || !adult} onPress={next} />}
+      footer={
+        <>
+          {errorMessage ? (
+            <Text variant="caption" color="danger" accessibilityRole="alert">
+              {errorMessage}
+            </Text>
+          ) : null}
+          <Button
+            block
+            label={saving ? 'Saving…' : 'Continue'}
+            disabled={!trimmed || !adult || saving}
+            onPress={() => void next()}
+          />
+        </>
+      }
     >
       <Intro
         eyebrow="Step 1 of 3 · You"
@@ -53,7 +70,10 @@ export default function OnboardingName() {
       <TextField
         label="Display name"
         value={name}
-        onChangeText={setName}
+        onChangeText={(text) => {
+          setName(text);
+          clearError();
+        }}
         placeholder="Your name"
         maxLength={MAX_NAME_LENGTH}
         autoCapitalize="words"
@@ -62,14 +82,14 @@ export default function OnboardingName() {
       <View style={styles.group}>
         <SectionLabel>Your color</SectionLabel>
         <View style={styles.swatches}>
-          {avatarColors.map((swatch, index) => {
+          {avatarSwatches.map((swatch, index) => {
             const selected = swatch === color;
             return (
               <Pressable
                 key={swatch}
                 accessibilityRole="radio"
                 accessibilityState={{ selected }}
-                accessibilityLabel={`Color ${index + 1} of ${avatarColors.length}`}
+                accessibilityLabel={`Color ${index + 1} of ${avatarSwatches.length}`}
                 onPress={() => setColor(swatch)}
                 style={[styles.ring, selected && { borderColor: colors.text }]}
               >

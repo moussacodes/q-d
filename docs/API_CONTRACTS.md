@@ -288,6 +288,15 @@ Not an RPC: the app calls Supabase Auth through `src/services/auth.ts` only. Bui
 - `AuthErrorCode` (`src/domain/auth.ts`): `invalid_credentials`, `email_not_confirmed`, `email_taken`, `weak_password`, `invalid_email`, `rate_limited`, `signups_disabled`, `method_unavailable`, `cancelled`, `link_expired`, `link_invalid`, `network`, `not_configured`, `unknown`.
 - `onAuthChange` reports `{ event, user: { id, email, method, name } | null }`, never tokens, on the tick after Supabase's callback (a listener that calls Supabase inside the callback would wait on its auth lock).
 
+#### Own profile (direct write, client side)
+
+Not an RPC: one of the three direct writes row level security allows (DECISIONS 2026-11-24 · Row level security). `src/services/profiles.ts` only. Built (profile save card).
+
+- `saveOnboardingProfile(userId, { displayName, color })` sends `update profiles set display_name, color, adult_confirmed_at = now() where id = userId` and asks for the `id` back. `updateProfile(userId, { displayName?, color? })` (Settings) sends only what changed and never touches `adult_confirmed_at`.
+- The grant is `update (display_name, color, adult_confirmed_at)` to `authenticated`, and the policy allows only `id = auth.uid()`. The table checks `display_name` (1–30 characters, trimmed) and `color` (`#rrggbb`). The app checks the same first, and the color against the design tokens' `avatarSwatches` (`src/domain/profile.ts`).
+- Each returns `{ ok: true } | { ok: false, error }` and never throws. `error` is `not_configured`, `not_signed_in` (no row matched: RLS hid it, or `PGRST301`), `network` (no answer, nothing may have been saved), `rejected` (`23514`, `22001`, `42501`, `23502`, `22P02`) or `unknown`.
+- `fetchSavedProfile(userId)` (above) reads it back; a finished profile sends sign-in and restart to Home.
+
 #### `delete_account` (Edge Function)
 
 Runs as an Edge Function, not a database function, because it needs the service role to delete the auth user and to revoke provider authorizations.

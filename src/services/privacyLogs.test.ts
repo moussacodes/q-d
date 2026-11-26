@@ -32,6 +32,7 @@ import {
 import { setCrashTransport, type CrashEvent } from './crashReporting';
 import { EdgeFunctionNetworkError } from './edgeFunctions';
 import { addLogSink, type LogEntry } from './logger';
+import { saveOnboardingProfile, updateProfile } from './profiles';
 import { createProviderCredentialStore } from './providerCredentials';
 import { createQueryClient } from './queryClient';
 
@@ -570,5 +571,39 @@ describe('server-state errors (queries and mutations)', () => {
     expect(entries).toHaveLength(1);
     expectNoCanary();
     client.clear();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Saving the profile (live onboarding and Settings)
+
+describe('profile saves', () => {
+  /** `from('profiles').update().eq().select()` answering `answer`. */
+  const client = (answer: () => Promise<unknown>) =>
+    ({
+      from: () => ({ update: () => ({ eq: () => ({ select: answer }) }) }),
+    }) as unknown as Parameters<typeof updateProfile>[2];
+
+  const echo = `Failing row contains (${CANARY.userId}, ${CANARY.displayName}, #8fb4f0, ${CANARY.email}).`;
+
+  it.each([
+    ['saved', async () => ({ data: [{ id: CANARY.userId }], error: null })],
+    [
+      'refused, echoing the row',
+      async () => ({ data: null, error: { code: '23514', message: echo } }),
+    ],
+    ['free text in `code`', async () => ({ data: null, error: { code: echo, message: echo } })],
+    ['no row matched', async () => ({ data: [], error: null })],
+    ['offline', async () => ({ data: null, error: { message: `fetch failed: ${echo}` } })],
+    ['thrown', () => Promise.reject(new TypeError(`Network request failed: ${echo}`))],
+  ])('onboarding and Settings: %s', async (_label, answer) => {
+    await saveOnboardingProfile(
+      CANARY.userId,
+      { displayName: CANARY.displayName, color: '#8fb4f0' },
+      { client: client(answer) },
+    );
+    await updateProfile(CANARY.userId, { displayName: CANARY.displayName }, client(answer));
+    expect(entries.length).toBeGreaterThan(0);
+    expectNoCanary();
   });
 });

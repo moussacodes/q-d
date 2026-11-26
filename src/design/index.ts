@@ -1,5 +1,5 @@
 export { neutralPlayingPalette, paletteFromArtworkColor } from './artworkPalette';
-export { defaultAvatarColor, neutral, providerColors } from './colors';
+export { avatarSwatches, defaultAvatarColor, neutral, providerColors } from './colors';
 export { designFrame, radii, spacing } from './layout';
 export {
   idlePalette,

@@ -1,6 +1,14 @@
+import { avatarSwatches } from '@/design';
 import { providerNames } from '@/domain/music-provider';
 
-import { findRoom, mockQueue, mockRooms, mockSearchResults, mockUser } from './mock-data';
+import {
+  avatarColors,
+  findRoom,
+  mockQueue,
+  mockRooms,
+  mockSearchResults,
+  mockUser,
+} from './mock-data';
 
 // The screen shells are reviewed against this data, so it has to follow the
 // product rules in plan.md §2 or the shells will show impossible states.
@@ -58,5 +66,11 @@ describe('mock data', () => {
     expect(findRoom('QD-9M2XR4').name).toBe('Kitchen Disco');
     expect(findRoom('QD-NOPE00')).toBe(mockRooms[0]);
     expect(findRoom(undefined)).toBe(mockRooms[0]);
+  });
+});
+
+describe('avatar colors', () => {
+  it('the mock data offers exactly the design tokens’ swatches', () => {
+    expect(avatarColors).toEqual([...avatarSwatches]);
   });
 });

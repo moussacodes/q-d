@@ -3,7 +3,9 @@ import { act } from 'expo-router/testing-library';
 
 /**
  * A stand-in for the Supabase client at the service boundary: just the auth
- * calls and the `profiles` read that services/auth.ts makes. Each method is a
+ * calls, the `profiles` read that services/auth.ts makes and the own-row
+ * `profiles` update that services/profiles.ts makes (it changes the profile
+ * the next read returns, like the real table). Each method is a
  * jest.fn, so tests set results and check calls. `emit` plays an auth event
  * to every `onAuthStateChange` listener, the way supabase-js does.
  */
@@ -63,7 +65,30 @@ export function createFakeSupabase() {
   const maybeSingle = jest.fn(async () => profile);
   const eq = jest.fn(() => ({ maybeSingle }));
   const select = jest.fn(() => ({ eq }));
-  const from = jest.fn(() => ({ select }));
+
+  type WriteAnswer = {
+    data: { id: string }[] | null;
+    error: { code?: string; message?: string } | null;
+  };
+  /** Answers the next profile writes; by default each one succeeds and is kept. */
+  const writeProfile = jest.fn(
+    async (columns: Partial<ProfileRow>, userId: string): Promise<WriteAnswer> => {
+      profile = {
+        data: {
+          ...(profile.data ?? { display_name: null, color: null, adult_confirmed_at: null }),
+          ...columns,
+        },
+        error: null,
+      };
+      return { data: [{ id: userId }], error: null };
+    },
+  );
+  const update = jest.fn((columns: Partial<ProfileRow>) => ({
+    eq: (_column: string, userId: string) => ({
+      select: () => writeProfile(columns, userId),
+    }),
+  }));
+  const from = jest.fn(() => ({ select, update }));
 
   const auth = {
     signInWithPassword: jest.fn(async () => ({
@@ -104,6 +129,10 @@ export function createFakeSupabase() {
     auth,
     from,
     profileQuery: { select, eq, maybeSingle },
+    /** The own-row profile update: `update` gets the columns, `writeProfile` answers. */
+    profileWrite: { update, writeProfile },
+    /** The profile row as the fake table holds it now. */
+    currentProfile: () => profile.data,
     listenerCount: () => listeners.size,
     /** The session supabase-js finds in storage when a listener subscribes. */
     setStoredSession(session: FakeSession | null) {

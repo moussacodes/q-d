@@ -36,4 +36,17 @@ export const providerColors = {
 /** Default avatar color from the Figma Avatar component. */
 export const defaultAvatarColor = '#f2a27c';
 
+/**
+ * The avatar colors onboarding step 1 and Settings offer, in order. The first
+ * is the default. Saving a profile accepts only these.
+ */
+export const avatarSwatches = [
+  defaultAvatarColor,
+  '#f6c9a5',
+  '#e8c547',
+  '#8fb4f0',
+  '#e88fb4',
+  '#8fe0b8',
+] as const;
+
 export type NeutralColors = typeof neutral;

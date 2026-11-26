@@ -2,6 +2,16 @@
 
 Product and technical decisions that are not obvious from the code. Newest first.
 
+## 2026-11-26 · Save onboarding profile to Supabase (live mode)
+
+- **Onboarding step 1 waits for the server in live auth mode.** Continue validates, writes `display_name`, `color` and `adult_confirmed_at` (the time Continue was tapped) to the person's own `profiles` row, and moves to step 2 only when the write succeeded. The button reads "Saving…" and ignores more taps meanwhile. A failure stays on step 1 with words for it: offline ("…nothing was saved. Check your connection…"), signed out (no row matched), refused by the database, or anything else. Editing the name clears the message. Mock auth mode is unchanged: the profile is kept in the session only.
+- **The direct write was already allowed, so no migration.** The RLS migration grants `update (display_name, color, adult_confirmed_at)` on `profiles` to `authenticated` with an own-row policy; `supabase/tests/profile-save.test.ts` pins it (own row only, exactly those columns, other people's rows unchanged, anon denied, the table's checks).
+- **Validation, in `src/domain/profile.ts`, matches the table.** A display name is trimmed and 1–30 characters, counted like Postgres's `char_length` (an emoji is one). A name with a control character (a pasted line break or tab) is refused with its own words; PRODUCT_SPEC says nothing more about names, so nothing else is. The color must be one of the design tokens' six swatches, now `avatarSwatches` in `src/design/colors.ts` (the mock data's `avatarColors` must equal it, a test checks). 18+ must be confirmed.
+- **Settings writes the same way.** A color is written when it's picked and shown as picked only after it's saved. A name is written once, when the field is left, not per keystroke; leaving it blank or unchanged writes nothing and puts the saved name back. The header shows the saved name, so an unsaved edit never looks saved. In mock mode the name still saves as it's typed.
+- **Reading back is the auth stack's.** `fetchSavedProfile` reads the row on sign-in and restart, and a finished profile goes Home. A failed read still counts as not finished (`fetchSavedProfile`, email sign-in card): the person sees step 1 again, and saving it again is harmless. **A teammate should decide** whether a failed read should show a retry instead.
+- **Logs** name the step, a result and a code-shaped database code, never the name or color; the privacy canaries cover it (`src/services/privacyLogs.test.ts`, `__tests__/profile-save-live.test.tsx`).
+- **Not done:** the onboarding screens themselves belong to the "Three-step onboarding" card; this card only persists what they collect. Untested against a live Supabase project. Figma not re-checked.
+
 ## 2026-11-26 · Privacy check merged into the live stack
 
 - **`review/privacy-check` is merged on top of `review/live-search`** (both sit on the integration commit 3f03ba7). Both added the same 30-second database test timeout in `supabase/tests/harness/jest-setup.ts`; one copy is kept.

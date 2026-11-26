@@ -2,6 +2,7 @@ import { router, type Href } from 'expo-router';
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
 import type { AuthStatus, SignInMethod } from '@/domain/auth';
+import { MAX_DISPLAY_NAME_LENGTH } from '@/domain/profile';
 import type { MusicProvider } from '@/domain/music-provider';
 import { findRoom, mockUser, type MockRoom } from '@/providers/mock/data';
 import { clearProviderCredentials, signOut as signOutOfSupabase } from '@/services/auth';
@@ -29,11 +30,14 @@ export const signInMethodNames: Record<SignInMethod, string> = {
   email: 'Email',
 };
 
-/** What onboarding step 1 collects (plan.md §2). Stored in `profiles` later. */
+/**
+ * What onboarding step 1 collects (plan.md §2). In live auth mode it's saved
+ * to the person's `profiles` row first (useProfileSave.ts).
+ */
 export type Profile = { name: string; color: string };
 
 /** The longest display name onboarding and Settings accept. */
-export const MAX_NAME_LENGTH = 30;
+export const MAX_NAME_LENGTH = MAX_DISPLAY_NAME_LENGTH;
 
 export type User = Profile & { email: string; signedInWith: SignInMethod };
 
