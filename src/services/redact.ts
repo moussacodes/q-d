@@ -125,7 +125,8 @@ const STRING_RULES: readonly [RegExp, string][] = [
   [/\bKey \(([^()]*)\)=\((?:[^()]|\([^()]*\))*\)/g, 'Key ($1)=([redacted])'],
   // Postgres errors that echo a whole row or the value that failed, e.g. a
   // not-null or check violation's `Failing row contains (…, Rain Down, …)`.
-  [/\bFailing row contains \((?:[^()]|\([^()]*\))*\)/g, 'Failing row contains ([redacted])'],
+  // The rest of the line goes: a title's own parentheses can nest or not close.
+  [/\bFailing row contains \([^\n]*/g, 'Failing row contains ([redacted])'],
   // `invalid input syntax for type uuid: "QD-7K4F9X"` echoes what was sent.
   [/(\binvalid input (?:syntax|value) for (?:type )?[\w ]+: )"(?:[^"\\]|\\.)*"/g, '$1"[redacted]"'],
   // JWTs (header.payload.signature, header starts with eyJ).
@@ -256,8 +257,13 @@ function redactErrorInner(error: Error, depth: number, seen: WeakSet<object>): R
   const { code, cause } = error as Error & { code?: unknown; cause?: unknown };
   if (typeof code === 'string' || typeof code === 'number') {
     // A code is a machine word (`PGRST301`, `23502`, `not_allowed`). Free
-    // text in `code`, which some libraries use, is removed whole.
-    output.code = typeof code === 'number' || CODE_SHAPE.test(code) ? code : REDACTED;
+    // text in `code`, which some libraries use, is removed whole, and so is
+    // a code-shaped value the string rules would change (a room code, an
+    // ISRC, a token).
+    output.code =
+      typeof code === 'number' || (CODE_SHAPE.test(code) && redactString(code) === code)
+        ? code
+        : REDACTED;
   }
   if (typeof error.stack === 'string') output.stack = redactString(error.stack);
   if (cause !== undefined) output.cause = redactInner(cause, depth + 1, seen);

@@ -150,9 +150,21 @@ describe('redactString', () => {
   it('removes the row a Postgres constraint error echoes (song titles, names)', () => {
     const details =
       'Failing row contains (5d1c, Rain Down, Delta Rae (Live), K7CN4R, Baron, null).';
-    expect(redactString(details)).toBe('Failing row contains ([redacted]).');
+    expect(redactString(details)).toBe('Failing row contains ([redacted])');
     const message = 'new row violates check constraint; Failing row contains (x, Lovers Rock)';
     expect(redactString(message)).not.toContain('Lovers Rock');
+  });
+
+  it('removes a failing row whose titles nest or leave parentheses open', () => {
+    expect(redactString('Failing row contains (x, Song (feat. A (Live)), y).')).toBe(
+      'Failing row contains ([redacted])',
+    );
+    expect(redactString('Failing row contains (x, Unbalanced ( title, y).')).toBe(
+      'Failing row contains ([redacted])',
+    );
+    expect(redactString('Failing row contains (x, Lovers Rock)\nnext line')).toBe(
+      'Failing row contains ([redacted])\nnext line',
+    );
   });
 
   it('removes the value an invalid-input error echoes, keeping the type', () => {
@@ -323,6 +335,17 @@ describe('redactError', () => {
       expect(redactError(Object.assign(new Error('x'), { code })).code).toBe(code);
     }
     expect(redactError(Object.assign(new Error('x'), { code: 401 })).code).toBe(401);
+  });
+
+  it('still scans a code-shaped `code` for room codes, ISRCs and tokens', () => {
+    for (const code of [
+      'QD-7K4F9X',
+      'USRC17607839',
+      'aB3dE5fG7hJ9kL1mN3pQrS',
+      'eyJhbGc.eyJzdWI.c2ln',
+    ]) {
+      expect(redactError(Object.assign(new Error('x'), { code })).code).toBe(REDACTED);
+    }
   });
 
   it('keeps a code and redacts extra fields by key', () => {
