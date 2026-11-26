@@ -296,6 +296,56 @@ describe('joinRoomChannel', () => {
     expect(signals).toEqual([]);
   });
 
+  it('joins nothing when closed before the token is set', async () => {
+    const { channels, started, close, statuses } = setup();
+    close();
+    await started();
+    await Promise.resolve();
+    expect(channels).toHaveLength(0);
+    expect(statuses).toEqual(['closed']);
+  });
+
+  it('keeps going when presence track or untrack fails, and still removes the channel', async () => {
+    const { latest, started, close, removed, statuses } = setup();
+    await started();
+    const channel = latest();
+    channel.track = jest.fn(async () => {
+      throw new Error('track refused');
+    });
+    channel.untrack = jest.fn(async () => {
+      throw new Error('untrack refused');
+    });
+    channel.status?.('SUBSCRIBED');
+    await Promise.resolve();
+    expect(statuses).toEqual(['connecting', 'online']);
+    close();
+    for (let i = 0; i < 4; i += 1) await Promise.resolve();
+    expect(removed).toEqual([channel]);
+  });
+
+  it('never passes on more than the user id and role a member’s presence carries', async () => {
+    const { latest, started, presence } = setup();
+    await started();
+    latest().status?.('SUBSCRIBED');
+    latest().state = {
+      [hostId]: [
+        { v: 1, userId: hostId, role: 'host', name: 'Sam', email: 'sam@example.com', song: 'x' },
+      ],
+    };
+    latest().sync?.();
+    expect(presence).toEqual([[{ v: 1, userId: hostId, role: 'host' }]]);
+  });
+
+  it('reports one offline for a drop, however many statuses follow', async () => {
+    const { latest, started, statuses } = setup();
+    await started();
+    latest().status?.('SUBSCRIBED');
+    latest().status?.('TIMED_OUT');
+    jest.advanceTimersByTime(1_000);
+    latest().status?.('CHANNEL_ERROR');
+    expect(statuses).toEqual(['connecting', 'online', 'offline']);
+  });
+
   it('still joins when setting the token fails, and lets Realtime refuse it', async () => {
     const { setAuth, channels, started } = setup('member', true);
     await started();
