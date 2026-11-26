@@ -60,6 +60,8 @@ Why it's shaped this way: [ARCHITECTURE.md § 4.10](ARCHITECTURE.md#410-client-v
 | `idempotency_conflict` | Same key, different arguments |
 | `feature_disabled` | Behind a feature flag that's off (`sync`, playlist import), or not built yet (the `delete-account` placeholder) |
 | `invalid_input` | An argument is missing or out of range, for example a blank room name or no idempotency key. Includes `field`. (Added) |
+| `not_between_songs` | **Added.** The song has started, and services only change between songs (`switch_playback_provider`) |
+| `not_needed` | **Added.** The song is already on the room's service, or isn't on the one asked for (`switch_playback_provider`) |
 
 ## 3. RPC functions
 
@@ -223,6 +225,16 @@ Moves the room to the next song when the current one ends, is skipped, or isn't 
 - **Input:** `room_id uuid`, `from_entry_id uuid`, `reason 'ended' | 'skipped' | 'unavailable'`, `idempotency_key uuid`
 - **Effect:** marks `from_entry_id` played and returns the next entry. If `from_entry_id` isn't the current entry anymore, it fails with `stale_state`, so a double tap can't skip two songs.
 - **Returns:** `{ next_entry_id | null }`
+
+#### `switch_playback_provider` (Added)
+
+The host's answer to "Not on Spotify" when the song that's up is on another service the host connected (PRODUCT_SPEC.md §6).
+
+- **Caller:** host.
+- **Input:** `room_id uuid`, `for_entry_id uuid` (the song the host answered for), `provider 'apple_music' | 'spotify'`, `idempotency_key uuid`
+- **Checks, in order:** `not_host`; `stale_state` when `for_entry_id` isn't the current entry; `not_between_songs` when its playback has started; `provider_required` when the host has no `provider_connections` row for `provider`; `not_needed` when the song is already on the room's service or isn't on `provider`.
+- **Effect:** sets `rooms.playback_provider` to `provider`, so this song and the ones after it play through it, and records the switch (from, to, entry) so every phone can say "The host switched from Spotify to Apple Music between songs." Broadcasts `room.changed`.
+- **Mock:** `features/room/roomStore` `switchProvider`, using `checkSwitch` from `src/domain/provider-switch.ts`.
 
 #### `claim_playback_slot` / `release_playback_slot` (`sync` flag)
 
@@ -452,6 +464,7 @@ type ProviderErrorCode =
 - No adapter claims a capability it doesn't have. Mocks set `isMock: true`.
 - `prepare` never starts audio. `play` does.
 - Errors surface as typed results or thrown `ProviderError`s with a `code`, never as silent no-ops.
+- A track the provider picked itself after the queue ran out is marked `autoplay: true` in the adapter's state, so the host's phone can report status `autoplay` and the app can label it. Only adapters whose `capabilities().autoplay` is true ever mark one. (Added with the autoplay-label card; the mock does this today.)
 - Nothing about tokens, emails or listening history reaches the logger unredacted.
 
 ## 6. Shared domain types

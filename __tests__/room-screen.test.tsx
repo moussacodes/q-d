@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
-import { act, fireEvent, renderRouter, screen } from 'expo-router/testing-library';
+import { act, fireEvent, renderRouter, screen, waitFor } from 'expo-router/testing-library';
 
+import { MockPlaybackAdapter } from '@/providers/mock/playback';
 import { fillEmailForm } from '@/test/emailForm';
 
 // Room screen: default, expanded and queue states (Forge card). The queue
@@ -166,5 +167,30 @@ describe('when a song can’t play', () => {
     expect(screen.getByLabelText('Repeat this song')).toBeDisabled();
     expect(screen.getByLabelText('Skip')).toBeEnabled();
     expect(screen.getByText('4 songs')).toBeVisible();
+  });
+});
+
+describe('when a song ends', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('the next one plays, without anyone tapping', async () => {
+    await signIn();
+    // The mock player keeps real time; run its songs ahead instead of waiting.
+    let ahead = 0;
+    const adapter = MockPlaybackAdapter.prototype as unknown as {
+      position: (this: { status: string }) => number;
+    };
+    const position = adapter.position;
+    jest.spyOn(adapter, 'position').mockImplementation(function (this: { status: string }) {
+      return position.call(this) + (this.status === 'playing' ? ahead : 0);
+    });
+    // The room opens 1:40 into "Have a Baby (With Me)", which is 3:45 long.
+    await openRoom({ code: 'QD-7K4F9X' });
+    expect(await screen.findByText('Have a Baby (With Me)')).toBeVisible();
+    ahead = 130_000;
+    await waitFor(() => expect(screen.getByText('6 songs')).toBeVisible());
+    expect(screen.queryByText('Have a Baby (With Me)')).toBeNull();
   });
 });

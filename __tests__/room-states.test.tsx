@@ -93,7 +93,7 @@ describe('song not on the host’s service (4.3)', () => {
       ),
     ).toBeVisible();
     // Switching needs Apple Music connected, which this host hasn't done.
-    expect(screen.queryByText('Switch for next song')).toBeNull();
+    expect(screen.queryByText(/^Switch to /)).toBeNull();
     expect(screen.queryByText(/Apple Music/)).toBeNull();
 
     await press('Skip this song');
@@ -101,7 +101,7 @@ describe('song not on the host’s service (4.3)', () => {
     expect(screen.queryByText('Phantom')).toBeNull();
   });
 
-  it('offers to switch for the next song once the host has the other service', async () => {
+  it('offers to switch once the host has the other service', async () => {
     await signIn();
     await press('Settings');
     await act(async () => {
@@ -114,10 +114,10 @@ describe('song not on the host’s service (4.3)', () => {
     expect(await screen.findByText('Not on Spotify')).toBeVisible();
     expect(
       screen.getByText(
-        'This song isn’t on the service your phone plays through. Skip it, or switch to Apple Music for the next song.',
+        'This song isn’t on Spotify, but it’s on Apple Music. Skip it, or switch to Apple Music for this song and the ones after it.',
       ),
     ).toBeVisible();
-    expect(screen.getByText('Switch for next song')).toBeVisible();
+    expect(screen.getByLabelText('Switch to Apple Music')).toBeEnabled();
     expect(screen.getByLabelText('Skip this song')).toBeEnabled();
   });
 
@@ -146,7 +146,7 @@ describe('song not on the host’s service (4.3)', () => {
       ),
     ).toBeVisible();
     expect(screen.queryByLabelText('Skip this song')).toBeNull();
-    expect(screen.queryByText('Switch for next song')).toBeNull();
+    expect(screen.queryByText(/^Switch to /)).toBeNull();
     expect(screen.getByLabelText('Skip')).toBeDisabled();
   });
 });

@@ -82,6 +82,8 @@ export type PlayerState = {
   status: 'idle' | 'playing' | 'paused';
   track: ProviderTrack | null;
   positionMs: number;
+  /** Set when the provider picked this track itself, after q’d's queue ran out. */
+  autoplay?: true;
 };
 
 export interface PlaybackAdapter {

@@ -229,6 +229,8 @@ type ServiceCardProps = {
   onConnect?: () => void;
   /** Settings only: a connected service gets a Disconnect button. */
   onDisconnect?: () => void;
+  /** A connect is running: Connect is disabled so a second tap can't start another. */
+  busy?: boolean;
 };
 
 /** Figma "Service Card": a music service with its connection state. */
@@ -239,6 +241,7 @@ export function ServiceCard({
   state,
   onConnect,
   onDisconnect,
+  busy = false,
 }: ServiceCardProps) {
   const { colors } = useTheme();
   return (
@@ -272,7 +275,9 @@ export function ServiceCard({
           onPress={onDisconnect}
         />
       ) : null}
-      {state === 'connect' ? <Button size="small" label="Connect" onPress={onConnect} /> : null}
+      {state === 'connect' ? (
+        <Button size="small" label="Connect" disabled={busy} onPress={onConnect} />
+      ) : null}
       {state === 'ready' ? <Chip label="Ready" /> : null}
     </View>
   );

@@ -3,6 +3,8 @@ import type { PlaybackCapabilities } from '@/domain/playback';
 
 import { ProviderError } from '../errors';
 import type { ConnectionState, PlaybackAdapter, PlayerState, ProviderTrack } from '../types';
+import { toProviderTrack } from './catalog';
+import { mockAutoplayTracks } from './data';
 
 /**
  * A mock plays no audio, so it claims no real capability. `isMock` lets the UI
@@ -19,7 +21,9 @@ export const mockCapabilities: PlaybackCapabilities = Object.freeze({
 /**
  * A pretend player for web, Windows and tests. It keeps time with a clock you
  * can inject, so the same calls always give the same state. When a song ends
- * it moves to the next enqueued song; when the queue runs out it goes idle.
+ * it moves to the next enqueued song. When the queue runs out it goes idle,
+ * or, with `autoplay`, plays songs it picks itself, the way Apple Music and
+ * Spotify can. Its picks are a fixed list, so they're always the same.
  */
 export class MockPlaybackAdapter implements PlaybackAdapter {
   private queue: ProviderTrack[] = [];
@@ -30,13 +34,21 @@ export class MockPlaybackAdapter implements PlaybackAdapter {
   /** Clock time when playback last started or seeked while playing. */
   private startedAt = 0;
 
+  /** The track is one the mock picked itself after the queue ran out. */
+  private autoplaying = false;
+  /** How many songs autoplay has picked, for the next pick. */
+  private picks = 0;
+
   constructor(
     readonly provider: MusicProvider,
     private readonly now: () => number = Date.now,
+    private readonly options: { autoplay?: boolean } = {},
   ) {}
 
   capabilities(): PlaybackCapabilities {
-    return { ...mockCapabilities };
+    // Autoplay is the labeled mock's own fixed list (`isMock`), never a claim
+    // about Apple Music or Spotify.
+    return { ...mockCapabilities, autoplay: !!this.options.autoplay };
   }
 
   async connect(): Promise<ConnectionState> {
@@ -47,6 +59,7 @@ export class MockPlaybackAdapter implements PlaybackAdapter {
   async prepare(track: ProviderTrack, startPositionMs = 0) {
     this.check(track);
     this.checkPosition(startPositionMs);
+    this.autoplaying = false;
     this.track = track;
     this.status = 'paused';
     this.baseMs = this.clamp(startPositionMs);
@@ -82,10 +95,16 @@ export class MockPlaybackAdapter implements PlaybackAdapter {
 
   async getState(): Promise<PlayerState> {
     this.advance();
-    return { status: this.status, track: this.track, positionMs: this.position() };
+    const state: PlayerState = {
+      status: this.status,
+      track: this.track,
+      positionMs: this.position(),
+    };
+    return this.autoplaying ? { ...state, autoplay: true } : state;
   }
 
   async disconnect() {
+    this.autoplaying = false;
     this.queue = [];
     this.track = null;
     this.status = 'idle';
@@ -117,7 +136,7 @@ export class MockPlaybackAdapter implements PlaybackAdapter {
   private advance() {
     while (this.status === 'playing' && this.track && this.position() >= this.track.durationMs) {
       const overflow = this.position() - this.track.durationMs;
-      const next = this.queue.shift();
+      const next = this.queue.shift() ?? this.pick();
       if (!next) {
         this.track = null;
         this.status = 'idle';
@@ -128,5 +147,14 @@ export class MockPlaybackAdapter implements PlaybackAdapter {
       this.baseMs = 0;
       this.startedAt = this.now() - overflow;
     }
+  }
+
+  /** Autoplay's next song, once the queue has run out. Null without autoplay. */
+  private pick(): ProviderTrack | null {
+    if (!this.options.autoplay) return null;
+    const track = mockAutoplayTracks[this.picks % mockAutoplayTracks.length];
+    this.picks += 1;
+    this.autoplaying = true;
+    return { ...toProviderTrack(track), provider: this.provider };
   }
 }

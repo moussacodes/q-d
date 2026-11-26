@@ -1,4 +1,4 @@
-import { availabilityOf, canPlayOnHostPhone } from '@/domain/availability';
+import type { MusicProvider } from '@/domain/music-provider';
 import type { PlaybackAdapter, PlayerState } from '@/providers';
 import { toProviderTrack } from '@/providers/mock/catalog';
 
@@ -10,74 +10,135 @@ import type { RoomEntry } from './roomStore';
  * (Postgres later, the mock store now) decides what's next. So reorders and
  * removals apply at once, with no copy of the queue inside the player.
  *
- * It never plays a song its service doesn't have, or one whose match isn't
- * resolved yet (PRODUCT_SPEC.md §6): it stops and waits for the host to skip.
- * A low-confidence match plays, with the room showing its warning.
+ * It never decides whether a song can play: the room's plan does
+ * (`planSong`, fed by the stored track matches through `availableOn`), and a
+ * song that can't start goes to `standBy` (PRODUCT_SPEC.md §6). A
+ * low-confidence match plays, with the room showing its warning.
  */
 export class RoomPlayer {
   /** The entry the player has, or is loading. */
   private loaded: string | null = null;
   /** The entry the player finished loading and started. Cleared once its end is reported. */
   private started: string | null = null;
-  /** Held while the host's phone is away from the room: nothing starts playing. */
+  /** The provider is playing songs it picked itself, after the room's queue ran out. */
+  private autoplaying = false;
+  /**
+   * Held while this phone can't play: the host's phone is away, the room
+   * paused for the host, or the room's service is disconnected. Nothing starts
+   * until the host presses Play.
+   */
   private held = false;
 
-  constructor(
-    private readonly player: PlaybackAdapter,
-    private readonly onEnded: (entryId: string) => void,
-  ) {}
+  private player: PlaybackAdapter;
 
   /**
-   * Plays `entry` from `startAtMs`, or stops with nothing to play, or with a
-   * song this service can't play. Repeat calls do nothing.
+   * `adapterFor` gives the player for a service. The room starts on
+   * `provider`; a switch hands the next song to another service's player.
    */
-  async load(entry: RoomEntry | null, startAtMs: number) {
+  constructor(
+    private readonly adapterFor: (provider: MusicProvider) => PlaybackAdapter,
+    provider: MusicProvider,
+    /** `providerKeptPlaying`: the provider went on to a song it picked itself (autoplay). */
+    private readonly onEnded: (entryId: string, providerKeptPlaying: boolean) => void,
+  ) {
+    this.player = adapterFor(provider);
+  }
+
+  /** The service the player plays through now. */
+  get provider(): MusicProvider {
+    return this.player.provider;
+  }
+
+  /**
+   * Plays `entry` from `startAtMs` through `provider`, or stops with nothing
+   * to play. Repeat calls for the same entry do nothing, even with another
+   * service: services only change when a new song loads, never mid-song.
+   */
+  async load(entry: RoomEntry | null, startAtMs: number, provider = this.player.provider) {
     const id = entry?.entryId ?? null;
     if (this.loaded === id) return;
     this.loaded = id;
     this.started = null;
-    const playable = entry !== null && this.canPlay(entry);
-    if (entry && playable) {
-      // The room's service plays the song. Mock fixtures stand in for the
-      // provider track that matching resolves once the real adapters land.
-      const track = { ...toProviderTrack(entry), provider: this.player.provider };
-      await this.player.prepare(track, startAtMs);
+    if (entry) this.autoplaying = false;
+    if (entry && provider !== this.player.provider) {
+      const previous = this.player;
+      this.player = this.adapterFor(provider);
+      await previous.disconnect();
+      if (this.loaded !== id) return;
+    }
+    if (entry) {
+      await this.player.prepare({ ...toProviderTrack(entry), provider }, startAtMs);
       if (this.loaded !== id) return;
       if (!this.held) await this.player.play();
-    } else {
+    } else if (!this.autoplaying) {
+      // With nothing queued, provider autoplay keeps going; anything else stops.
       await this.player.disconnect();
     }
-    if (this.loaded === id && playable) this.started = id;
+    if (this.loaded === id) this.started = id;
   }
 
-  /** Whether this service can play the entry: its stored match isn't missing or unresolved. */
-  canPlay(entry: Pick<RoomEntry, 'matches'>) {
-    return canPlayOnHostPhone(availabilityOf(entry.matches?.[this.player.provider]));
+  /**
+   * Holds or releases the player, for when this phone can't play right now:
+   * the host's phone is away past the grace period or the room paused for the
+   * host (PRODUCT_SPEC.md §4), or the host disconnected the room's service.
+   * One flag covers every reason: `hold(away || pausedForHost ||
+   * serviceMissing)`. Holding pauses the song where it is, and a song loaded
+   * while held is prepared but stays paused, so a skip during the hold doesn't
+   * start anything. Releasing doesn't play: the music only resumes when the
+   * host presses Play. A song that isn't on the room's service uses `standBy`
+   * instead.
+   */
+  async hold(on: boolean) {
+    this.held = on;
+    if (!on) return;
+    if (this.autoplaying) {
+      // Provider autoplay stops rather than pauses: q’d didn't choose those songs.
+      this.autoplaying = false;
+      await this.player.disconnect();
+      return;
+    }
+    await this.player.pause();
+  }
+
+  /**
+   * Stops without moving the room on, for a song that's up but isn't on the
+   * room's service: it never starts, and waits for the host to skip it or
+   * switch. Provider autoplay stops too. A song that had already started
+   * pauses where it is instead. A later `load` of the entry plays it (after a
+   * switch).
+   */
+  async standBy(entry: RoomEntry | null) {
+    const id = entry?.entryId ?? null;
+    if (id !== null && this.started === id) {
+      await this.player.pause();
+      return;
+    }
+    this.loaded = null;
+    this.started = null;
+    this.autoplaying = false;
+    await this.player.disconnect();
+  }
+
+  get isHeld() {
+    return this.held;
+  }
+
+  /** The provider is playing songs it picked itself. */
+  get isAutoplaying() {
+    return this.autoplaying;
   }
 
   /** The player's state. The first read after the song ends reports the end, once. */
   async getState(): Promise<PlayerState> {
     const started = this.started;
     const state = await this.player.getState();
-    if (started && started === this.started && state.status === 'idle') {
+    const ended = state.status === 'idle' || !!state.autoplay;
+    if (started && started === this.started && ended) {
       this.started = null;
-      this.onEnded(started);
+      this.autoplaying = !!state.autoplay;
+      this.onEnded(started, this.autoplaying);
     }
     return state;
-  }
-
-  /**
-   * Holds or releases the player. Holding pauses it (PRODUCT_SPEC.md §4: the
-   * room pauses once the host has been away for the grace period) and keeps a
-   * newly loaded song paused. Releasing doesn't play; the host resumes.
-   */
-  async hold(on: boolean) {
-    this.held = on;
-    if (on) await this.player.pause();
-  }
-
-  get isHeld() {
-    return this.held;
   }
 
   play() {

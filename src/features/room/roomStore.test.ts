@@ -1,7 +1,7 @@
 import { defaultRoomRules } from '@/domain/room-rules';
 import { findRoom } from '@/providers/mock/data';
 
-import { createRoomStore, MOCK_START_MS, previewRoom, roomKey } from './roomStore';
+import { availableOn, createRoomStore, MOCK_START_MS, previewRoom, roomKey } from './roomStore';
 
 const room = { code: 'QD-7K4F9X' };
 const titles = (store: ReturnType<typeof createRoomStore>, ref = room) =>
@@ -324,5 +324,157 @@ describe('room store', () => {
       expect(store.get(back)).toMatchObject({ host: { present: true }, pausedForHost: true });
       expect(store.get(room)).toMatchObject({ host: { present: true }, pausedForHost: false });
     });
+  });
+});
+
+describe('switch_playback_provider', () => {
+  // The 4.3 preview: "Phantom" is up and isn't on Spotify.
+  const preview = { code: 'QD-7K4F9X', view: 'unavailable' as const };
+  const request = (store: ReturnType<typeof createRoomStore>) => ({
+    forEntryId: store.get(preview).nowPlaying!.entryId,
+    to: 'apple_music' as const,
+    isHost: true,
+    songStarted: false,
+    playsThrough: 'spotify' as const,
+    hostConnected: ['spotify' as const, 'apple_music' as const],
+  });
+
+  describe('which services a song can start on (its stored matches)', () => {
+    const queue = createRoomStore().get({ code: 'QD-7K4F9X' }).queue;
+    const byTitle = (title: string) => queue.find((entry) => entry.title === title)!;
+
+    it('leaves out a service whose match says it doesn’t have the song', () => {
+      expect(availableOn(byTitle('Phantom'))).toEqual(['apple_music']);
+    });
+
+    it('keeps a low-confidence match: it plays with its warning', () => {
+      const wayBigger = byTitle('Way Bigger');
+      expect(wayBigger.matches?.spotify?.warning).toBe('low_confidence');
+      expect(availableOn(wayBigger)).toContain('spotify');
+    });
+
+    it('never counts a song with no match yet, instead of guessing', () => {
+      expect(availableOn({})).toEqual([]);
+      expect(availableOn({ matches: { spotify: undefined } })).toEqual([]);
+    });
+
+    it('counts a song matched on both services on both', () => {
+      expect(availableOn(byTitle('Lovers Rock'))).toEqual(['spotify', 'apple_music']);
+    });
+  });
+
+  it('switches the room for the song that’s up, from its start, and says so', () => {
+    const store = createRoomStore();
+    const listener = jest.fn();
+    store.subscribe(listener);
+    const ask = request(store);
+    expect(store.get(preview).playsThrough).toBeNull();
+
+    expect(store.switchProvider(preview, ask)).toEqual({ ok: true });
+    const after = store.get(preview);
+    expect(after.playsThrough).toBe('apple_music');
+    expect(after.switched).toEqual({ entryId: ask.forEntryId, from: 'spotify', to: 'apple_music' });
+    expect(after.startAtMs).toBe(0);
+    expect(after.nowPlaying?.entryId).toBe(ask.forEntryId);
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it('changes nothing when the same answer comes again', () => {
+    const store = createRoomStore();
+    const ask = request(store);
+    store.switchProvider(preview, ask);
+    const after = store.get(preview);
+    expect(store.switchProvider(preview, { ...ask, playsThrough: 'apple_music' })).toEqual({
+      ok: false,
+      error: 'not_needed',
+    });
+    expect(store.get(preview)).toBe(after);
+  });
+
+  it.each([
+    ['not_host', { isHost: false }],
+    ['not_between_songs', { songStarted: true }],
+    ['provider_required', { hostConnected: ['spotify' as const] }],
+    ['stale_state', { forEntryId: 'gone' }],
+  ] as const)('refuses with %s and leaves the room alone', (error, change) => {
+    const store = createRoomStore();
+    const before = store.get(preview);
+    expect(store.switchProvider(preview, { ...request(store), ...change })).toEqual({
+      ok: false,
+      error,
+    });
+    expect(store.get(preview)).toBe(before);
+  });
+
+  it('refuses once the song was skipped', () => {
+    const store = createRoomStore();
+    const ask = request(store);
+    store.advance(preview, ask.forEntryId, 'skipped');
+    expect(store.switchProvider(preview, ask)).toEqual({ ok: false, error: 'stale_state' });
+    expect(store.get(preview).playsThrough).toBeNull();
+  });
+
+  it('refuses for a song that’s on the room’s service', () => {
+    const store = createRoomStore();
+    const ask = { ...request(store), forEntryId: store.get(room).nowPlaying!.entryId };
+    expect(store.switchProvider(room, ask)).toEqual({ ok: false, error: 'not_needed' });
+  });
+
+  it('keeps the previews apart from the real room', () => {
+    const store = createRoomStore();
+    store.switchProvider(preview, request(store));
+    expect(store.get(room).playsThrough).toBeNull();
+  });
+});
+
+describe('provider autoplay', () => {
+  /** The sample room with only the playing song left. */
+  const lastSong = () => {
+    const store = createRoomStore();
+    store.get(room).queue.forEach((entry) => store.remove(room, entry.entryId));
+    return store;
+  };
+
+  it('records the service that kept playing when the last song ended', () => {
+    const store = lastSong();
+    const playing = store.get(room).nowPlaying!.entryId;
+    expect(store.advance(room, playing, 'ended', 'spotify')).toBe(true);
+    expect(store.get(room)).toMatchObject({ nowPlaying: null, autoplay: 'spotify' });
+  });
+
+  it('ignores autoplay while songs are queued: the queue comes first', () => {
+    const store = createRoomStore();
+    store.advance(room, store.get(room).nowPlaying!.entryId, 'ended', 'spotify');
+    expect(store.get(room).autoplay).toBeNull();
+    expect(store.get(room).nowPlaying?.title).toBe('Lovers Rock');
+  });
+
+  it('doesn’t autoplay after a skip, or when the service stopped', () => {
+    const skipped = lastSong();
+    skipped.advance(room, skipped.get(room).nowPlaying!.entryId, 'skipped', 'spotify');
+    expect(skipped.get(room).autoplay).toBeNull();
+
+    const stopped = lastSong();
+    stopped.advance(room, stopped.get(room).nowPlaying!.entryId, 'ended');
+    expect(stopped.get(room).autoplay).toBeNull();
+  });
+
+  it('hands the room back to the queue when someone adds a song', () => {
+    const store = lastSong();
+    store.advance(room, store.get(room).nowPlaying!.entryId, 'ended', 'apple_music');
+    const song = { ...findRoom('QD-9M2XR4').nowPlaying!, id: 'new' };
+    expect(store.enqueue(room, song, 'Maya')).toMatchObject({ ok: true, playingNow: true });
+    expect(store.get(room)).toMatchObject({ autoplay: null, nowPlaying: { id: 'new' } });
+  });
+
+  it('forgets autoplay when the provider stops, telling subscribers once', () => {
+    const store = lastSong();
+    store.advance(room, store.get(room).nowPlaying!.entryId, 'ended', 'spotify');
+    const listener = jest.fn();
+    store.subscribe(listener);
+    store.stopAutoplay(room);
+    store.stopAutoplay(room);
+    expect(store.get(room).autoplay).toBeNull();
+    expect(listener).toHaveBeenCalledTimes(1);
   });
 });

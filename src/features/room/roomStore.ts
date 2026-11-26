@@ -1,8 +1,11 @@
+import { availabilityOf, canPlayOnHostPhone } from '@/domain/availability';
 import {
   HOST_RECONNECT_GRACE_MS,
   nextHostPresence,
   type HostPresence,
 } from '@/domain/host-presence';
+import type { MusicProvider } from '@/domain/music-provider';
+import { checkSwitch, type SwitchError } from '@/domain/provider-switch';
 import { defaultRoomRules, type RoomRules } from '@/domain/room-rules';
 import { findRoom, mockQueue, type MockRoom, type MockTrack } from '@/providers/mock/data';
 
@@ -33,6 +36,15 @@ export type RoomState = {
    * paused, queue kept, until the returning host resumes.
    */
   pausedForHost: boolean;
+  /** The service the room plays through after a switch. Null: the one it started with. */
+  playsThrough: MusicProvider | null;
+  /** The last switch, so everyone can be told while that song plays. */
+  switched: { entryId: string; from: MusicProvider; to: MusicProvider } | null;
+  /**
+   * The queue ran out and this service kept playing songs it picked itself
+   * (`report_playback_state` with status `autoplay`). Null otherwise.
+   */
+  autoplay: MusicProvider | null;
 };
 
 /**
@@ -69,6 +81,35 @@ const ownStateViews: readonly RoomView[] = [
 export type RoomRef = { code: string; view?: RoomView };
 
 export type AdvanceReason = 'ended' | 'skipped' | 'unavailable';
+
+/** A host's request to switch the room's service, as `switch_playback_provider` takes it. */
+export type SwitchRequest = {
+  /** The song the host answered the prompt for. */
+  forEntryId: string;
+  to: MusicProvider;
+  /**
+   * What the server checks for itself in real mode: who's asking, whether the
+   * song has started, the room's service and what the host has connected.
+   */
+  isHost: boolean;
+  songStarted: boolean;
+  playsThrough: MusicProvider;
+  hostConnected: readonly MusicProvider[];
+};
+
+export type SwitchResult = { ok: true } | { ok: false; error: SwitchError };
+
+/**
+ * The services the host's phone may start a queue song on, read from its
+ * stored track matches (`availabilityOf`): an uncertain match counts, a
+ * missing or unresolved one doesn't. This feeds `planSong`, so `standBy` is
+ * the one path for "this song can't start".
+ */
+export function availableOn(entry: Pick<MockTrack, 'matches'>): MusicProvider[] {
+  return (['spotify', 'apple_music'] as const).filter((provider) =>
+    canPlayOnHostPhone(availabilityOf(entry.matches?.[provider])),
+  );
+}
 
 /** What `enqueue_recording` answers. `queueLength` gives "Rain Down added · 8th in line". */
 export type EnqueueResult =
@@ -131,6 +172,9 @@ function seed(ref: RoomRef, now: number): RoomState {
     startAtMs: room.nowPlaying ? MOCK_START_MS : 0,
     rules: defaultRoomRules,
     ...seedHost(ref.view, now),
+    playsThrough: null,
+    switched: null,
+    autoplay: null,
   };
 }
 
@@ -189,7 +233,8 @@ export function createRoomStore(now: () => number = Date.now) {
       added += 1;
       const entry: RoomEntry = { ...track, addedBy, entryId: `${roomKey(ref)}/added-${added}` };
       if (!room.nowPlaying) {
-        update(ref, { ...room, nowPlaying: entry, startAtMs: 0 });
+        // The queue takes over from provider autoplay.
+        update(ref, { ...room, nowPlaying: entry, startAtMs: 0, autoplay: null });
         return {
           ok: true,
           entryId: entry.entryId,
@@ -229,13 +274,60 @@ export function createRoomStore(now: () => number = Date.now) {
      * `advance_queue`: the next queued song becomes now playing. Returns false
      * when `fromEntryId` isn't playing anymore (`stale_state`), so a double
      * tap on Skip, or two screens noticing the same song end, moves on once.
+     *
+     * `autoplay`: the service that kept playing on its own when the song
+     * ended (see `src/domain/autoplay`). It only counts when nothing is
+     * queued: a queued song always comes first.
      */
-    advance(ref: RoomRef, fromEntryId: string, _reason: AdvanceReason): boolean {
+    advance(
+      ref: RoomRef,
+      fromEntryId: string,
+      reason: AdvanceReason,
+      autoplay: MusicProvider | null = null,
+    ): boolean {
       const room = get(ref);
       if (room.nowPlaying?.entryId !== fromEntryId) return false;
       const [next = null, ...rest] = room.queue;
-      update(ref, { ...room, nowPlaying: next, queue: rest, startAtMs: 0 });
+      update(ref, {
+        ...room,
+        nowPlaying: next,
+        queue: rest,
+        startAtMs: 0,
+        autoplay: !next && reason === 'ended' ? autoplay : null,
+      });
       return true;
+    },
+
+    /** `report_playback_state` leaving `autoplay`: the provider stopped picking songs. */
+    stopAutoplay(ref: RoomRef) {
+      const room = get(ref);
+      if (room.autoplay) update(ref, { ...room, autoplay: null });
+    },
+
+    /**
+     * `switch_playback_provider`: the host answers the prompt for a song
+     * that isn't on the room's service by switching to one it's on. Only the
+     * host, only for the song that's up, and only before it starts
+     * (`src/domain/provider-switch`). The room keeps the new service for the
+     * songs after it. A repeat of the same answer changes nothing.
+     */
+    switchProvider(ref: RoomRef, request: SwitchRequest): SwitchResult {
+      const room = get(ref);
+      const song = room.nowPlaying;
+      const check = checkSwitch({
+        ...request,
+        upEntryId: song?.entryId ?? null,
+        availableOn: song ? availableOn(song) : [],
+      });
+      if (!check.ok) return check;
+      update(ref, {
+        ...room,
+        playsThrough: check.to,
+        switched: { entryId: request.forEntryId, from: check.from, to: check.to },
+        // The song hasn't started, so it plays from the top through the new service.
+        startAtMs: 0,
+      });
+      return { ok: true };
     },
 
     /**

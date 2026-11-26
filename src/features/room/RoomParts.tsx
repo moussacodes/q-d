@@ -16,12 +16,15 @@ import {
   type IconName,
 } from '@/components';
 import { useTheme } from '@/design';
+import { providerNames, type MusicProvider } from '@/domain/music-provider';
+import { planSong } from '@/domain/provider-switch';
 import { formatDuration, formatMinutes, parseDuration } from '@/domain/time';
 import type { MockRoom, MockTrack } from '@/providers/mock/data';
 
 import { entryAvailability, queueNote } from './availability';
 import { cantAddNote } from './RoomRules';
-import { roomParams, type LiveRoom, type RoomHandle } from './useRoom';
+import { availableOn } from './roomStore';
+import { roomParams, type LiveRoom, type RoomEntry, type RoomHandle } from './useRoom';
 
 /** "1 song", "7 songs". */
 export function songCount(count: number) {
@@ -94,7 +97,7 @@ export function Timeline({ positionMs, durationMs }: { positionMs: number; durat
  */
 export function Controls({
   canControl,
-  canPlay = true,
+  canPlay = canControl,
   playing,
   repeat,
   onTogglePlay,
@@ -104,8 +107,10 @@ export function Controls({
 }: {
   canControl: boolean;
   /**
-   * False when the host's phone can't play the song (not on its service, or
-   * not matched yet). Only Skip stays on, so the room can move past it.
+   * Play and Pause, when the host's phone can't play right now: the song
+   * isn't on its service or isn't matched yet, the host is away, or the
+   * service is disconnected. Only Skip stays on, so the room can move past
+   * it. Defaults to `canControl`.
    */
   canPlay?: boolean;
   playing: boolean;
@@ -237,7 +242,16 @@ export type QueueControls = Pick<RoomHandle, 'moveUp' | 'moveDown' | 'remove'>;
  * on a song moves it up or down, or removes it. Buttons stand in for dragging the
  * grip until a gesture library is chosen (ARCHITECTURE.md, open decision 4).
  */
-export function QueueList({ room, controls }: { room: LiveRoom; controls?: QueueControls }) {
+export function QueueList({
+  room,
+  controls,
+  hostConnected,
+}: {
+  room: LiveRoom;
+  controls?: QueueControls;
+  /** The host's services, on the host's phone, so a missing song can say it can be switched. */
+  hostConnected?: readonly MusicProvider[];
+}) {
   const [open, setOpen] = useState<string | null>(null);
   const last = room.queue.length - 1;
   return (
@@ -254,7 +268,7 @@ export function QueueList({ room, controls }: { room: LiveRoom; controls?: Queue
             addedBy={`by ${entry.addedBy}`}
             duration={entry.duration}
             showGrip={!!controls}
-            note={queueNote(entryAvailability(entry, room.playsThrough), room.playsThrough)}
+            note={queueEntryNote(entry, room.playsThrough, hostConnected)}
             onPress={
               controls
                 ? () => setOpen((current) => (current === entryId ? null : entryId))
@@ -315,6 +329,25 @@ export function EmptyQueue() {
       </Text>
     </View>
   );
+}
+
+/**
+ * The note under a queued song: on the host's phone, a song the host can
+ * switch services for says so; otherwise its stored match decides
+ * (unavailable, or an uncertain version).
+ */
+function queueEntryNote(
+  entry: RoomEntry,
+  playsThrough: MusicProvider,
+  hostConnected?: readonly MusicProvider[],
+) {
+  if (hostConnected) {
+    const plan = planSong({ playsThrough, availableOn: availableOn(entry), hostConnected });
+    if (plan.kind === 'offer_switch') {
+      return `Not on ${providerNames[playsThrough]} · you can switch to ${providerNames[plan.to]} when it comes up`;
+    }
+  }
+  return queueNote(entryAvailability(entry, playsThrough), playsThrough);
 }
 
 /**

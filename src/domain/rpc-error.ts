@@ -16,6 +16,7 @@ export type RpcErrorCode =
   | 'invite_invalid'
   | 'rate_limited'
   | 'provider_required'
+  | 'provider_unavailable'
   | 'already_in_queue'
   | 'entry_not_found'
   | 'stale_state'
@@ -23,7 +24,11 @@ export type RpcErrorCode =
   | 'limit_exceeded'
   | 'idempotency_conflict'
   | 'feature_disabled'
-  | 'invalid_input';
+  | 'invalid_input'
+  /** `switch_playback_provider` (proposed): the song has started. */
+  | 'not_between_songs'
+  /** `switch_playback_provider` (proposed): nothing to switch. */
+  | 'not_needed';
 
 export type RpcError =
   | { code: Exclude<RpcErrorCode, 'rate_limited'> }

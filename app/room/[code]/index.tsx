@@ -15,7 +15,6 @@ import {
   useScreenPalette,
 } from '@/components';
 import { useTheme } from '@/design';
-import { providerNames } from '@/domain/music-provider';
 import { roomPalette } from '@/features/playback/palette';
 import {
   EXPANDED_COVER_GAP,
@@ -33,9 +32,11 @@ import {
   TrackInfo,
   UpNextPeek,
 } from '@/features/room/RoomParts';
-import { hostAwayNote, HostNotice, ServiceMissingNotice } from '@/features/room/HostNotice';
+import { AutoplayNotice } from '@/features/room/AutoplayNotice';
+import { hostAwayNote, HostNotice } from '@/features/room/HostNotice';
 import { MatchNotice } from '@/features/room/MatchNotice';
-import { UnavailableNotice } from '@/features/room/UnavailableNotice';
+import { ServiceMissingNotice } from '@/features/room/ServiceMissingNotice';
+import { SwitchedNote, UnavailableNotice } from '@/features/room/UnavailableNotice';
 import { roomParams, useRoom, type RoomView } from '@/features/room/useRoom';
 
 /**
@@ -56,11 +57,15 @@ export default function Room() {
     isHost,
     canAdd,
     canControl,
+    canPlay,
     nowPlayingAvailability: availability,
     host,
     pausedForHost,
     serviceMissing,
     resumeAfterHost,
+    plan,
+    switchProvider,
+    hostConnected,
     skip,
     moveUp,
     moveDown,
@@ -68,11 +73,10 @@ export default function Room() {
   } = useRoom(params.code, params.view);
   const track = room.nowPlaying;
   // 4.3: the song isn't on the service the host's phone plays through.
-  // The host is asked to skip it; everyone else is told why it can't play.
-  const missing = availability?.kind === 'unavailable';
-  // The host's phone doesn't play a song it can't find, so only Skip works.
-  const playable =
-    (availability?.kind === 'playable' || availability?.kind === 'uncertain') && !serviceMissing;
+  // The host is asked to skip it or switch; everyone else is told why it can't
+  // play. A song with no stored match yet isn't "not on" the service: the
+  // match notice says it's still being matched.
+  const missing = plan !== null && plan.kind !== 'play' && availability?.kind !== 'unknown';
   // Only the host's phone plays, so its controls wait for it (PRODUCT_SPEC.md §4).
   // A returning host's Play resumes the room; everyone else waits for that.
   const hostAway = host.kind !== 'connected';
@@ -122,7 +126,11 @@ export default function Room() {
     <View style={styles.gap6}>
       <SectionLabel right={songCount(room.queue.length)}>Up next</SectionLabel>
       {room.queue.length ? (
-        <QueueList room={room} controls={canControl ? { moveUp, moveDown, remove } : undefined} />
+        <QueueList
+          room={room}
+          controls={canControl ? { moveUp, moveDown, remove } : undefined}
+          hostConnected={isHost ? hostConnected : undefined}
+        />
       ) : (
         <EmptyQueue />
       )}
@@ -155,6 +163,14 @@ export default function Room() {
         >
           {track ? (
             <TrackInfo track={track} room={room} />
+          ) : room.autoplay ? (
+            <AutoplayNotice
+              provider={room.autoplay}
+              isHost={isHost}
+              canAdd={canAdd}
+              canPlay={canPlay}
+              playback={playback}
+            />
           ) : (
             <View style={styles.gap6}>
               <Text variant="display">Nothing playing yet</Text>
@@ -174,15 +190,21 @@ export default function Room() {
             onResume={resumeAfterHost}
           />
 
-          {serviceMissing ? (
-            <ServiceMissingNotice
-              service={providerNames[room.playsThrough]}
-              onOpenSettings={() => router.push('/settings')}
-            />
+          {serviceMissing && isHost ? (
+            <ServiceMissingNotice playsThrough={room.playsThrough} />
           ) : null}
 
           {missing ? (
-            <UnavailableNotice playsThrough={room.playsThrough} isHost={isHost} onSkip={skip} />
+            <UnavailableNotice
+              playsThrough={room.playsThrough}
+              plan={plan}
+              isHost={isHost}
+              onSkip={skip}
+              onSwitch={switchProvider}
+            />
+          ) : null}
+          {track && room.switched?.entryId === track.entryId ? (
+            <SwitchedNote from={room.switched.from} to={room.switched.to} isHost={isHost} />
           ) : null}
           {availability?.kind === 'uncertain' || availability?.kind === 'unknown' ? (
             // "Wrong version?" (onWrongVersion) comes with the override card.
@@ -199,7 +221,7 @@ export default function Room() {
               <Timeline positionMs={playback.positionMs} durationMs={playback.durationMs} />
               <Controls
                 canControl={canControl && !waitingForHost}
-                canPlay={playable}
+                canPlay={canPlay}
                 playing={playback.playing}
                 repeat={repeat}
                 onTogglePlay={pausedForHost && isHost ? resumeAfterHost : playback.togglePlay}

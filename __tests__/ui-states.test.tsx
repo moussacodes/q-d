@@ -209,16 +209,13 @@ describe('music service disconnected', () => {
     expect(await screen.findByText('Spotify isn’t connected')).toBeVisible();
     expect(
       screen.getByText(
-        'Your phone plays this room through Spotify. Connect it again in Settings to play music. The room and the queue are kept.',
+        'This room plays through Spotify on your phone, so the music is paused. The room and its queue are still here.',
       ),
     ).toBeVisible();
     await waitFor(() => expect(screen.getByLabelText('Play')).toBeDisabled());
     expect(screen.getByText('7 songs')).toBeVisible();
 
-    await pressText('Open Settings');
-    expect(screen).toHavePathname('/settings');
-    await press('Connect');
-    await press('Back');
+    await press('Reconnect Spotify');
     await waitFor(() => expect(screen.queryByText('Spotify isn’t connected')).toBeNull());
     expect(screen.getByLabelText('Play')).toBeEnabled();
   });

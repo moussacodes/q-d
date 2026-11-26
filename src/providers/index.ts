@@ -23,7 +23,8 @@ export const catalog: CatalogAdapter = mockCatalog;
  */
 export function createPlayback(provider: MusicProvider): PlaybackAdapter {
   if (provider === 'spotify' && usesRealSpotify()) return createSpotifyPlayback();
-  return new MockPlaybackAdapter(provider);
+  // Both services can autoplay once the queue ends; the mock does too, labeled.
+  return new MockPlaybackAdapter(provider, Date.now, { autoplay: true });
 }
 
 /**

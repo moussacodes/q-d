@@ -39,7 +39,7 @@ const methodIcons: Record<SignInMethod, IconName> = {
 /** 5.1 Settings · Music services and 5.2 Settings · Account. */
 export default function Settings() {
   const { user, signOut, saveProfile } = useMockSession();
-  const { room: activeRoom, playback, canControl, waitingForHost } = useActiveRoom();
+  const { room: activeRoom, playback, canPlay, waitingForHost } = useActiveRoom();
   useScreenPalette(roomPalette(activeRoom));
   const params = useLocalSearchParams<{ tab?: Tab }>();
   const [tab, setTab] = useState<Tab>(params.tab === 'account' ? 'account' : 'services');
@@ -50,11 +50,11 @@ export default function Settings() {
     <Screen
       header={<ScreenHeader title="Settings" />}
       footer={
-        activeRoom?.nowPlaying ? (
+        activeRoom?.nowPlaying || activeRoom?.autoplay ? (
           <RoomMiniPlayer
             room={activeRoom}
             playback={playback}
-            canControl={canControl}
+            canControl={canPlay}
             waitingForHost={waitingForHost}
           />
         ) : undefined
