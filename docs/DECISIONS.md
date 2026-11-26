@@ -2,6 +2,13 @@
 
 Product and technical decisions that are not obvious from the code. Newest first.
 
+## 2026-11-26 · Expo SDK 58 patch releases
+
+- **We take Expo's SDK 58 patch releases so `npm run doctor` passes.** `npx expo install --fix` moved expo to 58.1.0, expo-image to 58.0.19, expo-router to 58.0.33, expo-splash-screen to 58.0.15 and jest-expo to 58.0.16. It's still SDK 58, with no new SDK.
+- **expo-router 58.0.33 changes how `Stack.Protected` behaves.** An external URL in `redirectTo` now throws. Nested guards use the redirect of the outermost guard that fails. A guard falling back to a route from the `redirects` config no longer loops. Our root layout redirects only to internal landing screens and doesn't nest guards, so nothing changes for us. Keep `redirectTo` internal.
+- **`@react-native-masked-view/masked-view` is now an optional peer of expo-router.** It's no longer installed. It's only needed for the masked iOS back-button label in `expo-router/js-stack`, which we don't use, since our screens hide the header.
+- **`expo/fetch` reports body errors now.** As of expo 58.1.0, a connection that fails partway through the body rejects the read, and `response.body` stays locked while `text()` or `arrayBuffer()` reads it. Nothing on this branch uses `expo/fetch`.
+
 ## 2026-11-20 · Room screen: expanded cover only
 
 - **A playing song always shows the expanded cover (Figma 3.2).** The resize button is gone, so the smaller-cover layout (3.1) no longer appears while a song plays. The cover is as big as it can be while the song info and playback controls still fit above the Up next bar. The full queue is below them.
