@@ -97,6 +97,36 @@ describe('latestOverride', () => {
     expect(latestOverride([low, high], recordingId, 'spotify')?.providerTrackId).toBe('high');
   });
 
+  it('orders to the microsecond, like Postgres (same millisecond, later microsecond wins)', () => {
+    const earlier = row({
+      id: '10000000-0000-4000-8000-0000000000ff',
+      providerTrackId: 'earlier',
+      createdAt: '2026-11-25T20:00:00.123456+00:00',
+    });
+    const later = row({
+      id: '10000000-0000-4000-8000-000000000001',
+      providerTrackId: 'later',
+      createdAt: '2026-11-25T20:00:00.123457+00:00',
+    });
+    expect(latestOverride([earlier, later], recordingId, 'spotify')?.providerTrackId).toBe('later');
+    expect(latestOverride([later, earlier], recordingId, 'spotify')?.providerTrackId).toBe('later');
+  });
+
+  it('reads fewer fraction digits as the same instant (.5 is .500000)', () => {
+    const low = row({
+      id: '10000000-0000-4000-8000-000000000001',
+      providerTrackId: 'low',
+      createdAt: '2026-11-25T20:00:00.5Z',
+    });
+    const high = row({
+      id: '10000000-0000-4000-8000-0000000000ff',
+      providerTrackId: 'high',
+      createdAt: '2026-11-25T20:00:00.500000+00:00',
+    });
+    expect(latestOverride([high, low], recordingId, 'spotify')?.providerTrackId).toBe('high');
+    expect(latestOverride([low, high], recordingId, 'spotify')?.providerTrackId).toBe('high');
+  });
+
   it('treats the same instant written two ways as a tie', () => {
     const low = row({ id: '10000000-0000-4000-8000-000000000001', providerTrackId: 'low' });
     const high = row({

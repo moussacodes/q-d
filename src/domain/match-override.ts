@@ -39,12 +39,28 @@ export function latestOverride<T extends OverrideKey>(
       newest = override;
       continue;
     }
-    const at = Date.parse(override.createdAt);
-    const newestAt = Date.parse(newest.createdAt);
+    const order = compareInstants(override.createdAt, newest.createdAt);
     // Same instant: the larger id, like the server's `order by created_at desc, id desc`.
-    if (at > newestAt || (at === newestAt && override.id > newest.id)) newest = override;
+    if (order > 0 || (order === 0 && override.id > newest.id)) newest = override;
   }
   return newest;
+}
+
+/**
+ * Orders two server timestamps to the microsecond, like Postgres `timestamptz`.
+ * `Date.parse` keeps only milliseconds, so two picks in the same millisecond
+ * would otherwise tie here while the server tells them apart.
+ */
+function compareInstants(a: string, b: string): number {
+  const [aSeconds, aMicros] = instant(a);
+  const [bSeconds, bMicros] = instant(b);
+  return aSeconds !== bSeconds ? aSeconds - bSeconds : aMicros - bMicros;
+}
+
+function instant(timestamp: string): [seconds: number, micros: number] {
+  const fraction = /\.(\d+)/.exec(timestamp)?.[1] ?? '';
+  const seconds = Date.parse(timestamp.replace(/\.\d+/, ''));
+  return [seconds, Number(fraction.padEnd(6, '0').slice(0, 6))];
 }
 
 /**
