@@ -1,9 +1,26 @@
-import { createContext, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 
 import type { MusicProvider } from '@/domain/music-provider';
 import { useMockSession } from '@/features/session/MockSession';
-import { connectProvider, disconnectProvider, type ConnectionState } from '@/providers';
+import {
+  connectProvider,
+  disconnectProvider,
+  storedConnection,
+  type ConnectionState,
+} from '@/providers';
+import { isLiveAuth } from '@/services/dataMode';
 import { log } from '@/services/logger';
+import { recordProviderConnection, removeProviderConnection } from '@/services/providerConnections';
+
+import { isRealConnection, reconcileProviderRows } from './connectionRows';
 
 /**
  * Music-service connections, kept apart from q’d sign-in (plan.md §2):
@@ -14,8 +31,14 @@ import { log } from '@/services/logger';
  * Connections belong to the signed-in account. They start fresh for each
  * account and are gone after signing out. With the `realSpotify` flag on,
  * Spotify connects for real (tokens in SecureStore on this phone, never in
- * Supabase); everything else is the labeled mock. The `provider_connections`
- * rows (metadata only) come with the Supabase cards.
+ * Supabase); everything else is the labeled mock.
+ *
+ * In live auth mode a real connection is also recorded in the account's
+ * `provider_connections` row (metadata only, never tokens), which
+ * `create_room` checks: written after a real Connect succeeds, deleted on
+ * Disconnect, and reconciled with what this phone holds when an account
+ * starts here (connectionRows.ts). A mock connection never writes a row, so
+ * a live room can't start on one.
  */
 
 /** Only connected services are kept. */
@@ -48,6 +71,12 @@ type ProviderConnectionsValue = {
   disconnect: (provider: MusicProvider) => void;
   /** Pick which connected service rooms play through. */
   choose: (provider: MusicProvider) => void;
+  /**
+   * Live auth: makes sure a real connection's row exists before hosting
+   * (retries a write that failed). Resolves false for a mock connection or a
+   * write that failed again. Mock auth: always true.
+   */
+  ensureRecorded: (provider: MusicProvider) => Promise<boolean>;
 };
 
 type Store = {
@@ -75,12 +104,45 @@ function withAttempt(store: Store, provider: MusicProvider, attempt: ConnectAtte
 
 const ProviderConnectionsContext = createContext<ProviderConnectionsValue | null>(null);
 
-export function ProviderConnectionsProvider({ children }: { children: ReactNode }) {
-  const { accountId, returning } = useMockSession();
+export function ProviderConnectionsProvider({
+  children,
+  live = isLiveAuth,
+}: {
+  children: ReactNode;
+  live?: boolean;
+}) {
+  const { accountId, returning, liveUserId } = useMockSession();
   const [saved, setSaved] = useState<Store>(() => freshStore(accountId, returning));
   // Connects in flight, read synchronously: two taps in the same frame both
   // see the old render's `attempts`, so that alone can't stop the second.
   const inFlight = useRef(new Set<string>());
+  // Services whose row was written for this account (`accountId:provider`).
+  const recorded = useRef(new Set<string>());
+  const userId = live ? liveUserId : null;
+
+  // An account starting on this phone: check what's really held here and
+  // bring the rows in line. Real connections found are shown as connected.
+  useEffect(() => {
+    if (!userId) return;
+    let current = true;
+    void reconcileProviderRows(supportedProviders, {
+      stored: storedConnection,
+      record: (provider) => recordProviderConnection(userId, provider),
+      remove: (provider) => removeProviderConnection(userId, provider),
+    }).then((outcome) => {
+      if (!current) return;
+      for (const provider of outcome.recorded) recorded.current.add(`${accountId}:${provider}`);
+      const found = Object.entries(outcome.connected) as [MusicProvider, Connected][];
+      if (found.length === 0) return;
+      setSaved((store) => {
+        const base = store.accountId === accountId ? store : freshStore(accountId, returning);
+        return { ...base, connections: { ...base.connections, ...Object.fromEntries(found) } };
+      });
+    });
+    return () => {
+      current = false;
+    };
+  }, [userId, accountId, returning]);
   // A store saved for another account is never shown.
   const store = useMemo(
     () => (saved.accountId === accountId ? saved : freshStore(accountId, returning)),
@@ -120,6 +182,12 @@ export function ProviderConnectionsProvider({ children }: { children: ReactNode 
         } finally {
           inFlight.current.delete(key);
         }
+        // Only a real connection is recorded; the row never holds tokens.
+        if (userId && isRealConnection(connection)) {
+          const row = await recordProviderConnection(userId, provider);
+          if (row.ok) recorded.current.add(key);
+          else recorded.current.delete(key);
+        }
         const result = connection;
         // Someone else may have signed in meanwhile; their services stay untouched.
         setSaved((current) => {
@@ -144,6 +212,12 @@ export function ProviderConnectionsProvider({ children }: { children: ReactNode 
         disconnectProvider(provider).catch((error: unknown) =>
           log.child('connections').warn('Disconnect failed', { provider, error }),
         );
+        // A row exists only for a real connection. If deleting fails, the next
+        // start on this phone removes it (no tokens are left behind it).
+        if (userId && isRealConnection(store.connections[provider])) {
+          recorded.current.delete(`${accountId}:${provider}`);
+          void removeProviderConnection(userId, provider);
+        }
         update((current) => {
           const connections = { ...current.connections };
           delete connections[provider];
@@ -151,8 +225,17 @@ export function ProviderConnectionsProvider({ children }: { children: ReactNode 
         });
       },
       choose: (provider) => update((current) => ({ ...current, preferred: provider })),
+      ensureRecorded: async (provider) => {
+        if (!userId) return true;
+        if (!isRealConnection(store.connections[provider])) return false;
+        const key = `${accountId}:${provider}`;
+        if (recorded.current.has(key)) return true;
+        const row = await recordProviderConnection(userId, provider);
+        if (row.ok) recorded.current.add(key);
+        return row.ok;
+      },
     };
-  }, [store, accountId, returning]);
+  }, [store, accountId, returning, userId]);
 
   return (
     <ProviderConnectionsContext.Provider value={value}>

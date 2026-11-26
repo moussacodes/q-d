@@ -45,6 +45,16 @@ describe('joinErrorMessage', () => {
 });
 
 describe('createRoomErrorMessage', () => {
+  it('says when the only connection is the mock, which a live room can’t use', () => {
+    expect(createRoomErrorMessage(plain('provider_required'), { mockService: 'Spotify' })).toBe(
+      'Spotify is connected only as the mock on this phone. A live room needs a real Spotify connection.',
+    );
+    // Other errors don't change.
+    expect(createRoomErrorMessage(plain('invalid_input'), { mockService: 'Spotify' })).toBe(
+      'Room names need 1 to 40 characters.',
+    );
+  });
+
   it('maps the errors create_room can answer', () => {
     expect(createRoomErrorMessage(plain('provider_required'))).toBe(
       'Connect a music service to start a room.',

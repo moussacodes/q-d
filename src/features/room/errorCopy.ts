@@ -32,11 +32,20 @@ export function joinErrorMessage(error: RpcCallError): string {
   }
 }
 
-/** What Start a room says when `create_room` fails. */
-export function createRoomErrorMessage(error: RpcCallError): string {
+/**
+ * What Start a room says when `create_room` fails. `mockService` names the
+ * service the room would play through when this phone holds only the
+ * labeled mock of it: the server never counts a mock connection.
+ */
+export function createRoomErrorMessage(
+  error: RpcCallError,
+  options: { mockService?: string } = {},
+): string {
   switch (error.code) {
     case 'provider_required':
-      return 'Connect a music service to start a room.';
+      return options.mockService
+        ? `${options.mockService} is connected only as the mock on this phone. A live room needs a real ${options.mockService} connection.`
+        : 'Connect a music service to start a room.';
     case 'profile_incomplete':
       return 'Finish your profile before starting a room.';
     case 'invalid_input':

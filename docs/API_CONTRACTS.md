@@ -297,6 +297,16 @@ Not an RPC: one of the three direct writes row level security allows (DECISIONS 
 - Each returns `{ ok: true } | { ok: false, error }` and never throws. `error` is `not_configured`, `not_signed_in` (no row matched: RLS hid it, or `PGRST301`), `network` (no answer, nothing may have been saved), `rejected` (`23514`, `22001`, `42501`, `23502`, `22P02`) or `unknown`.
 - `fetchSavedProfile(userId)` (above) reads it back; a finished profile sends sign-in and restart to Home.
 
+#### Own provider connections (direct write, client side)
+
+Not an RPC: the second direct write RLS allows. `src/services/providerConnections.ts` only. Built (provider connection rows card).
+
+- `recordProviderConnection(userId, provider, { storefront? })` inserts `(user_id, provider, last_verified_at[, storefront])`; when the row exists (`23505`) it updates `last_verified_at` (and `storefront`) on `user_id = userId and provider = provider` instead. It isn't a PostgREST upsert, because that would write `user_id` and `provider`, which the grant doesn't allow. `connected_at` is the database's default and is never sent. A storefront is sent only when it's two letters.
+- `removeProviderConnection(userId, provider)` deletes that row. Deleting a row that isn't there is fine.
+- Each returns `{ ok: true, value } | { ok: false, error }`, `error` being `not_configured`, `not_signed_in` (`42501`, `PGRST301`, or an update that matched nothing), `network` or `unknown`. They never throw.
+- No token is ever sent: no parameter can carry one and the table has no column for one (`supabase/tests/schema.test.ts`, `supabase/tests/provider-connection-rows.test.ts`).
+- When the app calls them (DECISIONS 2026-11-26 · Record real provider connections): after a real Connect succeeds, on Disconnect of a real connection, when an account starts on a phone (reconcile), and before Start room when an earlier write failed. A mock connection never calls them.
+
 #### `delete_account` (Edge Function)
 
 Runs as an Edge Function, not a database function, because it needs the service role to delete the auth user and to revoke provider authorizations.

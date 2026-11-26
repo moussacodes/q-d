@@ -21,7 +21,7 @@ import { defaultRoomRules } from '@/domain/room-rules';
 import { useProviderConnections } from '@/features/connections/ProviderConnections';
 import { createRoomErrorMessage, roomNameMessage } from '@/features/room/errorCopy';
 import { RoomRulesEditor } from '@/features/room/RoomRules';
-import { useStartRoom } from '@/features/room/useRoom';
+import { roomsAreLive, useStartRoom } from '@/features/room/useRoom';
 import { ServicesSection } from '@/features/settings/ServicesSection';
 
 /**
@@ -40,16 +40,26 @@ export default function CreateRoom() {
   useScreenPalette();
   const { colors } = useTheme();
   const { state, start: startRoom } = useStartRoom();
-  const { connected, playsThrough, choose } = useProviderConnections();
+  const { connections, connected, playsThrough, choose, ensureRecorded } = useProviderConnections();
   const [name, setName] = useState('Sunday Slow Burn');
   const [rules, setRules] = useState(defaultRoomRules);
   const other = connected.find((provider) => provider !== playsThrough);
   const nameProblem = roomNameProblem(name);
-  const starting = state.status === 'pending';
+  // Checking the connection row counts as starting, so a second tap waits.
+  const [preparing, setPreparing] = useState(false);
+  const starting = state.status === 'pending' || preparing;
   const blocked = !playsThrough || nameProblem !== null || starting;
 
   const start = async () => {
     if (blocked) return;
+    // Live: the server checks the account's connection row, so make sure a
+    // real connection's row was written. The server still decides.
+    setPreparing(true);
+    try {
+      await ensureRecorded(playsThrough);
+    } finally {
+      setPreparing(false);
+    }
     const room = await startRoom({ name, playsThrough, rules });
     if (room) router.replace({ pathname: '/room/[code]', params: { code: room.code } });
   };
@@ -74,7 +84,12 @@ export default function CreateRoom() {
               accessibilityRole="alert"
               accessibilityLiveRegion="polite"
             >
-              {createRoomErrorMessage(state.error)}
+              {createRoomErrorMessage(state.error, {
+                mockService:
+                  roomsAreLive && playsThrough && connections[playsThrough]?.isMock
+                    ? providerNames[playsThrough]
+                    : undefined,
+              })}
             </Text>
           ) : playsThrough ? null : (
             <Text variant="caption" color="text3">

@@ -65,6 +65,8 @@ import {
 export type { EnqueueResult, RoomEntry, RoomView } from './roomStore';
 export type { AddOutcome, RoomStatus } from './roomHandle';
 export type { MockRoom } from '@/providers/mock/data';
+/** True when rooms read and write Supabase (data mode `live`). */
+export { roomsAreLive };
 export {
   availabilityLabel,
   entryAvailability,

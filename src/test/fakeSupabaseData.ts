@@ -5,6 +5,9 @@ import { createFakeRealtimeClient } from './fakeRealtime';
 /**
  * A stand-in for the Supabase client's data side at the service boundary:
  * in-memory tables behind `from(table).select().eq().in().order().limit()`,
+ * plus `insert(row)`, `update(change).eq()…[.select()]` and
+ * `delete().eq()…` for the few direct writes RLS allows (a duplicate key in
+ * `UNIQUE_KEYS` answers `23505`, like Postgres),
  * `rpc` as a jest.fn the test answers, and a fake Realtime client. It filters
  * like PostgREST but returns whole rows (it ignores the select list), so
  * tests check the mapping, not PostgREST's column picking. Nothing here
@@ -25,13 +28,79 @@ export function rpcError(code: string, details: Record<string, unknown> = {}): R
   };
 }
 
+/** Primary keys the fake enforces on insert. */
+const UNIQUE_KEYS: Record<string, string[]> = {
+  provider_connections: ['user_id', 'provider'],
+};
+
+type WriteAnswer = { data: Row[] | null; error: { code?: string; message?: string } | null };
+
 export function createFakeSupabaseData(initial: Record<string, Row[]> = {}) {
   const tables = new Map<string, Row[]>(Object.entries(initial).map(([k, v]) => [k, [...v]]));
   /** Tables whose next read fails, e.g. to show a load error. */
   const failing = new Set<string>();
+  /** Tables whose writes fail, with this error. */
+  const failingWrites = new Map<string, { code?: string; message?: string }>();
   const reads: string[] = [];
+  /** Every write, in order: what the app sent, for tests to check. */
+  const writes: {
+    table: string;
+    op: 'insert' | 'update' | 'delete';
+    values?: Row;
+    filters: Row;
+  }[] = [];
+
+  /** `update(change)` or `delete()`: filters by `eq`, runs when awaited or on `select()`. */
+  const mutation = (table: string, op: 'update' | 'delete', change?: Row) => {
+    const filters: Row = {};
+    const run = (): WriteAnswer => {
+      writes.push({ table, op, values: change, filters: { ...filters } });
+      const failure = failingWrites.get(table);
+      if (failure) return { data: null, error: failure };
+      const rows = tables.get(table) ?? [];
+      const matches = (row: Row) => Object.entries(filters).every(([k, v]) => row[k] === v);
+      const hit = rows.filter(matches);
+      tables.set(
+        table,
+        op === 'delete'
+          ? rows.filter((row) => !matches(row))
+          : rows.map((row) => (matches(row) ? { ...row, ...change } : row)),
+      );
+      return { data: hit.map((row) => ({ ...row, ...change })), error: null };
+    };
+    const builder = {
+      eq(column: string, value: unknown) {
+        filters[column] = value;
+        return builder;
+      },
+      select: async (_columns?: string) => run(),
+      then<A = WriteAnswer, B = never>(
+        resolve?: ((value: WriteAnswer) => A | PromiseLike<A>) | null,
+        reject?: ((reason: unknown) => B | PromiseLike<B>) | null,
+      ): PromiseLike<A | B> {
+        return Promise.resolve(run()).then(resolve, reject);
+      },
+    };
+    return builder;
+  };
+
+  const insertRow = async (table: string, row: Row): Promise<WriteAnswer> => {
+    writes.push({ table, op: 'insert', values: { ...row }, filters: {} });
+    const failure = failingWrites.get(table);
+    if (failure) return { data: null, error: failure };
+    const rows = tables.get(table) ?? [];
+    const key = UNIQUE_KEYS[table];
+    if (key && rows.some((existing) => key.every((column) => existing[column] === row[column]))) {
+      return { data: null, error: { code: '23505', message: 'duplicate key value' } };
+    }
+    tables.set(table, [...rows, { ...row }]);
+    return { data: null, error: null };
+  };
 
   const from = jest.fn((table: string) => ({
+    insert: (row: Row) => insertRow(table, row),
+    update: (change: Row) => mutation(table, 'update', change),
+    delete: () => mutation(table, 'delete'),
     select: (_columns: string) => {
       const filters: Filter[] = [];
       let order: { column: string; ascending: boolean } | null = null;
@@ -109,6 +178,12 @@ export function createFakeSupabaseData(initial: Record<string, Row[]> = {}) {
     },
     tables,
     reads,
+    writes,
+    /** Writes to `table` fail with `error` (or succeed again with null). */
+    failWrites(table: string, error: { code?: string; message?: string } | null) {
+      if (error) failingWrites.set(table, error);
+      else failingWrites.delete(table);
+    },
     rows: (table: string) => tables.get(table) ?? [],
     insert(table: string, ...rows: Row[]) {
       tables.set(table, [...(tables.get(table) ?? []), ...rows]);

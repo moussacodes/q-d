@@ -504,7 +504,12 @@ describe('starting a room, live', () => {
         idempotency_key: expect.stringMatching(/^[0-9a-f-]{36}$/),
       },
     ]);
-    expect(await screen.findByText('Connect a music service to start a room.')).toBeVisible();
+    // The guest's connection is the labeled mock, which the server never counts.
+    expect(
+      await screen.findByText(
+        'Spotify is connected only as the mock on this phone. A live room needs a real Spotify connection.',
+      ),
+    ).toBeVisible();
   });
 
   it('opens the new room once create_room answers', async () => {

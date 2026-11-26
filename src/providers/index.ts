@@ -3,7 +3,13 @@ import { isEnabled } from '@/services/flags';
 
 import { mockCatalog } from './mock/catalog';
 import { MockPlaybackAdapter } from './mock/playback';
-import { connectSpotify, createSpotifyPlayback, disconnectSpotify, spotify } from './spotify';
+import {
+  connectSpotify,
+  createSpotifyPlayback,
+  disconnectSpotify,
+  spotify,
+  spotifyConnectionStatus,
+} from './spotify';
 import type { CatalogAdapter, ConnectionState, PlaybackAdapter } from './types';
 
 export type * from './types';
@@ -48,6 +54,24 @@ export async function connectProvider(provider: MusicProvider): Promise<Connecti
     return connectSpotify(auth, api);
   }
   return createPlayback(provider).connect();
+}
+
+/**
+ * A real connection this phone already holds, checked without opening any
+ * sign-in sheet: for startup, before trusting a `provider_connections` row.
+ * Null when this build can't tell: the labeled mock holds nothing to check.
+ *
+ * - Spotify with `realSpotify` on: the stored tokens, checked with Spotify.
+ * - Apple Music: always null for now. The MusicKit path needs the Mac
+ *   (`modules/qd-music-kit`); the Apple card answers here whether this phone
+ *   is authorized, and the rows then follow it the same way.
+ */
+export async function storedConnection(provider: MusicProvider): Promise<ConnectionState | null> {
+  if (provider === 'spotify' && usesRealSpotify()) {
+    const { auth, api } = spotify();
+    return spotifyConnectionStatus(auth, api);
+  }
+  return null;
 }
 
 /** "Disconnect": real Spotify forgets its tokens on this phone. Mocks hold none. */
