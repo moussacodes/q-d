@@ -71,6 +71,9 @@
       {
         "displayName": "app",
         "preset": "jest-expo",
+        "setupFilesAfterEnv": [
+          "<rootDir>/src/test/jest-setup.ts"
+        ],
         "moduleNameMapper": {
           "^@/(.*)$": "<rootDir>/src/$1"
         },
