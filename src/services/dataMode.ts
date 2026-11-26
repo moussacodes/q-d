@@ -6,20 +6,21 @@ import { log } from './logger';
  *
  * - `mock`: deterministic sample data and mock music providers. Runs on web,
  *   Windows and Expo Go with no Mac, backend or provider accounts.
- * - `live`: Supabase plus the real Apple Music and Spotify adapters. Reserved
- *   until those cards land, so asking for it falls back to `mock`.
+ * - `live`: rooms, members and the queue from Supabase (RPCs, RLS reads and
+ *   Realtime). Music services are still whatever each connection says it is
+ *   (the real Spotify remote behind its flag, otherwise the labeled mock).
  *
  * Choose with `EXPO_PUBLIC_DATA_MODE` (see README → Running locally).
  */
 export type DataMode = 'mock' | 'live';
 
 /**
- * Whether this build has a live data layer to switch to. It stays false until
- * the screens read rooms and queues from Supabase instead of the mock store.
- * Until then, `live` would show mock data without the mock label, which the
- * product rules forbid.
+ * Whether this build has a live data layer to switch to. True since the live
+ * room card: rooms, members and the queue are read from Supabase and changed
+ * through the RPCs (features/room/liveRoom.ts). Music services stay labeled
+ * per connection, so a mock connection still says it's the mock.
  */
-export const LIVE_DATA_AVAILABLE = false;
+export const LIVE_DATA_AVAILABLE = true;
 
 export interface DataModeDecision {
   mode: DataMode;

@@ -27,11 +27,15 @@ describe('resolveDataMode', () => {
     expect(decision.fallbackReason).toContain('labels it as mock');
   });
 
-  it('falls back to mock while this build has no live data layer', () => {
-    const decision = resolveDataMode({ requestedDataMode: 'live', supabase });
-    expect(LIVE_DATA_AVAILABLE).toBe(false);
+  it('falls back to mock for a build without a live data layer', () => {
+    const decision = resolveDataMode({ requestedDataMode: 'live', supabase }, false);
     expect(decision.mode).toBe('mock');
     expect(decision.fallbackReason).toContain("isn't available yet");
+  });
+
+  it('has a live data layer since the live room card', () => {
+    expect(LIVE_DATA_AVAILABLE).toBe(true);
+    expect(resolveDataMode({ requestedDataMode: 'live', supabase }).mode).toBe('live');
   });
 
   it('uses live only when asked, configured and available', () => {

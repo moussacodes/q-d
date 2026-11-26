@@ -1,10 +1,10 @@
+import { useQueryClient } from '@tanstack/react-query';
 import {
   createContext,
   useCallback,
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
   useSyncExternalStore,
   type ReactNode,
@@ -17,7 +17,6 @@ import { planSong, type SongPlan } from '@/domain/provider-switch';
 import { inviteLink } from '@/domain/invite';
 import { allows, type RoomRules } from '@/domain/room-rules';
 import { formatArtists } from '@/domain/recording';
-import type { RpcError } from '@/domain/rpc-error';
 import { formatDuration, parseDuration } from '@/domain/time';
 import { useProviderConnections } from '@/features/connections/ProviderConnections';
 import { usePlayback, type Playback } from '@/features/playback/usePlayback';
@@ -33,8 +32,22 @@ import {
 } from '@/providers/mock/data';
 
 import { entryAvailability } from './availability';
-import { MockRoomServer, newIdempotencyKey, type RoomInvite } from './mockServer';
+import { MockRoomServer, type RoomInvite } from './mockServer';
 import { RoomPlayer } from './RoomPlayer';
+import {
+  roomsAreLive,
+  useServerActiveRoom,
+  useServerJoinByInvite,
+  useServerJoinRoom,
+  useServerRecentRooms,
+  useServerRoom,
+  useServerRoomInvite,
+  useServerRoomStatus,
+  useServerStartRoom,
+  type ActiveRoom,
+} from './liveRoom';
+import type { AddOutcome, RoomStatus } from './roomHandle';
+import { useCall } from './useCall';
 import {
   availableOn,
   createRoomStore,
@@ -49,6 +62,7 @@ import {
 } from './roomStore';
 
 export type { EnqueueResult, RoomEntry, RoomView } from './roomStore';
+export type { AddOutcome, RoomStatus } from './roomHandle';
 export type { MockRoom } from '@/providers/mock/data';
 export {
   availabilityLabel,
@@ -120,6 +134,13 @@ const RoomsContext = createContext<Rooms | null>(null);
  * every room, so listeners still see a song progress.
  */
 export function RoomsProvider({ children }: { children: ReactNode }) {
+  const { accountId } = useMockSession();
+  const queryClient = useQueryClient();
+  // Server state belongs to the account that read it: a different account
+  // (or none) never sees the last one's rooms, even from the cache.
+  useEffect(() => {
+    queryClient.clear();
+  }, [accountId, queryClient]);
   const [rooms] = useState<Rooms>(() => ({
     store: createRoomStore(),
     players: new Map(),
@@ -186,7 +207,7 @@ function viewerOf(room: MockRoom, view?: RoomView): MockPerson | undefined {
     : room.people.find((person) => person.id === mockUser.id);
 }
 
-function useLiveRoom(base: MockRoom | null, view?: RoomView) {
+function useMockRoomState(base: MockRoom | null, view?: RoomView) {
   const rooms = useRooms();
   const { store } = rooms;
   const code = base?.code;
@@ -329,7 +350,7 @@ function useLiveRoom(base: MockRoom | null, view?: RoomView) {
  * The room you're looking at: its live queue, its player, and the host's
  * queue actions. With `view`, a development preview of it.
  */
-export function useRoom(code: string | undefined, view?: RoomView) {
+function useMockRoom(code: string | undefined, view?: RoomView) {
   const { activeRoom, user } = useMockSession();
   // The room you started or joined, with the name and service you chose.
   const base = activeRoom && activeRoom.code === code ? activeRoom : findRoom(code);
@@ -349,7 +370,7 @@ export function useRoom(code: string | undefined, view?: RoomView) {
     plan,
     songStarted,
     hostConnected,
-  } = useLiveRoom(base, view);
+  } = useMockRoomState(base, view);
   // There's always a room here: an unknown code shows the sample room.
   const live = room!;
   const at = ref!;
@@ -357,8 +378,19 @@ export function useRoom(code: string | undefined, view?: RoomView) {
   const isHost = isListenerView(view) ? false : live.youHost;
 
   return {
+    /** Mock rooms are always ready: an unknown code shows the sample room. */
+    status: 'ready' as RoomStatus,
     room: live,
     playback,
+    /**
+     * Whether the room's playback runs through q’d here. Live rooms say false
+     * until `advance_queue` and `report_playback_state` exist on the server.
+     */
+    playbackLive: true,
+    /** Whether the host can change the rules here (`update_room_rules`). */
+    rulesEditable: true,
+    /** Why the last queue edit didn't go through, if it didn't. */
+    queueError: null as string | null,
     /**
      * Only the host invites, sets the rules and plays through their service.
      * Who adds songs and who controls the music follow the rules (PRODUCT_SPEC.md §4).
@@ -423,22 +455,24 @@ export function useRoom(code: string | undefined, view?: RoomView) {
      * already queued or playing comes back as `already_in_queue` unless
      * `allowDuplicate` confirms it.
      */
-    add: (result: CatalogResult, allowDuplicate = false) =>
+    add: async (result: CatalogResult, allowDuplicate = false): Promise<AddOutcome> =>
       store.enqueue(at, trackFromResult(result, live.playsThrough), user.name, allowDuplicate),
     /** Undo on the "added" toast: takes back your own song while it's still queued. */
     undoAdd: (entryId: string) => {
       store.remove(at, entryId);
     },
+    /** `end_room`: the host ends the room for everyone. */
+    endRoom: async (): Promise<boolean> => isHost && store.endRoom(at),
   };
 }
 
-export type RoomHandle = ReturnType<typeof useRoom>;
+export type RoomHandle = ReturnType<typeof useMockRoom>;
 
 /** The room you're in, for the mini player on Home and Settings. Null when you aren't in one. */
-export function useActiveRoom() {
+function useMockActiveRoom() {
   const { activeRoom } = useMockSession();
   const { room, playback, canControl, canPlay, host, pausedForHost, serviceMissing } =
-    useLiveRoom(activeRoom);
+    useMockRoomState(activeRoom);
   /**
    * Playback waits for the host's phone, for the returning host to resume in
    * the room, or for you, the host, to connect the room's service again.
@@ -480,50 +514,8 @@ export function useMockHostPresence() {
 }
 
 /** Rooms you've been in, newest first, for Home. Mock mode shows the sample rooms. */
-export function useRecentRooms(): MockRoom[] {
+function useMockRecentRooms(): MockRoom[] {
   return mockRooms;
-}
-
-/** Where a call to the server is: not started, waiting for its answer, or failed with an error. */
-export type CallState =
-  { status: 'idle' } | { status: 'pending' } | { status: 'failed'; error: RpcError };
-
-const idle: CallState = { status: 'idle' };
-
-/**
- * One server call at a time: while one is pending, another tap does nothing,
- * so a double tap can't send two. Each tap gets its own idempotency key.
- */
-function useCall<A, T>(
-  call: (
-    args: A,
-    idempotencyKey: string,
-  ) => Promise<{ ok: true; value: T } | { ok: false; error: RpcError }>,
-) {
-  const [state, setState] = useState<CallState>(idle);
-  const busy = useRef(false);
-  const run = useCallback(
-    async (args: A): Promise<T | null> => {
-      if (busy.current) return null;
-      busy.current = true;
-      setState({ status: 'pending' });
-      try {
-        const result = await call(args, newIdempotencyKey());
-        setState(result.ok ? idle : { status: 'failed', error: result.error });
-        return result.ok ? result.value : null;
-      } catch {
-        // A call that throws (not an RPC error) must not leave the button
-        // stuck on busy. The RPC cards map unexpected errors to copy.
-        setState(idle);
-        return null;
-      } finally {
-        busy.current = false;
-      }
-    },
-    [call],
-  );
-  const reset = useCallback(() => setState(idle), []);
-  return { state, run, reset };
 }
 
 /**
@@ -531,7 +523,7 @@ function useCall<A, T>(
  * returns `{ code }` (`QD-…`); on failure it returns null and `state` holds
  * the error.
  */
-export function useJoinRoom() {
+function useMockJoinRoom() {
   const { server } = useRooms();
   const { enterRoom } = useMockSession();
   const call = useCallback(
@@ -551,7 +543,7 @@ export function useJoinRoom() {
  * Start a room. The room is always `aux` and plays through `playsThrough` on
  * this phone. On success `start` returns `{ code }`; on failure, null.
  */
-export function useStartRoom() {
+function useMockStartRoom() {
   const { store, server } = useRooms();
   const { startRoom } = useMockSession();
   const call = useCallback(
@@ -587,7 +579,7 @@ export function useStartRoom() {
  * `join_room_by_invite`, for a scanned QR code or a shared link. On success
  * you're in the room and `join` returns `{ code }`.
  */
-export function useJoinByInvite() {
+function useMockJoinByInvite() {
   const { server } = useRooms();
   const { enterRoom } = useMockSession();
   const call = useCallback(
@@ -609,7 +601,7 @@ export function useJoinByInvite() {
  * one, and the old link and QR code stop working. Nothing happens for
  * someone who isn't the host.
  */
-export function useRoomInvite(roomCode: string, isHost: boolean) {
+function useMockRoomInvite(roomCode: string, isHost: boolean) {
   const { server, invites } = useRooms();
   // A kept invite that has expired would draw a QR code that no longer works.
   const current = () => {
@@ -643,3 +635,26 @@ export function useRoomInvite(roomCode: string, isHost: boolean) {
     replace: () => run(),
   };
 }
+
+/** The room status a room route waits for: mock rooms are always ready. */
+function useMockRoomStatus(_code: string | undefined): RoomStatus {
+  return 'ready';
+}
+
+/*
+ * Mock or live, fixed for the build (services/dataMode.ts): live rooms read
+ * Supabase (./liveRoom), mock rooms the mock store. Both hand the screens the
+ * same shapes, so the screens don't know which one they have.
+ */
+export const useRoom: (code: string | undefined, view?: RoomView) => RoomHandle = roomsAreLive
+  ? useServerRoom
+  : useMockRoom;
+export const useRoomStatus = roomsAreLive ? useServerRoomStatus : useMockRoomStatus;
+export const useActiveRoom: () => ActiveRoom = roomsAreLive
+  ? useServerActiveRoom
+  : useMockActiveRoom;
+export const useRecentRooms = roomsAreLive ? useServerRecentRooms : useMockRecentRooms;
+export const useJoinRoom = roomsAreLive ? useServerJoinRoom : useMockJoinRoom;
+export const useStartRoom = roomsAreLive ? useServerStartRoom : useMockStartRoom;
+export const useJoinByInvite = roomsAreLive ? useServerJoinByInvite : useMockJoinByInvite;
+export const useRoomInvite = roomsAreLive ? useServerRoomInvite : useMockRoomInvite;

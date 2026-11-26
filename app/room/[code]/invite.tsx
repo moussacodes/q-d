@@ -8,6 +8,7 @@ import { typography, useTheme } from '@/design';
 import { isMockInviteToken } from '@/domain/invite';
 import { spokenRoomCode } from '@/domain/room-code';
 import { createInviteErrorMessage } from '@/features/room/errorCopy';
+import { RoomGate } from '@/features/room/RoomGate';
 import { useRoom, useRoomInvite, type RoomView } from '@/features/room/useRoom';
 
 /** Upper bound for the QR so it stays square and in proportion on tablets. */
@@ -26,7 +27,7 @@ const COPIED_MS = 2000;
  * the card's width, so a phone across the table can scan it quickly. Copy
  * link and Share are pinned to the bottom of the sheet.
  */
-export default function InviteSheet() {
+function InviteSheet() {
   const { code, view } = useLocalSearchParams<{ code: string; view?: RoomView }>();
   const { room, isHost } = useRoom(code, view);
   const { link, token, state, replace } = useRoomInvite(room.code, isHost);
@@ -204,3 +205,13 @@ const styles = StyleSheet.create({
   renew: { alignItems: 'center', gap: 4 },
   actions: { alignSelf: 'stretch', flexDirection: 'row', gap: 10 },
 });
+
+/** Waits for the room (live rooms are read from Supabase) before showing it. */
+export default function InviteSheetRoute() {
+  const { code } = useLocalSearchParams<{ code: string }>();
+  return (
+    <RoomGate code={code}>
+      <InviteSheet />
+    </RoomGate>
+  );
+}

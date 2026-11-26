@@ -83,7 +83,9 @@
       {
         "displayName": "db",
         "testEnvironment": "node",
-        "testTimeout": 30000,
+        "setupFilesAfterEnv": [
+          "<rootDir>/supabase/tests/harness/jest-setup.ts"
+        ],
         "testMatch": [
           "<rootDir>/supabase/tests/**/*.test.ts"
         ],

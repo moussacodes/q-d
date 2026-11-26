@@ -21,6 +21,7 @@ import { providerNames, type MusicProvider } from '@/domain/music-provider';
 import { sizedArtworkUrl } from '@/domain/artwork';
 import { formatArtists } from '@/domain/recording';
 import { formatDuration } from '@/domain/time';
+import { RoomGate } from '@/features/room/RoomGate';
 import {
   availabilityLabel,
   resultAvailability,
@@ -61,7 +62,7 @@ type Added = {
  * says whether it's on the service the host's phone plays through. Anyone
  * in the room can add, with or without a music service.
  */
-export default function AddSongSheet() {
+function AddSongSheet() {
   const params = useLocalSearchParams<{ code: string; view?: RoomView }>();
   const { room, add, undoAdd } = useRoom(params.code, params.view);
   const { colors } = useTheme();
@@ -72,6 +73,8 @@ export default function AddSongSheet() {
   const [addedIds, setAddedIds] = useState<string[]>([]);
   /** The song waiting for "Add it again?". */
   const [confirming, setConfirming] = useState<string | null>(null);
+  /** Why the last add didn't go through (live rooms: offline, the rules, an ended room). */
+  const [addError, setAddError] = useState<string | null>(null);
   const service = providerNames[room.playsThrough];
 
   const search = useCatalogSearch(query);
@@ -87,13 +90,18 @@ export default function AddSongSheet() {
     return null;
   };
 
-  const addSong = (result: SearchResult, allowDuplicate = false) => {
-    const outcome = add(result, allowDuplicate);
+  const addSong = async (result: SearchResult, allowDuplicate = false) => {
+    const outcome = await add(result, allowDuplicate);
     if (!outcome.ok) {
+      if (outcome.error === 'failed') {
+        setAddError(outcome.message);
+        return;
+      }
       // PRODUCT_SPEC.md §5: ask before adding a song that's already there.
       setConfirming(result.track.providerTrackId);
       return;
     }
+    setAddError(null);
     setConfirming(null);
     setAdded({
       entryId: outcome.entryId,
@@ -162,6 +170,11 @@ export default function AddSongSheet() {
       <Text variant="caption" color="text3">
         Songs play on {room.youHost ? 'your' : `${room.hostName}’s`} phone through {service}.
       </Text>
+      {addError ? (
+        <Text variant="footnote" color="statusWarn" accessibilityRole="alert">
+          {addError}
+        </Text>
+      ) : null}
       <View style={styles.results}>
         <SectionLabel>Songs</SectionLabel>
         {query.trim() === '' ? (
@@ -272,3 +285,13 @@ const styles = StyleSheet.create({
     borderRadius: 14,
   },
 });
+
+/** Waits for the room (live rooms are read from Supabase) before showing it. */
+export default function AddSongSheetRoute() {
+  const { code } = useLocalSearchParams<{ code: string }>();
+  return (
+    <RoomGate code={code}>
+      <AddSongSheet />
+    </RoomGate>
+  );
+}

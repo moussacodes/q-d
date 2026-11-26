@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { hostPresentIn, nextHostPresence, type HostPresence } from '@/domain/host-presence';
 import type { RoomRole } from '@/domain/room';
@@ -66,6 +66,11 @@ export function useRoomRealtime({
 }: UseRoomRealtimeOptions): RoomRealtime {
   const queryClient = useQueryClient();
   const [saved, setSaved] = useState<State>(initial);
+  // Read at each sync, so learning the host's id later doesn't rejoin the channel.
+  const hostRef = useRef(hostUserId);
+  useEffect(() => {
+    hostRef.current = hostUserId;
+  }, [hostUserId]);
 
   useEffect(() => {
     if (!client || !roomId || !userId) return;
@@ -95,10 +100,10 @@ export function useRoomRealtime({
           ...current,
           presentCount: new Set(entries.map((entry) => entry.userId)).size,
           synced: true,
-          hostPresence: hostUserId
+          hostPresence: hostRef.current
             ? nextHostPresence(
                 current.synced ? current.hostPresence : unseen,
-                hostPresentIn(entries, hostUserId),
+                hostPresentIn(entries, hostRef.current),
                 now(),
               )
             : current.hostPresence,
@@ -116,7 +121,7 @@ export function useRoomRealtime({
         })),
     });
     return close;
-  }, [client, roomId, userId, role, hostUserId, queryClient, now]);
+  }, [client, roomId, userId, role, queryClient, now]);
 
   const state = saved.roomId === roomId ? saved : initial;
   const { synced: _synced, roomId: _roomId, ...realtime } = state;

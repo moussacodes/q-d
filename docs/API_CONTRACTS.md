@@ -32,6 +32,7 @@ Why it's shaped this way: [ARCHITECTURE.md § 4.10](ARCHITECTURE.md#410-client-v
   - Edge Functions answer with the same codes as JSON: `{ "code": "not_authenticated" }`.
   - **Errors that must keep a side effect** (a failed join attempt, which the attempt limits count) are answered with `private.error_response(code, details)` instead: the function sets PostgREST's `response.status` to 400 and returns `{ code: 'P0001', message: <code>, details, hint: 'qd' }`. PostgREST commits a transaction that didn't fail, and supabase-js reports the same `error` a raise would. Used only for a code or invite token that matched nothing.
   - `private.raise_error` refuses a code that isn't in § 2, and a test checks the list matches the table.
+- **Built (live room screens card): the app's RPC client** is `src/services/rpc.ts` (`callRpc`), with the room and queue calls in `src/services/rooms.ts`. It reads both error paths the same way, adds the client-only `network` and `unexpected` (never sent by the server, so not in § 2), and keeps a call's key for a retry when it got no answer (`features/room/useCall.ts`).
 - **Validation on the way in.** The app parses every RPC result and realtime payload with a Zod schema from `src/domain`. Anything that doesn't parse is logged (redacted) and treated as "refetch".
 - IDs are UUIDs. Times are `timestamptz` from the server clock. Durations and positions are integer milliseconds.
 

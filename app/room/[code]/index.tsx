@@ -38,6 +38,8 @@ import { hostAwayNote, HostNotice } from '@/features/room/HostNotice';
 import { MatchNotice } from '@/features/room/MatchNotice';
 import { ServiceMissingNotice } from '@/features/room/ServiceMissingNotice';
 import { SwitchedNote, UnavailableNotice } from '@/features/room/UnavailableNotice';
+import { livePlaybackNote } from '@/features/room/liveRoom';
+import { RoomGate } from '@/features/room/RoomGate';
 import { roomParams, useRoom, type RoomView } from '@/features/room/useRoom';
 import { useMockSession } from '@/features/session/MockSession';
 
@@ -51,7 +53,7 @@ import { useMockSession } from '@/features/session/MockSession';
  * shows the whole queue. With nothing playing there's no cover to expand, so
  * the room keeps the 3.1 layout: empty cover, people strip and Add a song.
  */
-export default function Room() {
+function Room() {
   const params = useLocalSearchParams<{ code: string; view?: RoomView }>();
   const { leaveRoom } = useMockSession();
   const {
@@ -61,6 +63,8 @@ export default function Room() {
     canAdd,
     canControl,
     canPlay,
+    playbackLive,
+    queueError,
     nowPlayingAvailability: availability,
     host,
     pausedForHost,
@@ -144,6 +148,11 @@ export default function Room() {
   const queue = (
     <View style={styles.gap6}>
       <SectionLabel right={songCount(room.queue.length)}>Up next</SectionLabel>
+      {queueError ? (
+        <Text variant="caption" color="statusWarn" accessibilityRole="alert">
+          {queueError}
+        </Text>
+      ) : null}
       {room.queue.length ? (
         <QueueList
           room={room}
@@ -241,7 +250,7 @@ export default function Room() {
             <>
               <Timeline positionMs={playback.positionMs} durationMs={playback.durationMs} />
               <Controls
-                canControl={canControl && !waitingForHost}
+                canControl={canControl && !waitingForHost && playbackLive}
                 canPlay={canPlay}
                 playing={playback.playing}
                 repeat={repeat}
@@ -250,7 +259,12 @@ export default function Room() {
                 onPrevious={() => playback.seek(0)}
                 onToggleRepeat={() => setRepeat((on) => !on)}
               />
-              {canControl && waitingForHost ? (
+              {playbackLive ? null : (
+                <Text variant="caption" color="text3" style={styles.center}>
+                  {livePlaybackNote}
+                </Text>
+              )}
+              {canControl && waitingForHost && playbackLive ? (
                 <Text variant="caption" color="text3" style={styles.center}>
                   {hostAway ? hostAwayNote : 'Playback controls come back when the host resumes.'}
                 </Text>
@@ -290,3 +304,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 });
+
+/** Waits for the room (live rooms are read from Supabase) before showing it. */
+export default function RoomRoute() {
+  const { code } = useLocalSearchParams<{ code: string }>();
+  return (
+    <RoomGate code={code}>
+      <Room />
+    </RoomGate>
+  );
+}
