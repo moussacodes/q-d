@@ -388,6 +388,40 @@ describe('override_track_match errors', () => {
     expect(await overrideRows(room)).toEqual([]);
   });
 
+  it('a track id saved only on another service is invalid_input (provider_track_id)', async () => {
+    const room = await setup();
+    const id = `shared-${room.id}`;
+    await db.query(
+      `insert into public.provider_tracks (provider, provider_track_id, title, duration_ms)
+       values ('apple_music', $1, 'Way Bigger', 196000)`,
+      [id],
+    );
+    await expect(override(room.host, room, { provider_track_id: id })).rejects.toMatchObject({
+      code: 'invalid_input',
+      details: { field: 'provider_track_id' },
+    });
+    expect(await overrideRows(room)).toEqual([]);
+  });
+
+  it('a song that was queued and then removed still counts as queued', async () => {
+    const room = await setup();
+    await db.query(`update public.queue_entries set status = 'removed' where room_id = $1`, [
+      room.id,
+    ]);
+    await expect(override(room.host, room)).resolves.toMatchObject({
+      provider_track_id: room.tracks[0],
+    });
+  });
+
+  it('a host who has since lost the host role gets not_host, even for a song they queued', async () => {
+    const room = await setup();
+    await db.query(
+      `update public.room_members set role = 'member' where room_id = $1 and user_id = $2`,
+      [room.id, room.host.id],
+    );
+    await expect(override(room.host, room)).rejects.toMatchObject({ code: 'not_host' });
+  });
+
   it('checks the room before the caller’s role, and the role before the song', async () => {
     const room = await setup();
     await db.query(`update public.rooms set state = 'ended', ended_at = now() where id = $1`, [
