@@ -67,6 +67,7 @@ export type { MockRoom } from '@/providers/mock/data';
 export {
   availabilityLabel,
   entryAvailability,
+  mayBeOn,
   queueNote,
   resultAvailability,
 } from './availability';

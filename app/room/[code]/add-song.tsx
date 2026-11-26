@@ -16,7 +16,7 @@ import {
   TextField,
 } from '@/components';
 import { useTheme } from '@/design';
-import { canPlayOnHostPhone } from '@/domain/availability';
+import type { TrackAvailability } from '@/domain/availability';
 import { providerNames, type MusicProvider } from '@/domain/music-provider';
 import { sizedArtworkUrl } from '@/domain/artwork';
 import { formatArtists } from '@/domain/recording';
@@ -24,6 +24,7 @@ import { formatDuration } from '@/domain/time';
 import { RoomGate } from '@/features/room/RoomGate';
 import {
   availabilityLabel,
+  mayBeOn,
   resultAvailability,
   useRoom,
   type RoomView,
@@ -46,14 +47,28 @@ function ordinal(n: number) {
   return `${n}${['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'}`;
 }
 
+/**
+ * A result's identity in the room: the canonical recording the server saved
+ * (live search), which queue entries carry too, or the mock track's id.
+ */
+const resultId = (result: SearchResult) => result.recordingId ?? result.track.providerTrackId;
+
+/** The toast's ending for a song that went straight to the top of an empty room. */
+function upNowNote(availability: TrackAvailability, service: string, playbackLive: boolean) {
+  if (availability.kind === 'unavailable') return `up now · not on ${service}`;
+  if (availability.kind === 'unknown') return `up now · waiting for a ${service} match`;
+  // A live room's queue is shared, but q’d doesn't play it from here yet.
+  return playbackLive ? 'playing now' : 'up now';
+}
+
 /** The last song added from this sheet, for the toast. */
 type Added = {
   entryId: string;
   trackId: string;
   title: string;
   playingNow: boolean;
-  /** The host's phone can play it: not missing from, or unmatched on, the room's service. */
-  playable: boolean;
+  /** How the song stands on the room's service, for "up now · …". */
+  availability: TrackAvailability;
   queueLength: number;
 };
 
@@ -64,7 +79,7 @@ type Added = {
  */
 function AddSongSheet() {
   const params = useLocalSearchParams<{ code: string; view?: RoomView }>();
-  const { room, add, undoAdd } = useRoom(params.code, params.view);
+  const { room, add, undoAdd, playbackLive } = useRoom(params.code, params.view);
   const { colors } = useTheme();
   const [query, setQuery] = useState('daniel caesar');
   const [filter, setFilter] = useState<Filter>('all');
@@ -80,7 +95,7 @@ function AddSongSheet() {
   const search = useCatalogSearch(query);
   const { results } = search;
 
-  const shown = filter === 'all' ? results : results.filter((r) => r.availableOn.includes(filter));
+  const shown = filter === 'all' ? results : results.filter((r) => mayBeOn(r, filter));
 
   const statusOf = (id: string) => {
     if (room.nowPlaying?.id === id) return 'playing';
@@ -98,20 +113,20 @@ function AddSongSheet() {
         return;
       }
       // PRODUCT_SPEC.md §5: ask before adding a song that's already there.
-      setConfirming(result.track.providerTrackId);
+      setConfirming(resultId(result));
       return;
     }
     setAddError(null);
     setConfirming(null);
     setAdded({
       entryId: outcome.entryId,
-      trackId: result.track.providerTrackId,
+      trackId: resultId(result),
       title: result.track.title,
       playingNow: outcome.playingNow,
-      playable: canPlayOnHostPhone(resultAvailability(result, room.playsThrough)),
+      availability: resultAvailability(result, room.playsThrough),
       queueLength: outcome.queueLength,
     });
-    setAddedIds((ids) => [...ids, result.track.providerTrackId]);
+    setAddedIds((ids) => [...ids, resultId(result)]);
   };
 
   // Undo only while the song is still waiting in the queue.
@@ -135,9 +150,7 @@ function AddSongSheet() {
             <Text variant="label" color={colors.bg} style={styles.flex}>
               {added.title} added ·{' '}
               {added.playingNow
-                ? added.playable
-                  ? 'playing now'
-                  : `up now · not on ${service}`
+                ? upNowNote(added.availability, service, playbackLive)
                 : `${ordinal(added.queueLength)} in line`}
             </Text>
             {canUndo ? (
@@ -196,11 +209,18 @@ function AddSongSheet() {
         ) : null}
         {(search.error || query.trim() === '' ? [] : shown).map((result) => {
           const { track } = result;
-          const id = track.providerTrackId;
+          const id = resultId(result);
           const status = statusOf(id);
           const availability = resultAvailability(result, room.playsThrough);
           // Not on the room's service, or only a match that might be wrong.
           const warn = availability.kind === 'unavailable' || availability.kind === 'uncertain';
+          // Not matched on the room's service yet: neither a warning nor a promise.
+          const dot =
+            availability.kind === 'unknown'
+              ? colors.text3
+              : warn
+                ? colors.statusWarn
+                : colors.statusOk;
           return (
             <View key={id}>
               <View style={styles.result}>
@@ -215,12 +235,7 @@ function AddSongSheet() {
                       .join(' · ')}
                   </Text>
                   <View style={styles.availability}>
-                    <View
-                      style={[
-                        styles.dot,
-                        { backgroundColor: warn ? colors.statusWarn : colors.statusOk },
-                      ]}
-                    />
+                    <View style={[styles.dot, { backgroundColor: dot }]} />
                     <Text variant="caption" color={warn ? 'statusWarn' : 'text3'}>
                       {availabilityLabel(availability, room.playsThrough)}
                     </Text>

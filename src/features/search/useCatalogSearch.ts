@@ -10,6 +10,14 @@ import {
 } from '@/providers';
 import { isMockMode } from '@/services/dataMode';
 
+import { liveCatalog } from './liveCatalog';
+
+/**
+ * The catalog search uses: the labeled mock in mock mode, and in live mode
+ * the canonical (Apple) catalog through the `catalog-search` Edge Function.
+ */
+const defaultCatalog = (): CatalogAdapter => (isMockMode ? appCatalog : liveCatalog());
+
 export type SearchResult = CatalogResult;
 
 export type SearchError = {
@@ -26,7 +34,7 @@ export type CatalogSearchState = {
 };
 
 export type CatalogSearchOptions = {
-  /** Defaults to the app's catalog: the labeled mock while data mode is `mock`. */
+  /** Defaults to the app's catalog: the labeled mock in mock mode, canonical search when live. */
   catalog?: CatalogAdapter;
   /**
    * Wait this long after the last keystroke before searching. The live
@@ -45,7 +53,7 @@ const idle: CatalogSearchState = { results: [], status: 'idle', error: null };
  */
 export function useCatalogSearch(
   query: string,
-  { catalog = appCatalog, debounceMs = isMockMode ? 0 : 300 }: CatalogSearchOptions = {},
+  { catalog = defaultCatalog(), debounceMs = isMockMode ? 0 : 300 }: CatalogSearchOptions = {},
 ): CatalogSearchState {
   /** The last search that finished, and the query it was for. */
   const [settled, setSettled] = useState<CatalogSearchState & { term: string }>({

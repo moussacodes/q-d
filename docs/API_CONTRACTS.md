@@ -430,6 +430,7 @@ type CatalogResult = {
   track: ProviderTrack;
   availableOn: MusicProvider[];
   recordingId?: string;         // Added (canonical search card): the saved recording; mocks leave it out
+  checkedOn?: MusicProvider[];  // Added (live search card): services availableOn was checked on; missing = all. Live search: ['apple_music']
   matches?: Partial<Record<MusicProvider, TrackMatch>>;  // Added (availability card): stored matches, where resolved
 };
 type ProviderEntity =

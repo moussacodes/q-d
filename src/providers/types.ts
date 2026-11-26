@@ -17,6 +17,13 @@ export type CatalogResult = {
   /** Services the recording is available on. */
   availableOn: MusicProvider[];
   /**
+   * The services `availableOn` was checked against. Missing means all of
+   * them (the mock catalog knows every service). Live canonical search only
+   * knows Apple Music, the catalog it searched: on the other services a song
+   * is unknown until a match is stored, never "not on" them.
+   */
+  checkedOn?: MusicProvider[];
+  /**
    * The canonical recording the server saved for this result, which
    * `enqueue_recording` takes. Live canonical search sets it; the mock
    * catalog has no server, so it leaves it out.

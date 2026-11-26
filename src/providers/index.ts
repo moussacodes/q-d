@@ -8,6 +8,8 @@ import type { CatalogAdapter, ConnectionState, PlaybackAdapter } from './types';
 
 export type * from './types';
 export { isProviderError, ProviderError } from './errors';
+/** Canonical search through the catalog-search Edge Function; the app wires it in live mode. */
+export { createAppleMusicCatalog } from './apple';
 
 /**
  * The adapters the app uses. Data mode `mock` is the only mode so far (see

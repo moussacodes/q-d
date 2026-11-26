@@ -90,6 +90,8 @@ export function createAppleMusicCatalog({
         recordingId,
         track,
         availableOn,
+        // Search knows only the canonical catalog; other services aren't matched yet.
+        checkedOn: ['apple_music'],
       }));
     },
 

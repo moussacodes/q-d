@@ -16,17 +16,33 @@ export function entryAvailability(
 
 /**
  * A search result's availability. Without a stored match yet, the catalog's
- * `availableOn` still says whether the service has the song at all.
+ * `availableOn` still says whether the service has the song, but only for
+ * the services it checked (`checkedOn`). Live search checks only Apple Music,
+ * so on Spotify a song stays `unknown` until it's matched: it isn't "Not on
+ * Spotify" just because nobody has looked.
  */
 export function resultAvailability(
   result: CatalogResult,
   playsThrough: MusicProvider,
 ): TrackAvailability {
   const availability = availabilityOf(result.matches?.[playsThrough]);
-  if (availability.kind === 'unknown' && !result.availableOn.includes(playsThrough)) {
-    return { kind: 'unavailable' };
+  if (availability.kind !== 'unknown') return availability;
+  if (result.availableOn.includes(playsThrough)) {
+    // The catalog has it but no match is stored: the mock catalog, or Apple
+    // Music's own songs in live search.
+    return result.checkedOn ? { kind: 'playable', confidence: 100 } : availability;
   }
-  return availability;
+  const checked = result.checkedOn ?? [playsThrough];
+  return checked.includes(playsThrough) ? { kind: 'unavailable' } : availability;
+}
+
+/**
+ * Whether a result belongs under a service's filter chip: it's on that
+ * service, or nobody has checked yet (unknown, not ruled out).
+ */
+export function mayBeOn(result: CatalogResult, provider: MusicProvider): boolean {
+  if (result.availableOn.includes(provider)) return true;
+  return !(result.checkedOn ?? [provider]).includes(provider);
 }
 
 /** The availability line under a search result. */
@@ -39,6 +55,8 @@ export function availabilityLabel(availability: TrackAvailability, playsThrough:
       return availability.warning === 'explicit_conflict'
         ? `Explicit/clean version differs on ${service}`
         : `Closest match on ${service} · may be another version`;
+    case 'unknown':
+      return `${service} version not matched yet`;
     default:
       return `On ${service}`;
   }

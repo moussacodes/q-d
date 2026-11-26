@@ -4,6 +4,7 @@ import { mockQueue } from '@/providers/mock/data';
 import {
   availabilityLabel,
   entryAvailability,
+  mayBeOn,
   queueNote,
   resultAvailability,
 } from './availability';
@@ -55,7 +56,10 @@ describe('resultAvailability', () => {
 describe('copy', () => {
   it('labels each availability for search results', () => {
     expect(availabilityLabel({ kind: 'playable', confidence: 100 }, 'spotify')).toBe('On Spotify');
-    expect(availabilityLabel({ kind: 'unknown' }, 'apple_music')).toBe('On Apple Music');
+    // Not matched yet is neither "on" nor "not on" (live search knows only Apple Music).
+    expect(availabilityLabel({ kind: 'unknown' }, 'apple_music')).toBe(
+      'Apple Music version not matched yet',
+    );
     expect(availabilityLabel({ kind: 'unavailable' }, 'spotify')).toBe('Not on Spotify');
     expect(
       availabilityLabel(
@@ -83,5 +87,68 @@ describe('copy', () => {
     expect(
       queueNote({ kind: 'uncertain', warning: 'explicit_conflict', confidence: 95 }, 'spotify'),
     ).toBe('Explicit/clean version differs on Spotify');
+  });
+});
+
+describe('live search results (only Apple Music checked)', () => {
+  const live = (overrides: Partial<CatalogResult> = {}): CatalogResult => ({
+    recordingId: 'c0000000-0000-4000-8000-00000000000a',
+    track: {
+      provider: 'apple_music',
+      providerTrackId: '1440857781',
+      title: 'Glass Harbor',
+      artists: ['The Paper Lanterns'],
+      album: 'Low Tide',
+      durationMs: 201_000,
+      isrc: null,
+      explicit: false,
+      artworkUrl: null,
+      artworkBackgroundColor: null,
+    },
+    availableOn: ['apple_music'],
+    checkedOn: ['apple_music'],
+    ...overrides,
+  });
+
+  it('is unknown on Spotify until matched, never "Not on Spotify"', () => {
+    const availability = resultAvailability(live(), 'spotify');
+    expect(availability).toEqual({ kind: 'unknown' });
+    expect(availabilityLabel(availability, 'spotify')).toBe('Spotify version not matched yet');
+  });
+
+  it('is on Apple Music, the catalog it came from', () => {
+    expect(resultAvailability(live(), 'apple_music')).toEqual({
+      kind: 'playable',
+      confidence: 100,
+    });
+  });
+
+  it('follows a stored match once there is one', () => {
+    const notOnSpotify = live({
+      matches: {
+        spotify: {
+          recordingId: 'c0000000-0000-4000-8000-00000000000a',
+          provider: 'spotify',
+          providerTrackId: null,
+          confidence: 0,
+          method: 'score',
+          warning: null,
+        },
+      },
+    });
+    expect(resultAvailability(notOnSpotify, 'spotify')).toEqual({ kind: 'unavailable' });
+  });
+
+  it('keeps the mock catalog’s answers: a song it doesn’t list on a service is not on it', () => {
+    expect(resultAvailability(live({ checkedOn: undefined }), 'spotify')).toEqual({
+      kind: 'unavailable',
+    });
+  });
+
+  it('shows an unchecked song under every filter chip, a ruled-out one only where it is', () => {
+    expect(mayBeOn(live(), 'spotify')).toBe(true);
+    expect(mayBeOn(live(), 'apple_music')).toBe(true);
+    expect(mayBeOn(live({ checkedOn: undefined }), 'spotify')).toBe(false);
+    expect(mayBeOn(live({ checkedOn: ['apple_music', 'spotify'] }), 'spotify')).toBe(false);
   });
 });
