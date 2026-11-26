@@ -16,11 +16,17 @@ import {
   TextField,
 } from '@/components';
 import { useTheme } from '@/design';
+import { canPlayOnHostPhone } from '@/domain/availability';
 import { providerNames, type MusicProvider } from '@/domain/music-provider';
 import { sizedArtworkUrl } from '@/domain/artwork';
 import { formatArtists } from '@/domain/recording';
 import { formatDuration } from '@/domain/time';
-import { useRoom, type RoomView } from '@/features/room/useRoom';
+import {
+  availabilityLabel,
+  resultAvailability,
+  useRoom,
+  type RoomView,
+} from '@/features/room/useRoom';
 import {
   searchErrorMessage,
   useCatalogSearch,
@@ -45,6 +51,8 @@ type Added = {
   trackId: string;
   title: string;
   playingNow: boolean;
+  /** The host's phone can play it: not missing from, or unmatched on, the room's service. */
+  playable: boolean;
   queueLength: number;
 };
 
@@ -92,6 +100,7 @@ export default function AddSongSheet() {
       trackId: result.track.providerTrackId,
       title: result.track.title,
       playingNow: outcome.playingNow,
+      playable: canPlayOnHostPhone(resultAvailability(result, room.playsThrough)),
       queueLength: outcome.queueLength,
     });
     setAddedIds((ids) => [...ids, result.track.providerTrackId]);
@@ -117,7 +126,11 @@ export default function AddSongSheet() {
             <Icon name="check" size={16} color={colors.bg} />
             <Text variant="label" color={colors.bg} style={styles.flex}>
               {added.title} added ·{' '}
-              {added.playingNow ? 'playing now' : `${ordinal(added.queueLength)} in line`}
+              {added.playingNow
+                ? added.playable
+                  ? 'playing now'
+                  : `up now · not on ${service}`
+                : `${ordinal(added.queueLength)} in line`}
             </Text>
             {canUndo ? (
               <Pressable
@@ -156,7 +169,7 @@ export default function AddSongSheet() {
             Search by song, artist or album.
           </Text>
         ) : search.error ? (
-          <Text variant="footnote" color="statusWarn">
+          <Text variant="footnote" color="statusWarn" accessibilityRole="alert">
             {searchErrorMessage(search.error)}
           </Text>
         ) : shown.length === 0 && search.status === 'loading' ? (
@@ -168,11 +181,13 @@ export default function AddSongSheet() {
             No songs match “{query.trim()}”.
           </Text>
         ) : null}
-        {shown.map((result) => {
+        {(search.error || query.trim() === '' ? [] : shown).map((result) => {
           const { track } = result;
           const id = track.providerTrackId;
           const status = statusOf(id);
-          const missing = !result.availableOn.includes(room.playsThrough);
+          const availability = resultAvailability(result, room.playsThrough);
+          // Not on the room's service, or only a match that might be wrong.
+          const warn = availability.kind === 'unavailable' || availability.kind === 'uncertain';
           return (
             <View key={id}>
               <View style={styles.result}>
@@ -190,11 +205,11 @@ export default function AddSongSheet() {
                     <View
                       style={[
                         styles.dot,
-                        { backgroundColor: missing ? colors.statusWarn : colors.statusOk },
+                        { backgroundColor: warn ? colors.statusWarn : colors.statusOk },
                       ]}
                     />
-                    <Text variant="caption" color={missing ? 'statusWarn' : 'text3'}>
-                      {missing ? `Not on ${service}` : `On ${service}`}
+                    <Text variant="caption" color={warn ? 'statusWarn' : 'text3'}>
+                      {availabilityLabel(availability, room.playsThrough)}
                     </Text>
                   </View>
                 </View>

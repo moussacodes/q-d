@@ -10,12 +10,14 @@ import {
   type ReactNode,
 } from 'react';
 
+import { hostStatus, type HostStatus } from '@/domain/host-presence';
 import type { MusicProvider } from '@/domain/music-provider';
 import { inviteLink } from '@/domain/invite';
 import { allows, type RoomRules } from '@/domain/room-rules';
 import { formatArtists } from '@/domain/recording';
 import type { RpcError } from '@/domain/rpc-error';
 import { formatDuration, parseDuration } from '@/domain/time';
+import { useProviderConnections } from '@/features/connections/ProviderConnections';
 import { usePlayback, type Playback } from '@/features/playback/usePlayback';
 import { useMockSession } from '@/features/session/MockSession';
 import { createPlayback, type CatalogResult } from '@/providers';
@@ -28,10 +30,12 @@ import {
   type MockTrack,
 } from '@/providers/mock/data';
 
+import { entryAvailability } from './availability';
 import { MockRoomServer, newIdempotencyKey, type RoomInvite } from './mockServer';
 import { RoomPlayer } from './RoomPlayer';
 import {
   createRoomStore,
+  listenerViews,
   previewRoom,
   roomKey,
   type RoomEntry,
@@ -42,6 +46,12 @@ import {
 
 export type { EnqueueResult, RoomEntry, RoomView } from './roomStore';
 export type { MockRoom } from '@/providers/mock/data';
+export {
+  availabilityLabel,
+  entryAvailability,
+  queueNote,
+  resultAvailability,
+} from './availability';
 
 /** A room as everyone in it sees it right now. */
 export type LiveRoom = Omit<MockRoom, 'nowPlaying' | 'queue'> & {
@@ -60,7 +70,7 @@ export function roomParams(room: Pick<LiveRoom, 'code' | 'view'>) {
 
 /** A catalog search result as a queue song, played through the room's service. */
 export function trackFromResult(
-  { track, availableOn }: CatalogResult,
+  { track, availableOn, matches }: CatalogResult,
   playsThrough: MusicProvider,
 ): Omit<MockTrack, 'addedBy'> {
   const missing = (['apple_music', 'spotify'] as const).find((p) => !availableOn.includes(p));
@@ -74,6 +84,7 @@ export function trackFromResult(
     // Mock catalog songs always carry Apple's color; grey is the Figma "Rebel" fallback.
     artworkColor: track.artworkBackgroundColor ?? '#5a5a5a',
     ...(missing ? { unavailableOn: missing } : {}),
+    ...(matches ? { matches } : {}),
   };
 }
 
@@ -115,10 +126,14 @@ function useRooms() {
 }
 
 function playerFor({ store, players }: Rooms, ref: RoomRef, room: MockRoom) {
-  const key = roomKey(ref);
+  // The service the room plays through as this view shows it: the `apple`
+  // preview shares the room's queue but plays through Apple Music, so it
+  // needs its own player, or it would decide what plays with Spotify's matches.
+  const { playsThrough } = previewRoom(room, ref.view);
+  const key = `${roomKey(ref)}@${playsThrough}`;
   let player = players.get(key);
   if (!player) {
-    player = new RoomPlayer(createPlayback(room.playsThrough), (entryId) =>
+    player = new RoomPlayer(createPlayback(playsThrough), (entryId) =>
       store.advance(ref, entryId, 'ended'),
     );
     players.set(key, player);
@@ -128,9 +143,23 @@ function playerFor({ store, players }: Rooms, ref: RoomRef, room: MockRoom) {
 
 const noRoom = () => () => {};
 
-/** Who's looking: you, or in the listener preview, the room's first listener. */
+/** The clock, ticking every second while `ticking`, for the reconnecting countdown. */
+function useNow(ticking: boolean) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!ticking) return;
+    // A stale first value only shows more time left: away time is never negative.
+    const timer = setInterval(() => setNow(Date.now()), 1_000);
+    return () => clearInterval(timer);
+  }, [ticking]);
+  return now;
+}
+
+const isListenerView = (view?: RoomView) => !!view && listenerViews.includes(view);
+
+/** Who's looking: you, or in a listener preview, the room's first listener. */
 function viewerOf(room: MockRoom, view?: RoomView): MockPerson | undefined {
-  return view === 'listener'
+  return isListenerView(view)
     ? room.people.find((person) => !person.isHost)
     : room.people.find((person) => person.id === mockUser.id);
 }
@@ -154,6 +183,25 @@ function useLiveRoom(base: MockRoom | null, view?: RoomView) {
     if (!player) return;
     player.load(nowPlaying, startAtMs).then(refresh);
   }, [player, nowPlaying, startAtMs, refresh]);
+
+  // "Host reconnecting" for the grace period, then the room pauses (PRODUCT_SPEC.md §4).
+  const hostPresent = state?.host.present ?? true;
+  const now = useNow(!hostPresent);
+  const host: HostStatus = state ? hostStatus(state.host, now) : { kind: 'connected' };
+  const away = host.kind === 'away';
+  const pausedForHost = state?.pausedForHost ?? false;
+  useEffect(() => {
+    if (ref && away) store.pauseForHost(ref);
+  }, [ref, away, store]);
+  // You host this room, but the service it plays through isn't connected on
+  // your phone any more (disconnected in Settings): nothing can play.
+  const { connections } = useProviderConnections();
+  const serviceMissing = !!base?.youHost && !connections[base.playsThrough];
+  const held = away || pausedForHost || serviceMissing;
+  useEffect(() => {
+    if (!player || player.isHeld === held) return;
+    player.hold(held).then(refresh);
+  }, [player, held, refresh]);
 
   const room = useMemo<LiveRoom | null>(() => {
     if (!base || !state) return null;
@@ -184,6 +232,22 @@ function useLiveRoom(base: MockRoom | null, view?: RoomView) {
     canAdd: !!room && allows(room.rules.addSongs, you),
     /** The room's rules let you play, pause, skip, reorder and remove. */
     canControl: !!room && allows(room.rules.control, you),
+    /** Whether the host's phone is in the room. */
+    host,
+    /** The room paused while the host was away, until the host resumes. */
+    pausedForHost,
+    /** You host, and the room's service isn't connected on your phone. */
+    serviceMissing,
+    /**
+     * The host resumes after coming back. Mock mode's store is already the
+     * room's state; the real app refetches the room first (API_CONTRACTS.md §4).
+     */
+    resumeAfterHost: async () => {
+      if (!ref || !player || serviceMissing || !store.resumeAfterHost(ref)) return;
+      await player.hold(false);
+      await player.play();
+      await refresh();
+    },
   };
 }
 
@@ -196,7 +260,18 @@ export function useRoom(code: string | undefined, view?: RoomView) {
   // The room you started or joined, with the name and service you chose.
   const base = activeRoom && activeRoom.code === code ? activeRoom : findRoom(code);
   const { store } = useRooms();
-  const { room, playback, ref, you, canAdd, canControl } = useLiveRoom(base, view);
+  const {
+    room,
+    playback,
+    ref,
+    you,
+    canAdd,
+    canControl,
+    host,
+    pausedForHost,
+    serviceMissing,
+    resumeAfterHost,
+  } = useLiveRoom(base, view);
   // There's always a room here: an unknown code shows the sample room.
   const live = room!;
   const at = ref!;
@@ -209,10 +284,23 @@ export function useRoom(code: string | undefined, view?: RoomView) {
      * Only the host invites, sets the rules and plays through their service.
      * Who adds songs and who controls the music follow the rules (PRODUCT_SPEC.md §4).
      */
-    isHost: view === 'listener' ? false : live.youHost,
+    isHost: isListenerView(view) ? false : live.youHost,
     you,
     canAdd,
     canControl,
+    /**
+     * How the playing song stands on the room's service: playable, an
+     * uncertain match (plays with a warning), unavailable or unresolved.
+     */
+    nowPlayingAvailability: live.nowPlaying
+      ? entryAvailability(live.nowPlaying, live.playsThrough)
+      : null,
+    /** Whether the host's phone is in the room, and whether the room paused for it. */
+    host,
+    pausedForHost,
+    /** You host, and the room's service isn't connected on your phone. */
+    serviceMissing,
+    resumeAfterHost,
     /** `update_room_rules`. Only the host sees the controls for it. */
     setRules: (rules: RoomRules) => store.setRules(at, rules),
     skip: () => {
@@ -250,8 +338,27 @@ export type RoomHandle = ReturnType<typeof useRoom>;
 /** The room you're in, for the mini player on Home and Settings. Null when you aren't in one. */
 export function useActiveRoom() {
   const { activeRoom } = useMockSession();
-  const { room, playback, canControl } = useLiveRoom(activeRoom);
-  return { room, playback, canControl };
+  const { room, playback, canControl, host, pausedForHost, serviceMissing } =
+    useLiveRoom(activeRoom);
+  /**
+   * Playback waits for the host's phone, for the returning host to resume in
+   * the room, or for you, the host, to connect the room's service again.
+   */
+  const waitingForHost = host.kind !== 'connected' || pausedForHost || serviceMissing;
+  return { room, playback, canControl, host, pausedForHost, waitingForHost };
+}
+
+/**
+ * Mock mode's stand-in for Realtime Presence: says whether the host's phone
+ * is in the room `code`. The `/dev` toggle uses it to show a host who
+ * disappears and comes back.
+ */
+export function useMockHostPresence() {
+  const { store } = useRooms();
+  return useCallback(
+    (code: string, present: boolean) => store.setHostPresent({ code }, present),
+    [store],
+  );
 }
 
 /** Rooms you've been in, newest first, for Home. Mock mode shows the sample rooms. */

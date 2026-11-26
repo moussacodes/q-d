@@ -33,7 +33,7 @@ function greeting(date = new Date()) {
  */
 export default function Home() {
   const { user } = useMockSession();
-  const { room: activeRoom, playback, canControl } = useActiveRoom();
+  const { room: activeRoom, playback, canControl, waitingForHost } = useActiveRoom();
   const recentRooms = useRecentRooms();
   useScreenPalette(roomPalette(activeRoom));
   const { colors } = useTheme();
@@ -64,7 +64,12 @@ export default function Home() {
       }
       footer={
         activeRoom?.nowPlaying ? (
-          <RoomMiniPlayer room={activeRoom} playback={playback} canControl={canControl} />
+          <RoomMiniPlayer
+            room={activeRoom}
+            playback={playback}
+            canControl={canControl}
+            waitingForHost={waitingForHost}
+          />
         ) : undefined
       }
     >

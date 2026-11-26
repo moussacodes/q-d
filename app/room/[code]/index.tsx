@@ -15,6 +15,7 @@ import {
   useScreenPalette,
 } from '@/components';
 import { useTheme } from '@/design';
+import { providerNames } from '@/domain/music-provider';
 import { roomPalette } from '@/features/playback/palette';
 import {
   EXPANDED_COVER_GAP,
@@ -24,6 +25,7 @@ import {
 import {
   AddSongFooter,
   Controls,
+  EmptyQueue,
   QueueList,
   RoomStrip,
   songCount,
@@ -31,6 +33,8 @@ import {
   TrackInfo,
   UpNextPeek,
 } from '@/features/room/RoomParts';
+import { hostAwayNote, HostNotice, ServiceMissingNotice } from '@/features/room/HostNotice';
+import { MatchNotice } from '@/features/room/MatchNotice';
 import { UnavailableNotice } from '@/features/room/UnavailableNotice';
 import { roomParams, useRoom, type RoomView } from '@/features/room/useRoom';
 
@@ -46,14 +50,33 @@ import { roomParams, useRoom, type RoomView } from '@/features/room/useRoom';
  */
 export default function Room() {
   const params = useLocalSearchParams<{ code: string; view?: RoomView }>();
-  const { room, playback, isHost, canAdd, canControl, skip, moveUp, moveDown, remove } = useRoom(
-    params.code,
-    params.view,
-  );
+  const {
+    room,
+    playback,
+    isHost,
+    canAdd,
+    canControl,
+    nowPlayingAvailability: availability,
+    host,
+    pausedForHost,
+    serviceMissing,
+    resumeAfterHost,
+    skip,
+    moveUp,
+    moveDown,
+    remove,
+  } = useRoom(params.code, params.view);
   const track = room.nowPlaying;
   // 4.3: the song isn't on the service the host's phone plays through.
   // The host is asked to skip it; everyone else is told why it can't play.
-  const missing = track?.unavailableOn === room.playsThrough;
+  const missing = availability?.kind === 'unavailable';
+  // The host's phone doesn't play a song it can't find, so only Skip works.
+  const playable =
+    (availability?.kind === 'playable' || availability?.kind === 'uncertain') && !serviceMissing;
+  // Only the host's phone plays, so its controls wait for it (PRODUCT_SPEC.md §4).
+  // A returning host's Play resumes the room; everyone else waits for that.
+  const hostAway = host.kind !== 'connected';
+  const waitingForHost = hostAway || (pausedForHost && !isHost);
   useScreenPalette(roomPalette(room));
 
   const { colors } = useTheme();
@@ -101,12 +124,7 @@ export default function Room() {
       {room.queue.length ? (
         <QueueList room={room} controls={canControl ? { moveUp, moveDown, remove } : undefined} />
       ) : (
-        <View style={[styles.emptyQueue, { borderColor: colors.strokeStrong }]}>
-          <Text variant="bodyStrong">The queue is empty</Text>
-          <Text variant="caption" color="text2">
-            Songs people add show up here, in order.
-          </Text>
-        </View>
+        <EmptyQueue />
       )}
     </View>
   );
@@ -148,22 +166,52 @@ export default function Room() {
             </View>
           )}
 
+          <HostNotice
+            host={host}
+            pausedForHost={pausedForHost}
+            isHost={isHost}
+            hostName={room.hostName}
+            onResume={resumeAfterHost}
+          />
+
+          {serviceMissing ? (
+            <ServiceMissingNotice
+              service={providerNames[room.playsThrough]}
+              onOpenSettings={() => router.push('/settings')}
+            />
+          ) : null}
+
           {missing ? (
             <UnavailableNotice playsThrough={room.playsThrough} isHost={isHost} onSkip={skip} />
+          ) : null}
+          {availability?.kind === 'uncertain' || availability?.kind === 'unknown' ? (
+            // "Wrong version?" (onWrongVersion) comes with the override card.
+            <MatchNotice
+              availability={availability}
+              playsThrough={room.playsThrough}
+              isHost={isHost}
+              onSkip={skip}
+            />
           ) : null}
 
           {track ? (
             <>
               <Timeline positionMs={playback.positionMs} durationMs={playback.durationMs} />
               <Controls
-                canControl={canControl}
+                canControl={canControl && !waitingForHost}
+                canPlay={playable}
                 playing={playback.playing}
                 repeat={repeat}
-                onTogglePlay={playback.togglePlay}
+                onTogglePlay={pausedForHost && isHost ? resumeAfterHost : playback.togglePlay}
                 onSkip={skip}
                 onPrevious={() => playback.seek(0)}
                 onToggleRepeat={() => setRepeat((on) => !on)}
               />
+              {canControl && waitingForHost ? (
+                <Text variant="caption" color="text3" style={styles.center}>
+                  {hostAway ? hostAwayNote : 'Playback controls come back when the host resumes.'}
+                </Text>
+              ) : null}
             </>
           ) : null}
         </View>
@@ -177,6 +225,7 @@ export default function Room() {
 
 const styles = StyleSheet.create({
   gap6: { gap: 6 },
+  center: { textAlign: 'center' },
   // Same gap as Screen's, so wrapping content in a page doesn't move it.
   page: { gap: SCREEN_GAP },
   header: {
@@ -196,13 +245,5 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  emptyQueue: {
-    borderRadius: 16,
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    padding: 20,
-    alignItems: 'center',
-    gap: 4,
   },
 });

@@ -1,8 +1,17 @@
 import { type Href } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import { Icon, Screen, ScreenHeader, SectionLabel, Text, useScreenPalette } from '@/components';
+import {
+  Button,
+  Icon,
+  Screen,
+  ScreenHeader,
+  SectionLabel,
+  Text,
+  useScreenPalette,
+} from '@/components';
 import { useTheme } from '@/design';
+import { useMockHostPresence } from '@/features/room/useRoom';
 import { useMockSession, type AuthStatus } from '@/features/session/MockSession';
 
 const room = 'QD-7K4F9X';
@@ -69,6 +78,22 @@ const sections: { title: string; links: { label: string; href: Href; enter?: boo
         label: '4.3 Song not on host’s service',
         href: { pathname: '/room/[code]', params: { code: room, view: 'unavailable' } },
       },
+      {
+        label: 'Song with a low-confidence match',
+        href: { pathname: '/room/[code]', params: { code: room, view: 'uncertain' } },
+      },
+      {
+        label: 'Host reconnecting · listener',
+        href: { pathname: '/room/[code]', params: { code: room, view: 'reconnecting' } },
+      },
+      {
+        label: 'Host away, room paused · listener',
+        href: { pathname: '/room/[code]', params: { code: room, view: 'host-away' } },
+      },
+      {
+        label: 'Host back after a pause · host',
+        href: { pathname: '/room/[code]', params: { code: room, view: 'host-back' } },
+      },
     ],
   },
   {
@@ -100,6 +125,7 @@ export default function ScreenIndex() {
   useScreenPalette();
   const { colors } = useTheme();
   const { enterRoom, leaveRoom, previewAs } = useMockSession();
+  const setHostPresent = useMockHostPresence();
   return (
     <Screen header={<ScreenHeader title="Screens" />}>
       <Text variant="footnote" color="text2">
@@ -128,6 +154,27 @@ export default function ScreenIndex() {
           ))}
         </View>
       ))}
+      <View style={styles.section}>
+        <SectionLabel>Host connection · mock</SectionLabel>
+        <Text variant="footnote" color="text2">
+          Stands in for Realtime Presence in {room}. Take the host’s phone out, then open the
+          listener view: it shows Host reconnecting for 30 seconds, then pauses.
+        </Text>
+        <View style={styles.toggles}>
+          <Button
+            size="small"
+            kind="secondary"
+            label="Host’s phone leaves"
+            onPress={() => setHostPresent(room, false)}
+          />
+          <Button
+            size="small"
+            kind="secondary"
+            label="Host’s phone returns"
+            onPress={() => setHostPresent(room, true)}
+          />
+        </View>
+      </View>
     </Screen>
   );
 }
@@ -135,6 +182,7 @@ export default function ScreenIndex() {
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   section: { gap: 4 },
+  toggles: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingTop: 8 },
   link: {
     flexDirection: 'row',
     alignItems: 'center',

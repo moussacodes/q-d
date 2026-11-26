@@ -16,10 +16,10 @@ import {
   type IconName,
 } from '@/components';
 import { useTheme } from '@/design';
-import { providerNames } from '@/domain/music-provider';
 import { formatDuration, formatMinutes, parseDuration } from '@/domain/time';
 import type { MockRoom, MockTrack } from '@/providers/mock/data';
 
+import { entryAvailability, queueNote } from './availability';
 import { cantAddNote } from './RoomRules';
 import { roomParams, type LiveRoom, type RoomHandle } from './useRoom';
 
@@ -94,6 +94,7 @@ export function Timeline({ positionMs, durationMs }: { positionMs: number; durat
  */
 export function Controls({
   canControl,
+  canPlay = true,
   playing,
   repeat,
   onTogglePlay,
@@ -102,6 +103,11 @@ export function Controls({
   onToggleRepeat,
 }: {
   canControl: boolean;
+  /**
+   * False when the host's phone can't play the song (not on its service, or
+   * not matched yet). Only Skip stays on, so the room can move past it.
+   */
+  canPlay?: boolean;
   playing: boolean;
   /** Repeat the current song when it ends. */
   repeat: boolean;
@@ -113,12 +119,17 @@ export function Controls({
   return (
     <View style={[styles.controls, !canControl && styles.disabled]}>
       <View style={styles.control} />
-      <ControlButton icon="previous" label="Previous" disabled={!canControl} onPress={onPrevious} />
+      <ControlButton
+        icon="previous"
+        label="Previous"
+        disabled={!canControl || !canPlay}
+        onPress={onPrevious}
+      />
       <ControlButton
         icon={playing ? 'pause' : 'play'}
         label={playing ? 'Pause' : 'Play'}
         big
-        disabled={!canControl}
+        disabled={!canControl || !canPlay}
         onPress={onTogglePlay}
       />
       <ControlButton icon="skip" label="Skip" disabled={!canControl} onPress={onSkip} />
@@ -127,7 +138,7 @@ export function Controls({
         label="Repeat"
         accessibilityLabel="Repeat this song"
         active={repeat}
-        disabled={!canControl}
+        disabled={!canControl || !canPlay}
         onPress={onToggleRepeat}
       />
     </View>
@@ -243,11 +254,7 @@ export function QueueList({ room, controls }: { room: LiveRoom; controls?: Queue
             addedBy={`by ${entry.addedBy}`}
             duration={entry.duration}
             showGrip={!!controls}
-            note={
-              entry.unavailableOn === room.playsThrough
-                ? `Not on ${providerNames[entry.unavailableOn]} · the host can skip it`
-                : undefined
-            }
+            note={queueNote(entryAvailability(entry, room.playsThrough), room.playsThrough)}
             onPress={
               controls
                 ? () => setOpen((current) => (current === entryId ? null : entryId))
@@ -293,6 +300,19 @@ export function QueueList({ room, controls }: { room: LiveRoom; controls?: Queue
           />
         );
       })}
+    </View>
+  );
+}
+
+/** Up next with nothing in it: says so, rather than leaving a blank list. */
+export function EmptyQueue() {
+  const { colors } = useTheme();
+  return (
+    <View style={[styles.emptyQueue, { borderColor: colors.strokeStrong }]}>
+      <Text variant="bodyStrong">The queue is empty</Text>
+      <Text variant="caption" color="text2">
+        Songs people add show up here, in order.
+      </Text>
     </View>
   );
 }
@@ -368,6 +388,14 @@ export function UpNextPeek({ room, canAdd }: { room: LiveRoom; canAdd: boolean }
 
 const styles = StyleSheet.create({
   flex: { flex: 1, gap: 2 },
+  emptyQueue: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    padding: 20,
+    alignItems: 'center',
+    gap: 4,
+  },
   // Tight lines, so the expanded cover can be as big as possible.
   track: { gap: 2 },
   addedBy: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },

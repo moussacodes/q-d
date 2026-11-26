@@ -261,6 +261,8 @@ Called by `catalog-search`, not by apps: `anon` and `authenticated` can't execut
 
 **Built (matching card):** the server stores what `matchRecording` in `src/domain/matching` decides. Its `match` is a `TrackMatch` (§6): `method: 'isrc' | 'score' | 'override'`, `confidence` 0–100, and `warning` set whenever the match isn't automatic. An unavailable recording has `providerTrackId: null` and `confidence: 0`.
 
+**Built (availability and low-confidence states card):** clients never rematch. They read the stored `TrackMatch` through `availabilityOf` in `src/domain/availability.ts`, which returns `playable` (automatic or override), `uncertain` (`warning` set: plays with the warning shown), `unavailable` (`providerTrackId: null`: never plays) or `unknown` (nothing stored yet: the host's phone waits). `canPlayOnHostPhone` is true only for the first two. Proposed for the canonical search card: search results carry the matches already stored for each service (`CatalogResult.matches`, §5), so Add a song can warn before a song is queued.
+
 ### Account
 
 #### q’d sign-in (Supabase Auth, client side)
@@ -338,6 +340,7 @@ type RoomPresence = {
 - When the host's presence disappears, listeners show "Host reconnecting" for 30 seconds, then "Paused".
 - The host's app also pauses its player if it can't reach Supabase for 30 seconds, so the room and the speaker agree.
 - A returning host refetches the room before resuming.
+- **Built (host reconnecting card, mock mode):** `hostStatus(presence, now)` in `src/domain/host-presence.ts` decides `connected`, `reconnecting` (with the time left) or `away`, using `HOST_RECONNECT_GRACE_MS` (30 s). Its input is `HostPresence = { present, lastSeenAt }`; `hostPresentIn(entries, hostUserId)` reads it from the channel's `RoomPresence` entries and `nextHostPresence` times a leave from the first sync without the host. The Realtime Broadcast and Presence card plugs in by calling the room store's `setHostPresent(room, present)` (or its TanStack replacement) on every presence sync. Proposed for the RPC card: the pause after the grace period is the room's `playback_states` row going to `paused`, written by the server (a listener's phone can't write it), and the host's Resume is `report_playback_state` after a refetch.
 
 ### Versioning
 
@@ -400,6 +403,7 @@ type CatalogResult = {
   track: ProviderTrack;
   availableOn: MusicProvider[];
   recordingId?: string;         // Added (canonical search card): the saved recording; mocks leave it out
+  matches?: Partial<Record<MusicProvider, TrackMatch>>;  // Added (availability card): stored matches, where resolved
 };
 type ProviderEntity =
   | { kind: 'track'; track: ProviderTrack }

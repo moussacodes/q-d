@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { act, fireEvent, renderRouter, screen, waitFor } from 'expo-router/testing-library';
+import { act, fireEvent, renderRouter, screen } from 'expo-router/testing-library';
 
 import { fillEmailForm } from '@/test/emailForm';
 
@@ -151,15 +151,20 @@ describe('listeners', () => {
   });
 });
 
-describe('when a song ends', () => {
-  it('the next one plays, without anyone tapping', async () => {
+describe('when a song can’t play', () => {
+  // Songs moving on by themselves is covered with a fake clock in
+  // src/features/room/RoomPlayer.test.ts. The 4.3 preview used to show it,
+  // by "playing" a song Spotify doesn't have, which the host's phone never does.
+  it('waits for the host instead of playing a song the service doesn’t have', async () => {
     await signIn();
-    // The 4.3 preview opens 1:40 into "Phantom", which is 1:49 long.
     await openRoom({ code: 'QD-7K4F9X', view: 'unavailable' });
     expect(await screen.findByText('Not on Spotify')).toBeVisible();
-    await waitFor(() => expect(screen.queryByText('Not on Spotify')).toBeNull(), {
-      timeout: 20_000,
-    });
-    expect(screen.getByText('3 songs')).toBeVisible();
+    // Nothing plays: the timeline stays at the start, and only Skip works.
+    expect(screen.getByLabelText('0:00 of 1:49')).toBeVisible();
+    expect(screen.getByLabelText('Play')).toBeDisabled();
+    expect(screen.getByLabelText('Previous')).toBeDisabled();
+    expect(screen.getByLabelText('Repeat this song')).toBeDisabled();
+    expect(screen.getByLabelText('Skip')).toBeEnabled();
+    expect(screen.getByText('4 songs')).toBeVisible();
   });
 });

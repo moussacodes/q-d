@@ -82,4 +82,94 @@ describe('room player', () => {
     expect(state.status).toBe('playing');
     expect(state.track?.provider).toBe('apple_music');
   });
+
+  describe('songs it can’t be sure of (PRODUCT_SPEC.md §6)', () => {
+    /** The sample queue's entry with this title. */
+    const byTitle = (entries: ReturnType<typeof setup>['entries'], title: string) =>
+      entries.queue.find((entry) => entry.title === title)!;
+
+    it('never plays a song its service doesn’t have, and never reports it ended', async () => {
+      const { player, adapter, ended, entries, wait } = setup();
+      const prepare = jest.spyOn(adapter, 'prepare');
+      const phantom = byTitle(entries, 'Phantom'); // not on Spotify
+      expect(player.canPlay(phantom)).toBe(false);
+      await player.load(phantom, 0);
+      expect(prepare).not.toHaveBeenCalled();
+      wait(600_000);
+      expect((await player.getState()).status).toBe('idle');
+      await player.getState();
+      expect(ended).not.toHaveBeenCalled();
+    });
+
+    it('stops the previous song when an unplayable one comes up', async () => {
+      const { player, entries } = setup();
+      await player.load(entries.nowPlaying, 0);
+      await player.load(byTitle(entries, 'Phantom'), 0);
+      const state = await player.getState();
+      expect(state.status).toBe('idle');
+      expect(state.track).toBeNull();
+    });
+
+    it('waits on a song with no match yet instead of guessing', async () => {
+      const { player, adapter, entries } = setup();
+      const prepare = jest.spyOn(adapter, 'prepare');
+      const unmatched = { ...entries.queue[0], matches: undefined };
+      expect(player.canPlay(unmatched)).toBe(false);
+      await player.load(unmatched, 0);
+      expect(prepare).not.toHaveBeenCalled();
+    });
+
+    it('plays a low-confidence match, which the room shows with its warning', async () => {
+      const { player, entries } = setup();
+      const wayBigger = byTitle(entries, 'Way Bigger');
+      expect(wayBigger.matches?.spotify?.warning).toBe('low_confidence');
+      expect(player.canPlay(wayBigger)).toBe(true);
+      await player.load(wayBigger, 0);
+      expect((await player.getState()).status).toBe('playing');
+    });
+
+    it('plays a song another service lacks when the room’s service has it', async () => {
+      const player = new RoomPlayer(new MockPlaybackAdapter('apple_music', () => 0), jest.fn());
+      const phantom = createRoomStore()
+        .get(room)
+        .queue.find((entry) => entry.title === 'Phantom')!;
+      expect(player.canPlay(phantom)).toBe(true);
+      await player.load(phantom, 0);
+      expect((await player.getState()).status).toBe('playing');
+    });
+  });
+
+  describe('while the host’s phone is away', () => {
+    it('pauses when held, and play does nothing until released', async () => {
+      const { player, entries, wait } = setup();
+      await player.load(entries.nowPlaying, 0);
+      await player.hold(true);
+      expect(player.isHeld).toBe(true);
+      const at = (await player.getState()).positionMs;
+      await player.play();
+      wait(10_000);
+      expect(await player.getState()).toMatchObject({ status: 'paused', positionMs: at });
+
+      await player.hold(false);
+      expect((await player.getState()).status).toBe('paused');
+      await player.play();
+      expect((await player.getState()).status).toBe('playing');
+    });
+
+    it('loads a new song paused while held', async () => {
+      const { player, entries } = setup();
+      await player.hold(true);
+      await player.load(entries.nowPlaying, 100_000);
+      expect(await player.getState()).toMatchObject({ status: 'paused', positionMs: 100_000 });
+    });
+
+    it('never reports a held song as ended', async () => {
+      const { player, ended, entries, wait } = setup();
+      await player.load(entries.nowPlaying, 0);
+      await player.hold(true);
+      wait(600_000);
+      await player.getState();
+      expect(ended).not.toHaveBeenCalled();
+    });
+  });
 });

@@ -31,6 +31,7 @@ function toResult(track: MockTrack): CatalogResult {
   return {
     track: toProviderTrack(track),
     availableOn: musicProviders.filter((provider) => provider !== track.unavailableOn),
+    ...(track.matches ? { matches: track.matches } : {}),
   };
 }
 
@@ -60,11 +61,18 @@ export function normalize(text: string): string {
     .trim();
 }
 
+function copyMatches(matches: NonNullable<CatalogResult['matches']>) {
+  return Object.fromEntries(
+    Object.entries(matches).map(([provider, match]) => [provider, { ...match }]),
+  ) as NonNullable<CatalogResult['matches']>;
+}
+
 /** A copy, so a caller changing a result can't change the catalog. */
 function copy(result: CatalogResult): CatalogResult {
   return {
     track: { ...result.track, artists: [...result.track.artists] },
     availableOn: [...result.availableOn],
+    ...(result.matches ? { matches: copyMatches(result.matches) } : {}),
   };
 }
 

@@ -267,7 +267,7 @@ Built · RLS card (`supabase/migrations/20261124000300_row_level_security.sql`, 
 - **Apple Music:** plays inside q’d through MusicKit and keeps playing with the screen locked (background audio).
 - **Spotify:** q’d tells the Spotify app what to play. The host needs Spotify installed and Premium for on-demand playback, and q’d stays in the foreground for the demo.
 - **Switching services:** only between songs, never during one, and only after the host agrees (see [PRODUCT_SPEC.md § 6](PRODUCT_SPEC.md#song-not-on-the-hosts-service)).
-- **Host disconnect:** presence notices the host is gone. Everyone sees "Host reconnecting" for 30 seconds, and then the room pauses. The returning host refetches room state before resuming.
+- **Host disconnect:** presence notices the host is gone. Everyone sees "Host reconnecting" for 30 seconds, and then the room pauses. The returning host refetches room state before resuming. **Built in mock mode** (host reconnecting card): the pure rule is `src/domain/host-presence.ts`; the room store holds the host's presence and whether the room paused for them; `RoomPlayer.hold` pauses the host's player; `HostNotice` shows the states. The `/dev` toggle stands in for Realtime Presence, which is planned (Realtime Broadcast and Presence card).
 - **Autoplay:** when the queue ends, the provider may autoplay, and q’d labels it with the provider's name.
 
 ## 7. Catalog and matching
@@ -276,6 +276,7 @@ Built · RLS card (`supabase/migrations/20261124000300_row_level_security.sql`, 
 - Matching is a pure function in `src/domain` (normalize, then score). The thresholds and rules are in [PRODUCT_SPEC.md § 6](PRODUCT_SPEC.md#6-catalog-and-matching). Results and overrides are stored in Postgres, so every phone sees the same answer and overrides are audited.
 - **Built** (matching card): `src/domain/matching` (`text.ts` normalizes and reads version markers, `match.ts` ranks candidates and decides). `matchRecording(recording, candidates, { provider, overrideTrackId })` returns the `TrackMatch` to store, a status (`matched`, `needs_review` or `unavailable`), the reasons and every candidate ranked for "Wrong version?". The numbers are in [DECISIONS.md](DECISIONS.md) (2026-11-24 · Track matching).
 - **Built** (canonical search card): search runs in the `catalog-search` Edge Function (open decision 1). It holds the Apple Music API developer token, searches Apple's catalog, normalizes each song (`supabase/functions/catalog-search/apple.ts`) and saves it with `save_catalog_tracks` as an Apple `provider_tracks` row plus a canonical `recordings` row, found again by `recordings (source_provider, source_track_id)`. The app calls it through `services/edgeFunctions.ts` and the Apple `CatalogAdapter` (`providers/apple/catalog.ts`), and `features/search/useCatalogSearch` debounces it. Mock mode still uses the mock catalog. **Built, untested against the live Apple Music API**: the team has no developer key yet.
+- **Built** (availability and low-confidence states card, mock mode): `src/domain/availability.ts` turns a stored `TrackMatch` into what the room shows and whether the host's phone may play it. Search results, queue rows, the room's now-playing notice and the mini player follow it, and `RoomPlayer` never plays an unavailable or unmatched song. Mock fixtures get their matches from `matchRecording` against made-up candidates (`src/providers/mock/matches.ts`). The "Wrong version?" button is a prop on `MatchNotice` that the override card passes.
 - Planned · Storing `track_matches` when playback needs a mapping (the queue and playback cards call `matchRecording`).
 
 ## 8. Configuration, environments and flags
@@ -317,7 +318,7 @@ Jest, React Native Testing Library and the Maestro folder are set up. Each featu
 | Domain | Jest | Matching (ISRC, durations, explicit/clean, version tokens; Built: `src/domain/matching/rules.test.ts`), room-code formatting, queue ordering helpers |
 | Providers | Shared contract suite in `src/test` (Built: `src/test/providerContract.ts`) | Apple, Spotify and mock adapters behave the same through the interface |
 | Database | Jest + PGlite in `supabase/tests` (see below) | RLS denies outsiders, host/member permissions, idempotent enqueue/reorder/remove, concurrent adds, code collisions, expiry and rate limits |
-| Components and screens | React Native Testing Library | Loading, offline, empty, unavailable, reconnecting and provider-required states |
+| Components and screens | React Native Testing Library | Loading, offline, empty, unavailable, reconnecting and provider-required states (Built: `__tests__/ui-states.test.tsx`, one describe per state, plus the per-card route tests) |
 | End to end | Maestro | Smoke flows: sign in, create a room, join, add a song |
 | Physical devices | Manual checklist | [PRODUCT_SPEC.md § 2](PRODUCT_SPEC.md#demo-must-haves) and [DEMO_RUNBOOK.md](DEMO_RUNBOOK.md) |
 
