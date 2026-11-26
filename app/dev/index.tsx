@@ -11,7 +11,7 @@ import {
   useScreenPalette,
 } from '@/components';
 import { useTheme } from '@/design';
-import { useMockHostPresence } from '@/features/room/useRoom';
+import { useMockHostPresence, useMockRoomSignals } from '@/features/room/useRoom';
 import { useMockSession, type AuthStatus } from '@/features/session/MockSession';
 
 const room = 'QD-7K4F9X';
@@ -126,6 +126,7 @@ export default function ScreenIndex() {
   const { colors } = useTheme();
   const { enterRoom, leaveRoom, previewAs } = useMockSession();
   const setHostPresent = useMockHostPresence();
+  const signals = useMockRoomSignals();
   return (
     <Screen header={<ScreenHeader title="Screens" />}>
       <Text variant="footnote" color="text2">
@@ -172,6 +173,24 @@ export default function ScreenIndex() {
             kind="secondary"
             label="Host’s phone returns"
             onPress={() => setHostPresent(room, true)}
+          />
+          <Button
+            size="small"
+            kind="secondary"
+            label="This phone goes offline"
+            onPress={() => signals.setOffline(room, true)}
+          />
+          <Button
+            size="small"
+            kind="secondary"
+            label="This phone is back online"
+            onPress={() => signals.setOffline(room, false)}
+          />
+          <Button
+            size="small"
+            kind="secondary"
+            label="Host ends the room"
+            onPress={() => signals.endRoom(room)}
           />
         </View>
       </View>

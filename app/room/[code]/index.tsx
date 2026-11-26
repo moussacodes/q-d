@@ -33,11 +33,13 @@ import {
   UpNextPeek,
 } from '@/features/room/RoomParts';
 import { AutoplayNotice } from '@/features/room/AutoplayNotice';
+import { OfflineNotice, RoomEndedNotice } from '@/features/room/ConnectionNotice';
 import { hostAwayNote, HostNotice } from '@/features/room/HostNotice';
 import { MatchNotice } from '@/features/room/MatchNotice';
 import { ServiceMissingNotice } from '@/features/room/ServiceMissingNotice';
 import { SwitchedNote, UnavailableNotice } from '@/features/room/UnavailableNotice';
 import { roomParams, useRoom, type RoomView } from '@/features/room/useRoom';
+import { useMockSession } from '@/features/session/MockSession';
 
 /**
  * 3.2 Room (expanded), plus the 4.x states via `?view=`: listener (4.1),
@@ -51,6 +53,7 @@ import { roomParams, useRoom, type RoomView } from '@/features/room/useRoom';
  */
 export default function Room() {
   const params = useLocalSearchParams<{ code: string; view?: RoomView }>();
+  const { leaveRoom } = useMockSession();
   const {
     room,
     playback,
@@ -115,6 +118,22 @@ export default function Room() {
       />
     </View>
   );
+
+  if (room.ended) {
+    // `room.ended`: the room is over for everyone. Say so and offer the way out.
+    return (
+      <Screen header={header}>
+        <RoomEndedNotice
+          isHost={isHost}
+          hostName={room.hostName}
+          onLeave={() => {
+            leaveRoom();
+            router.replace('/home');
+          }}
+        />
+      </Screen>
+    );
+  }
 
   const footer = expanded ? (
     <UpNextPeek room={room} canAdd={canAdd} />
@@ -181,6 +200,8 @@ export default function Room() {
               </Text>
             </View>
           )}
+
+          {room.offline ? <OfflineNotice /> : null}
 
           <HostNotice
             host={host}

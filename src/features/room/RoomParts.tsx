@@ -22,6 +22,7 @@ import { formatDuration, formatMinutes, parseDuration } from '@/domain/time';
 import type { MockRoom, MockTrack } from '@/providers/mock/data';
 
 import { entryAvailability, queueNote } from './availability';
+import { endedCopy, offlineCopy } from './ConnectionNotice';
 import { cantAddNote } from './RoomRules';
 import { availableOn } from './roomStore';
 import { roomParams, type LiveRoom, type RoomEntry, type RoomHandle } from './useRoom';
@@ -368,11 +369,18 @@ export function AddSongFooter({
       <Button block icon="plus" label="Add a song" disabled={!canAdd} onPress={onPress} />
       {canAdd ? null : (
         <Text variant="caption" color="text3">
-          {cantAddNote(room.rules.addSongs)}
+          {cantAddReason(room)}
         </Text>
       )}
     </>
   );
+}
+
+/** Why Add a song is off: the room ended, this phone is offline, or the rules. */
+function cantAddReason(room: LiveRoom) {
+  if (room.ended) return endedCopy.addNote;
+  if (room.offline) return offlineCopy.addNote;
+  return cantAddNote(room.rules.addSongs);
 }
 
 /** Expanded layout: bar that opens the queue sheet, plus the add button. */
@@ -411,7 +419,7 @@ export function UpNextPeek({ room, canAdd }: { room: LiveRoom; canAdd: boolean }
         icon="plus"
         kind="accent"
         accessibilityLabel="Add a song"
-        accessibilityHint={canAdd ? undefined : cantAddNote(room.rules.addSongs)}
+        accessibilityHint={canAdd ? undefined : cantAddReason(room)}
         disabled={!canAdd}
         onPress={() => router.push({ pathname: '/room/[code]/add-song', params: roomParams(room) })}
       />

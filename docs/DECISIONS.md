@@ -2,6 +2,18 @@
 
 Product and technical decisions that are not obvious from the code. Newest first.
 
+## 2026-11-25 · Realtime Broadcast and Presence
+
+- **Nothing in a payload is shown.** Every broadcast goes through `parseRoomEvent` and only decides which TanStack queries to refetch (`invalidationsFor`). A payload the app can't read (a newer `v`, an unknown type, another room's id, garbage) refetches everything about the room and is logged by field path and code only. The app never crashes on a payload.
+- **The server side was already built** by the RLS and RPC cards: RLS on `realtime.messages` (members listen and track presence, nobody sends broadcasts) and `private.broadcast_room_event()` inside each RPC. No migration was needed; `supabase/tests/realtime.test.ts` checks what each RPC sends, that refused and replayed calls send nothing, that payloads hold only `v`, `type`, `roomId` and `at`, and that only members (also of an ended room) receive them. PGlite checks the policies and the rows, not the Realtime server; that needs `supabase start` on the Mac.
+- **Presence carries the user id and role only** (`{ v: 1, userId, role }`, keyed by user id). The "N in the room" count comes from distinct user ids.
+- **Host presence.** Before the first sync the host counts as present, so a phone that just joined doesn't flash "Host reconnecting". A host missing from the first sync was never seen, so they count as away (the rule in `host-presence.ts`), not as reconnecting for 30 seconds.
+- **Connection loss is honest.** The channel reports `offline` on `CHANNEL_ERROR`, `TIMED_OUT` or `CLOSED` and retries after 1, 2, 4, 8, 16, then every 30 seconds; a successful join resets the delay and refetches the whole room, because events sent meanwhile are gone. The room shows "You’re offline" ("q’d can’t reach the room right now, so this may be out of date. It catches up by itself when you’re back.") and turns off Add a song and the queue edits, which go to the server. On the host's phone, losing the channel is the host leaving the room's presence, so the existing "Reconnecting", then "Paused · you’re offline" notices and the 30-second pause apply (API_CONTRACTS.md §4).
+- **`room.ended` says so and waits for a tap.** The room is replaced by "This room has ended" (the host: "You ended this room…"; listeners: "<host> ended this room…") with **Back to Home**, which leaves the room. The host's player stops, and Home shows no mini player for it. Moving people off the screen without telling them why felt worse than one tap.
+- **Mock mode keeps the mock store.** The store has the same two signals (`endRoom`, `setOffline`), with `/dev` toggles "Host ends the room", "This phone goes offline" and "This phone is back online", so the states can be tried and tested without Supabase. This closes the two states the UI state tests listed as missing.
+- **Live rooms use it from the live room card on.** Until then `useRoomRealtime` is built and tested against a fake client at the service boundary, not against a real Supabase project.
+- Figma not re-checked; the notices reuse the 4.3 notice's look.
+
 ## 2026-11-25 · Integration of reviewed stacks
 
 `chore/integration-2026-11-25` starts from `review/auth-callback` and merges, in order, `review/demo-account-reset` (both database stacks), `review/catalog-search`, `review/spotify-playback`, `review/invite-screen`, `review/ui-states` and `review/autoplay-label`. It's the base for the Realtime and live-data cards. Behavior changed only where two stacks had to be made to agree; every such choice is listed here. Each stack's own entries below are kept whole.

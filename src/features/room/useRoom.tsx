@@ -67,6 +67,10 @@ export type LiveRoom = Omit<MockRoom, 'nowPlaying' | 'queue'> & {
   switched: RoomState['switched'];
   /** The service playing songs it picked itself after the queue ran out, if any. */
   autoplay: RoomState['autoplay'];
+  /** The host ended the room (`room.ended`): nothing plays or changes any more. */
+  ended: boolean;
+  /** This phone can't reach the room right now: what it shows may be out of date. */
+  offline: boolean;
   /** The development preview being shown, if any. Sheets open with the same one. */
   view?: RoomView;
 };
@@ -194,7 +198,8 @@ function useLiveRoom(base: MockRoom | null, view?: RoomView) {
   const player = ref && base ? playerFor(rooms, ref, base) : null;
   const playback = usePlayback(player);
 
-  const nowPlaying = state?.nowPlaying ?? null;
+  // Once the room has ended, nothing plays on the host's phone.
+  const nowPlaying = state && !state.ended ? state.nowPlaying : null;
   const startAtMs = state?.startAtMs ?? 0;
   // A switch changes the service; otherwise the room keeps the one it started with.
   const playsThrough = state?.playsThrough ?? (base ? previewRoom(base, view).playsThrough : null);
@@ -263,6 +268,8 @@ function useLiveRoom(base: MockRoom | null, view?: RoomView) {
       rules: state.rules,
       switched: state.switched,
       autoplay: state.autoplay,
+      ended: state.ended,
+      offline: state.offline,
       ...(view ? { view } : {}),
     };
   }, [base, view, state, playsThrough]);
@@ -274,7 +281,10 @@ function useLiveRoom(base: MockRoom | null, view?: RoomView) {
     nowPlaying && !loaded
       ? { ...playback, positionMs: 0, progress: 0, durationMs: parseDuration(nowPlaying.duration) }
       : playback;
-  const canControl = !!room && allows(room.rules.control, you);
+  // Changes go to the server, so they wait while this phone is offline, and
+  // stop for good once the room has ended.
+  const reachable = !!room && !room.offline && !room.ended;
+  const canControl = reachable && allows(room.rules.control, you);
 
   return {
     room,
@@ -283,7 +293,7 @@ function useLiveRoom(base: MockRoom | null, view?: RoomView) {
     /** You in this room's `people`. */
     you,
     /** The room's add-songs rule lets you in. */
-    canAdd: !!room && allows(room.rules.addSongs, you),
+    canAdd: reachable && allows(room.rules.addSongs, you),
     /** The room's rules let you play, pause, skip, reorder and remove. */
     canControl,
     /** Play and pause work only while the host's phone can play the song that's up. */
@@ -434,7 +444,26 @@ export function useActiveRoom() {
    * the room, or for you, the host, to connect the room's service again.
    */
   const waitingForHost = host.kind !== 'connected' || pausedForHost || serviceMissing;
-  return { room, playback, canControl, canPlay, host, pausedForHost, waitingForHost };
+  // An ended room has nothing to show on Home's mini player.
+  const current = room && !room.ended ? room : null;
+  return { room: current, playback, canControl, canPlay, host, pausedForHost, waitingForHost };
+}
+
+/**
+ * Mock mode's stand-ins for the Realtime card's room signals, for `/dev`:
+ * the host ends the room (`room.ended`), and this phone loses or gets back
+ * its connection to the room's channel.
+ */
+export function useMockRoomSignals() {
+  const { store } = useRooms();
+  return useMemo(
+    () => ({
+      endRoom: (code: string) => store.endRoom({ code }),
+      setOffline: (code: string, offline: boolean) =>
+        store.setOffline({ code }, offline, { isHost: findRoom(code).youHost }),
+    }),
+    [store],
+  );
 }
 
 /**

@@ -478,3 +478,43 @@ describe('provider autoplay', () => {
     expect(listener).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('Realtime stand-ins (mock mode)', () => {
+  const ref = { code: 'QD-7K4F9X' };
+
+  it('ends the room once, stopping autoplay, and keeps the queue', () => {
+    const store = createRoomStore();
+    const queue = store.get(ref).queue;
+    expect(store.endRoom(ref)).toBe(true);
+    expect(store.endRoom(ref)).toBe(false);
+    expect(store.get(ref)).toMatchObject({ ended: true, autoplay: null });
+    expect(store.get(ref).queue).toEqual(queue);
+  });
+
+  it('marks this phone offline and back, without touching the host for a listener', () => {
+    const store = createRoomStore(() => 5_000);
+    const host = store.get(ref).host;
+    store.setOffline(ref, true, { isHost: false });
+    expect(store.get(ref)).toMatchObject({ offline: true, host });
+    store.setOffline(ref, false, { isHost: false });
+    expect(store.get(ref).offline).toBe(false);
+  });
+
+  it('on the host’s phone, offline is the host leaving presence, and back is returning', () => {
+    let now = 5_000;
+    const store = createRoomStore(() => now);
+    store.setOffline(ref, true, { isHost: true });
+    expect(store.get(ref).host).toEqual({ present: false, lastSeenAt: 5_000 });
+    now = 9_000;
+    store.setOffline(ref, false, { isHost: true });
+    expect(store.get(ref).host).toEqual({ present: true, lastSeenAt: 9_000 });
+  });
+
+  it('does nothing when the connection doesn’t change', () => {
+    const store = createRoomStore();
+    const listener = jest.fn();
+    store.subscribe(listener);
+    store.setOffline(ref, false, { isHost: true });
+    expect(listener).not.toHaveBeenCalled();
+  });
+});

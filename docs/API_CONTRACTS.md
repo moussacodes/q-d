@@ -338,6 +338,19 @@ type RoomEvent = {
 
 On any event, the client invalidates the matching TanStack queries. On `room.ended`, it leaves the room screen.
 
+**Built (Realtime Broadcast and Presence card):** the client side is `src/services/realtime.ts` and `features/room/useRoomRealtime`. Each event invalidates these queries (`invalidationsFor` in `src/services/roomQueryKeys.ts`, all under `['room', roomId]`):
+
+| Event | Refetches |
+|---|---|
+| `queue.changed` | queue, playback (adding to an empty room starts the song) |
+| `playback.changed` | playback, queue (advancing moves the playing entry) |
+| `members.changed` | members, the room row (chosen people) |
+| `room.ended` | the whole room, your room list; the room screen says it ended and offers Back to Home |
+| anything unreadable (newer `v`, unknown type, another room, malformed) | the whole room |
+| the channel reconnects | the whole room (events sent while offline are gone) |
+
+`room.ended` doesn't leave the screen by itself: the room says "This room has ended" and the person taps Back to Home, so nobody is moved without being told why.
+
 ### Presence
 
 ```ts
@@ -352,6 +365,7 @@ type RoomPresence = {
 - When the host's presence disappears, listeners show "Host reconnecting" for 30 seconds, then "Paused".
 - The host's app also pauses its player if it can't reach Supabase for 30 seconds, so the room and the speaker agree.
 - A returning host refetches the room before resuming.
+- **Built (Realtime card):** each phone tracks `{ v: 1, userId, role }` with its user id as the presence key, and nothing else. Entries that don't parse are ignored. Before the first sync the host counts as present; a host missing from the first sync counts as never seen (`away`). On the host's own phone, losing the channel counts as the host leaving, so its player pauses after the grace period; on a listener's phone it keeps the host as last seen and shows "You’re offline".
 - **Built (host reconnecting card, mock mode):** `hostStatus(presence, now)` in `src/domain/host-presence.ts` decides `connected`, `reconnecting` (with the time left) or `away`, using `HOST_RECONNECT_GRACE_MS` (30 s). Its input is `HostPresence = { present, lastSeenAt }`; `hostPresentIn(entries, hostUserId)` reads it from the channel's `RoomPresence` entries and `nextHostPresence` times a leave from the first sync without the host. The Realtime Broadcast and Presence card plugs in by calling the room store's `setHostPresent(room, present)` (or its TanStack replacement) on every presence sync. Proposed for the RPC card: the pause after the grace period is the room's `playback_states` row going to `paused`, written by the server (a listener's phone can't write it), and the host's Resume is `report_playback_state` after a refetch.
 
 ### Versioning

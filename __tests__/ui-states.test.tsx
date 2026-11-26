@@ -325,3 +325,73 @@ describe('offline', () => {
     expect(screen.queryByText(/No songs match/)).toBeNull();
   });
 });
+
+/** Uses a /dev toggle for the sample room: Realtime's stand-ins in mock mode. */
+const devToggle = async (label: string) => {
+  await go('/dev');
+  await pressText(label);
+  await act(async () => {
+    router.back();
+  });
+};
+
+describe('room ended (room.ended)', () => {
+  it('the host sees the room is over, with no controls, and goes Home', async () => {
+    await signIn();
+    await go({ pathname: '/room/[code]', params: { code: 'QD-7K4F9X' } });
+    expect(await screen.findByLabelText('Pause')).toBeEnabled();
+    await devToggle('Host ends the room');
+    expect(await screen.findByText('This room has ended')).toBeVisible();
+    expect(
+      screen.getByText(
+        'You ended this room. Nothing more plays, and its code doesn’t work any more.',
+      ),
+    ).toBeVisible();
+    expect(screen.queryByLabelText('Pause')).toBeNull();
+    expect(screen.queryByLabelText('Play')).toBeNull();
+    expect(screen.queryByLabelText('Add a song')).toBeNull();
+    await press('Back to Home');
+    expect(screen).toHavePathname('/home');
+    // No mini player for a room that's over.
+    expect(screen.queryByText('Have a Baby (With Me)')).toBeNull();
+  });
+
+  it('a listener is told the host ended it', async () => {
+    await signIn();
+    await go({ pathname: '/room/[code]', params: { code: 'QD-7K4F9X', view: 'listener' } });
+    await screen.findByText('Have a Baby (With Me)');
+    await devToggle('Host ends the room');
+    expect(await screen.findByText('This room has ended')).toBeVisible();
+    expect(
+      screen.getByText(
+        'Baron ended this room. Nothing more plays, and its code doesn’t work any more.',
+      ),
+    ).toBeVisible();
+  });
+});
+
+describe('offline inside the room', () => {
+  it('says so, keeps the room and queue, and turns off changes until it’s back', async () => {
+    await signIn();
+    await go({ pathname: '/room/[code]', params: { code: 'QD-7K4F9X', view: 'listener' } });
+    await screen.findByText('Have a Baby (With Me)');
+    await devToggle('This phone goes offline');
+    expect(await screen.findByText('You’re offline')).toBeVisible();
+    expect(screen.getByText('7 songs')).toBeVisible();
+    expect(screen.getByLabelText('Add a song')).toBeDisabled();
+
+    await devToggle('This phone is back online');
+    await waitFor(() => expect(screen.queryByText('You’re offline')).toBeNull());
+    expect(screen.getByLabelText('Add a song')).toBeEnabled();
+  });
+
+  it('on the host’s phone, it’s the host leaving: Reconnecting, then the room pauses', async () => {
+    await signIn();
+    await go({ pathname: '/room/[code]', params: { code: 'QD-7K4F9X' } });
+    expect(await screen.findByLabelText('Pause')).toBeEnabled();
+    await devToggle('This phone goes offline');
+    expect(await screen.findByText('You’re offline')).toBeVisible();
+    expect(screen.getByText('Reconnecting')).toBeVisible();
+    expect(screen.getByLabelText('Skip')).toBeDisabled();
+  });
+});

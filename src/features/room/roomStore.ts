@@ -45,6 +45,17 @@ export type RoomState = {
    * (`report_playback_state` with status `autoplay`). Null otherwise.
    */
   autoplay: MusicProvider | null;
+  /**
+   * `room.ended` arrived: the host ended the room. Mock mode's stand-in for
+   * the Realtime event; nothing plays or changes after it.
+   */
+  ended: boolean;
+  /**
+   * This phone can't reach the room (the Realtime channel dropped). Mock
+   * mode's stand-in for the channel's `offline` status. It's this phone's
+   * view, which is what the mock store is.
+   */
+  offline: boolean;
 };
 
 /**
@@ -175,6 +186,8 @@ function seed(ref: RoomRef, now: number): RoomState {
     playsThrough: null,
     switched: null,
     autoplay: null,
+    ended: false,
+    offline: false,
   };
 }
 
@@ -344,6 +357,30 @@ export function createRoomStore(now: () => number = Date.now) {
      * presence sync with `hostPresentIn(entries, hostUserId)`. In mock mode
      * the `/dev` toggle calls it. Repeating the same answer changes nothing.
      */
+    /**
+     * `room.ended` (Realtime): the host ended the room. Playback stops and
+     * the queue stays as history. Returns false if it had ended already.
+     */
+    endRoom(ref: RoomRef): boolean {
+      const room = get(ref);
+      if (room.ended) return false;
+      update(ref, { ...room, ended: true, autoplay: null });
+      return true;
+    },
+
+    /**
+     * This phone lost (or got back) its connection to the room. On the
+     * host's phone that's the host leaving the room's presence, so the room
+     * shows "Reconnecting" and pauses after the grace period, like the live
+     * app (API_CONTRACTS.md §4).
+     */
+    setOffline(ref: RoomRef, offline: boolean, { isHost }: { isHost: boolean }) {
+      const room = get(ref);
+      if (room.offline === offline) return;
+      const host = isHost ? nextHostPresence(room.host, !offline, now()) : room.host;
+      update(ref, { ...room, offline, host });
+    },
+
     setHostPresent(ref: RoomRef, present: boolean) {
       const room = get(ref);
       const host = nextHostPresence(room.host, present, now());
