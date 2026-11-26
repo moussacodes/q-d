@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { hostStatus, type HostStatus } from '@/domain/host-presence';
 import { inviteLink } from '@/domain/invite';
@@ -33,7 +33,7 @@ import { networkMessage } from './errorCopy';
 import { newIdempotencyKey, type RoomInvite } from './mockServer';
 import { availableOn, type RoomEntry, type RoomView } from './roomStore';
 import type { AddOutcome, RoomStatus } from './roomHandle';
-import { useCall, type CallResult } from './useCall';
+import { unanswered, useCall, type CallResult } from './useCall';
 import type { LiveRoom, RoomHandle } from './useRoom';
 import { useRoomRealtime } from './useRoomRealtime';
 
@@ -265,6 +265,12 @@ export function useServerRoom(code: string | undefined, view?: RoomView): RoomHa
     hostUserId: detail.data?.hostId ?? null,
   });
   const [queueError, setQueueError] = useState<string | null>(null);
+  /**
+   * The key of an add that got no answer, for the same add tried again: the
+   * server may have queued it already, and a new key (above all with
+   * `allow_duplicate`) could queue it twice (API_CONTRACTS.md §1).
+   */
+  const unansweredAdd = useRef<{ request: string; key: string } | null>(null);
   // `useRoomRealtime` hands back a new object each render; the room only
   // changes when these do.
   const offline = realtime.connection === 'offline';
@@ -392,12 +398,16 @@ export function useServerRoom(code: string | undefined, view?: RoomView): RoomHa
         // A result the server didn't save can't be queued (enqueue_recording takes the recording).
         return { ok: false, error: 'failed', message: addErrorMessage({ code: 'invalid_input' }) };
       }
+      const request = JSON.stringify([roomId, result.recordingId, allowDuplicate]);
+      const kept = unansweredAdd.current;
+      const key = kept && kept.request === request ? kept.key : newKey();
       const answer = await roomRpc.enqueueRecording(client, {
         roomId,
         recordingId: result.recordingId,
         allowDuplicate,
-        idempotencyKey: newKey(),
+        idempotencyKey: key,
       });
+      unansweredAdd.current = !answer.ok && unanswered(answer.error) ? { request, key } : null;
       refetchQueue();
       if (answer.ok) {
         return {

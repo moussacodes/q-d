@@ -13,7 +13,8 @@ export type CallResult<T> = { ok: true; value: T } | { ok: false; error: RpcCall
 const idle: CallState = { status: 'idle' };
 
 /** No answer, so the server may or may not have done it: a retry must reuse the key. */
-const unanswered = (error: RpcCallError) => error.code === 'network' || error.code === 'unexpected';
+export const unanswered = (error: RpcCallError) =>
+  error.code === 'network' || error.code === 'unexpected';
 
 /**
  * One server call at a time: while one is pending, another tap does nothing,

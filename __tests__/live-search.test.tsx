@@ -262,6 +262,47 @@ describe('adding, live', () => {
     );
   });
 
+  it('tries an add that got no answer again with the same key, so it can’t be queued twice', async () => {
+    const added = {
+      data: { entry_id: 'e0000000-0000-4000-8000-0000000000ac', position: 3, queue_length: 3 },
+      error: null,
+    };
+    mockData.rpc
+      .mockResolvedValueOnce({ data: null, error: { message: 'Network request failed' } })
+      .mockResolvedValueOnce(added)
+      .mockResolvedValueOnce(added);
+    await openAddSong();
+    await press('Add Paper Moons');
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Can’t reach q’d/);
+    await press('Add Paper Moons');
+    expect(await screen.findByText(/Paper Moons added · 3rd in line/)).toBeVisible();
+    // Another song is another intent.
+    await press('Add Static Bloom');
+    const [first, retry, other] = rpcCalls('enqueue_recording');
+    expect(retry).toEqual(first);
+    expect(other.idempotency_key).not.toBe(first.idempotency_key);
+  });
+
+  it('keeps the key of an Add again that got no answer, with allow_duplicate still on', async () => {
+    mockData.rpc
+      .mockResolvedValueOnce(rpcError('already_in_queue', { status: 'queued' }))
+      .mockResolvedValueOnce({ data: null, error: { message: 'Network request failed' } })
+      .mockResolvedValueOnce({
+        data: { entry_id: 'e0000000-0000-4000-8000-0000000000ab', position: 3, queue_length: 3 },
+        error: null,
+      });
+    await openAddSong();
+    await press('Add Static Bloom');
+    await press('Add Static Bloom again');
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Can’t reach q’d/);
+    await press('Add Static Bloom again');
+    const [ask, again, retry] = rpcCalls('enqueue_recording');
+    expect(again).toMatchObject({ allow_duplicate: true });
+    expect(again.idempotency_key).not.toBe(ask.idempotency_key);
+    expect(retry).toEqual(again);
+    expect(await screen.findByText(/Static Bloom added/)).toBeVisible();
+  });
+
   it('takes the song back with remove_queue_entry on Undo', async () => {
     mockData.rpc.mockImplementation(async (name, args) => {
       if (name === 'enqueue_recording') {
