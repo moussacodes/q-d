@@ -182,6 +182,27 @@ describe('createProviderCredentialStore', () => {
     expect(logged.length).toBeGreaterThan(0);
   });
 
+  it('peek tells stored, none and a storage that can’t be read apart', async () => {
+    const { storage, values } = fakeStorage();
+    const store = createProviderCredentialStore(storage);
+    expect(await store.peek('spotify')).toBe('none');
+    await store.save('spotify', { accessToken: 'access-peek' });
+    expect(await store.peek('spotify')).toBe('stored');
+    values.set(credentialKey('apple_music'), 'not json');
+    expect(await store.peek('apple_music')).toBe('none');
+    const locked = createProviderCredentialStore(
+      fakeStorage({
+        getItem: jest.fn(async () => {
+          throw new Error('User interaction is not allowed');
+        }),
+      }).storage,
+    );
+    expect(await locked.peek('spotify')).toBe('unreadable');
+    await expect(store.peek('youtube' as never)).rejects.toMatchObject({
+      code: 'unknown_provider',
+    });
+  });
+
   it('wraps a storage write failure and logs nothing secret', async () => {
     const { storage } = fakeStorage({
       setItem: jest.fn(async () => {

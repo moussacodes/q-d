@@ -235,8 +235,9 @@ describe('startup reconcile', () => {
     await go('/create-room');
     await press('Start room');
     await waitFor(() => expect(screen).toHavePathname(`/room/QD-${liveCode}`));
-    // Recorded once at startup; hosting didn't need to write again.
-    expect(writes('insert')).toHaveLength(1);
+    // Recorded at startup, then marked checked again right before hosting.
+    expect(writes('insert')).toHaveLength(2);
+    expect(writes('update')).toHaveLength(1);
   });
 
   it('an existing row is only marked checked', async () => {
@@ -278,6 +279,61 @@ describe('startup reconcile', () => {
     await waitFor(() => expect(providers.storedConnection).toHaveBeenCalledTimes(2));
     await act(async () => {});
     expect(mockData.writes).toEqual([]);
+    expect(connectionRows()).toHaveLength(1);
+  });
+});
+
+describe('review: races and a second phone', () => {
+  it('a Connect made while the startup check runs is not undone by that older check', async () => {
+    let answer: (state: ConnectionState) => void = () => {};
+    providers.storedConnection.mockImplementation((provider) =>
+      provider === 'spotify'
+        ? new Promise<ConnectionState>((resolve) => (answer = resolve))
+        : Promise.resolve(null),
+    );
+    await signInAsHost();
+    await connectRealSpotify();
+    expect(connectionRows()).toHaveLength(1);
+
+    // The check started before the tokens existed, so it saw none.
+    await act(async () => answer({ status: 'needs_authorization', isMock: false }));
+    await act(async () => {});
+    expect(writes('delete')).toEqual([]);
+    expect(connectionRows()).toHaveLength(1);
+    expect(await screen.findByLabelText('Disconnect Spotify')).toBeVisible();
+  });
+
+  it('a Disconnect made while the startup check runs is not undone either', async () => {
+    let answer: (state: ConnectionState) => void = () => {};
+    providers.storedConnection.mockImplementation((provider) =>
+      provider === 'spotify'
+        ? new Promise<ConnectionState>((resolve) => (answer = resolve))
+        : Promise.resolve(null),
+    );
+    await signInAsHost();
+    await connectRealSpotify();
+    await press('Disconnect Spotify');
+    await waitFor(() => expect(connectionRows()).toEqual([]));
+
+    // The check read the tokens before Disconnect forgot them.
+    await act(async () => answer(REAL));
+    await act(async () => {});
+    expect(connectionRows()).toEqual([]);
+    expect(screen.queryByLabelText('Disconnect Spotify')).toBeNull();
+  });
+
+  it('a row another phone on the account removed is written again before hosting', async () => {
+    providers.storedConnection.mockImplementation(async (provider) =>
+      provider === 'spotify' ? REAL : null,
+    );
+    await signInAsHost();
+    await waitFor(() => expect(connectionRows()).toHaveLength(1));
+    // The same account started on a phone without these tokens.
+    mockData.tables.set('provider_connections', []);
+
+    await go('/create-room');
+    await press('Start room');
+    await waitFor(() => expect(screen).toHavePathname(`/room/QD-${liveCode}`));
     expect(connectionRows()).toHaveLength(1);
   });
 });

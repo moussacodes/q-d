@@ -60,6 +60,8 @@ export interface SpotifyAuth {
   authorize(): Promise<AuthorizeResult>;
   /** Whether tokens are stored. Doesn't check them with Spotify. */
   hasCredentials(): Promise<boolean>;
+  /** Like `hasCredentials`, but says `unreadable` when the Keychain can't be read now. */
+  storedCredentials(): Promise<'stored' | 'none' | 'unreadable'>;
   /** A usable access token, refreshed first if it has expired. */
   accessToken(): Promise<string>;
   /**
@@ -325,6 +327,10 @@ export function createSpotifyAuth(deps: SpotifyAuthDeps): SpotifyAuth {
 
     async hasCredentials() {
       return (await store.load('spotify')) !== null;
+    },
+
+    storedCredentials() {
+      return store.peek('spotify');
     },
 
     async accessToken() {

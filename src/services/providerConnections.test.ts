@@ -104,6 +104,8 @@ describe('recordProviderConnection', () => {
     [{ message: 'Failed to fetch' }, 'network'],
     [{ code: '42501', message: 'permission denied' }, 'not_signed_in'],
     [{ code: 'PGRST301', message: 'JWT expired' }, 'not_signed_in'],
+    [{ code: 'PGRST303', message: 'JWT expired' }, 'not_signed_in'],
+    [{ code: '', message: 'TypeError: Network request failed' }, 'network'],
     [{ code: '23514', message: 'check' }, 'unknown'],
   ] as const)('maps an insert error %j to %s', async (error, expected) => {
     const { data, client } = setup();
@@ -115,19 +117,54 @@ describe('recordProviderConnection', () => {
     expect(entries.at(-1)?.context).toMatchObject({ step: 'insert', provider: 'spotify' });
   });
 
-  it('an update that matched no row is not_signed_in', async () => {
-    const fake = {
+  /** Insert answers in order; the update in between matches no row. */
+  function vanishingRow(...inserts: { code?: string; message?: string }[]) {
+    const insert = jest.fn(async (_row: Record<string, unknown>) => ({
+      data: null,
+      error: inserts.shift() ?? null,
+    }));
+    const client = {
       from: () => ({
-        insert: async () => ({ data: null, error: { code: '23505', message: 'duplicate' } }),
+        insert,
         update: () => ({
           eq: () => ({ eq: () => ({ select: async () => ({ data: [], error: null }) }) }),
         }),
       }),
     } as unknown as SupabaseClient;
-    expect(await recordProviderConnection(USER, 'spotify', {}, { client: fake })).toEqual({
+    return { client, insert };
+  }
+
+  it('a row another phone deleted between the duplicate and the update is inserted again', async () => {
+    const fake = vanishingRow({ code: '23505', message: 'duplicate' });
+    expect(await recordProviderConnection(USER, 'spotify', {}, { client: fake.client })).toEqual({
+      ok: true,
+      value: undefined,
+    });
+    expect(fake.insert).toHaveBeenCalledTimes(2);
+    expect(fake.insert.mock.calls[1][0]).toMatchObject({ user_id: USER, provider: 'spotify' });
+  });
+
+  it('a duplicate on the second insert means another write put the row back: fine', async () => {
+    const fake = vanishingRow(
+      { code: '23505', message: 'duplicate' },
+      { code: '23505', message: 'duplicate' },
+    );
+    expect(await recordProviderConnection(USER, 'spotify', {}, { client: fake.client })).toEqual({
+      ok: true,
+      value: undefined,
+    });
+  });
+
+  it('an update that matched no row and an insert refused by RLS is not_signed_in', async () => {
+    const fake = vanishingRow(
+      { code: '23505', message: 'duplicate' },
+      { code: '42501', message: 'new row violates row-level security policy' },
+    );
+    expect(await recordProviderConnection(USER, 'spotify', {}, { client: fake.client })).toEqual({
       ok: false,
       error: 'not_signed_in',
     });
+    expect(entries.at(-1)?.context).toMatchObject({ step: 'reinsert', provider: 'spotify' });
   });
 
   it('a thrown request is network', async () => {

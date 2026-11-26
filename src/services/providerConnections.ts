@@ -42,7 +42,8 @@ function errorFrom(error: DbError): ConnectionRowError {
   ) {
     return 'network';
   }
-  if (error.code === 'PGRST301' || error.code === '42501') return 'not_signed_in';
+  // PGRST301 / PGRST303: the JWT is invalid or expired.
+  if (['PGRST301', 'PGRST303', '42501'].includes(error.code ?? '')) return 'not_signed_in';
   return 'unknown';
 }
 
@@ -100,8 +101,17 @@ export async function recordProviderConnection(
       .select('provider');
     if (updated.error) return failed('update', provider, updated.error);
     if (!updated.data || updated.data.length === 0) {
-      rowsLog.warn('Connection row failed', { step: 'update', provider, result: 'not_signed_in' });
-      return { ok: false, error: 'not_signed_in' };
+      // The row was there a moment ago: another phone on this account
+      // deleted it in between (its startup reconcile, or Disconnect). Insert
+      // once more; a duplicate now means another write put it back.
+      const again = await client
+        .from('provider_connections')
+        .insert({ user_id: userId, provider, ...checked });
+      if (!again.error || again.error.code === '23505') {
+        rowsLog.info('Connection recorded', { provider, step: 'reinsert' });
+        return { ok: true, value: undefined };
+      }
+      return failed('reinsert', provider, again.error);
     }
     rowsLog.info('Connection recorded', { provider, step: 'update' });
     return { ok: true, value: undefined };

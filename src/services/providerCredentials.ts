@@ -62,6 +62,13 @@ export interface ProviderCredentialStore {
   save(provider: MusicProvider, credentials: ProviderCredentials): Promise<void>;
   /** The saved credentials, or null if there are none or they can't be read. */
   load(provider: MusicProvider): Promise<ProviderCredentials | null>;
+  /**
+   * Like `load`, but tells "nothing usable stored" (`none`) from "storage
+   * can't be read right now" (`unreadable`, e.g. the Keychain before the
+   * first unlock), so a check never takes a locked Keychain for a
+   * disconnected service.
+   */
+  peek(provider: MusicProvider): Promise<'stored' | 'none' | 'unreadable'>;
   clear(provider: MusicProvider): Promise<void>;
   /** Removes every provider's credentials, e.g. on sign-out or account deletion. */
   clearAll(): Promise<void>;
@@ -125,6 +132,17 @@ export function createProviderCredentialStore(storage: SecureKeyValue): Provider
       credentialLog.warn('Discarded unreadable credentials', { provider });
       await remove(provider).catch(() => {});
       return null;
+    },
+
+    async peek(provider) {
+      assertProvider(provider);
+      try {
+        await storage.getItem(credentialKey(provider));
+      } catch {
+        // Logged by `load` when it's read for real; nothing to add here.
+        return 'unreadable';
+      }
+      return (await this.load(provider)) === null ? 'none' : 'stored';
     },
 
     clear: remove,

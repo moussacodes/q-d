@@ -44,14 +44,30 @@ async function verify(auth: SpotifyAuth, api: SpotifyApi): Promise<ConnectionSta
   }
 }
 
-/** The connection from stored tokens, without opening any sign-in sheet. */
+/**
+ * The connection from stored tokens, without opening any sign-in sheet.
+ *
+ * `needs_authorization` means the tokens really are gone (never stored, or
+ * Spotify refused them and they were forgotten). A Keychain that can't be
+ * read right now (before the first unlock, or failing mid-check) is
+ * `provider_unavailable` instead: startup reconcile deletes the account's
+ * `provider_connections` row on `needs_authorization`, and a false delete
+ * would stop this phone hosting.
+ */
 export async function spotifyConnectionStatus(
   auth: SpotifyAuth,
   api: SpotifyApi,
 ): Promise<ConnectionState> {
   if (!auth.configured) return { status: 'error', code: 'not_configured', ...notMock };
-  if (!(await auth.hasCredentials())) return { status: 'needs_authorization', ...notMock };
-  return verify(auth, api);
+  const unreadable = { status: 'error', code: 'provider_unavailable', ...notMock } as const;
+  const stored = await auth.storedCredentials();
+  if (stored === 'unreadable') return unreadable;
+  if (stored === 'none') return { status: 'needs_authorization', ...notMock };
+  const state = await verify(auth, api);
+  if (state.status !== 'needs_authorization') return state;
+  // Spotify's refusals forget the tokens. Tokens still here (or a store that
+  // can't be read) mean the check failed reading them, not that they're gone.
+  return (await auth.storedCredentials()) === 'none' ? state : unreadable;
 }
 
 /** "Connect Spotify": runs the sign-in sheet, stores the tokens and checks them. */

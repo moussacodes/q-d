@@ -301,11 +301,11 @@ Not an RPC: one of the three direct writes row level security allows (DECISIONS 
 
 Not an RPC: the second direct write RLS allows. `src/services/providerConnections.ts` only. Built (provider connection rows card).
 
-- `recordProviderConnection(userId, provider, { storefront? })` inserts `(user_id, provider, last_verified_at[, storefront])`; when the row exists (`23505`) it updates `last_verified_at` (and `storefront`) on `user_id = userId and provider = provider` instead. It isn't a PostgREST upsert, because that would write `user_id` and `provider`, which the grant doesn't allow. `connected_at` is the database's default and is never sent. A storefront is sent only when it's two letters.
+- `recordProviderConnection(userId, provider, { storefront? })` inserts `(user_id, provider, last_verified_at[, storefront])`; when the row exists (`23505`) it updates `last_verified_at` (and `storefront`) on `user_id = userId and provider = provider` instead. It isn't a PostgREST upsert, because that would write `user_id` and `provider`, which the grant doesn't allow. `connected_at` is the database's default and is never sent. A storefront is sent only when it's two letters. If that update matches no row (another phone on the account deleted it in between), it inserts once more; a duplicate then counts as recorded.
 - `removeProviderConnection(userId, provider)` deletes that row. Deleting a row that isn't there is fine.
-- Each returns `{ ok: true, value } | { ok: false, error }`, `error` being `not_configured`, `not_signed_in` (`42501`, `PGRST301`, or an update that matched nothing), `network` or `unknown`. They never throw.
+- Each returns `{ ok: true, value } | { ok: false, error }`, `error` being `not_configured`, `not_signed_in` (`42501`, `PGRST301`, `PGRST303`, or a re-insert refused), `network` or `unknown`. They never throw.
 - No token is ever sent: no parameter can carry one and the table has no column for one (`supabase/tests/schema.test.ts`, `supabase/tests/provider-connection-rows.test.ts`).
-- When the app calls them (DECISIONS 2026-11-26 · Record real provider connections): after a real Connect succeeds, on Disconnect of a real connection, when an account starts on a phone (reconcile), and before Start room when an earlier write failed. A mock connection never calls them.
+- When the app calls them (DECISIONS 2026-11-26 · Record real provider connections): after a real Connect succeeds, on Disconnect of a real connection, when an account starts on a phone (reconcile), and right before every live Start room. A mock connection never calls them.
 
 #### `delete_account` (Edge Function)
 

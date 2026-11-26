@@ -193,6 +193,53 @@ describe('spotifyConnectionStatus', () => {
     expect(await auth.hasCredentials()).toBe(false);
   });
 
+  // Startup reconcile deletes the account's row on needs_authorization, so a
+  // Keychain that can't be read must never look like "no tokens".
+  it('a locked Keychain is provider_unavailable, not needs_authorization', async () => {
+    await fake.connectAccount();
+    fake.secure.fail.get = true;
+    const { auth, api } = setup();
+    expect(await spotifyConnectionStatus(auth, api)).toEqual({
+      status: 'error',
+      code: 'provider_unavailable',
+      isMock: false,
+    });
+    expect(fake.apiCalls()).toHaveLength(0);
+    fake.secure.fail.get = false;
+    expect(await auth.hasCredentials()).toBe(true);
+  });
+
+  it('a Keychain that stops answering mid-check is provider_unavailable too', async () => {
+    await fake.connectAccount();
+    const { auth, api } = setup();
+    const real = fake.secure.storage.getItem;
+    let reads = 0;
+    jest.spyOn(fake.secure.storage, 'getItem').mockImplementation(async (key) => {
+      reads += 1;
+      if (reads > 2) throw new Error('keychain locked');
+      return real(key);
+    });
+    expect(await spotifyConnectionStatus(auth, api)).toEqual({
+      status: 'error',
+      code: 'provider_unavailable',
+      isMock: false,
+    });
+    expect(fake.secure.values.size).toBe(1);
+  });
+
+  it('a 401 whose refresh can’t reach Spotify keeps the tokens and is not needs_authorization', async () => {
+    await fake.connectAccount();
+    fake.validAccess.delete('fake-access-1');
+    fake.script('POST', '/api/token', 'network_error');
+    const { auth, api } = setup();
+    expect(await spotifyConnectionStatus(auth, api)).toEqual({
+      status: 'error',
+      code: 'provider_unavailable',
+      isMock: false,
+    });
+    expect(await auth.hasCredentials()).toBe(true);
+  });
+
   it('says not_configured without a client ID', async () => {
     await fake.connectAccount();
     const { auth, api } = setup({ clientId: null });

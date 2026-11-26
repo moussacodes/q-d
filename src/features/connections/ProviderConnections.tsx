@@ -72,9 +72,10 @@ type ProviderConnectionsValue = {
   /** Pick which connected service rooms play through. */
   choose: (provider: MusicProvider) => void;
   /**
-   * Live auth: makes sure a real connection's row exists before hosting
-   * (retries a write that failed). Resolves false for a mock connection or a
-   * write that failed again. Mock auth: always true.
+   * Live auth: writes (or marks checked) a real connection's row right
+   * before hosting, so a write that failed earlier, or a row another phone's
+   * startup removed, is put back. Resolves false for a mock connection or a
+   * write that failed. Mock auth: always true.
    */
   ensureRecorded: (provider: MusicProvider) => Promise<boolean>;
 };
@@ -116,8 +117,10 @@ export function ProviderConnectionsProvider({
   // Connects in flight, read synchronously: two taps in the same frame both
   // see the old render's `attempts`, so that alone can't stop the second.
   const inFlight = useRef(new Set<string>());
-  // Services whose row was written for this account (`accountId:provider`).
-  const recorded = useRef(new Set<string>());
+  // Services the person connected or disconnected while the startup
+  // reconcile below was still running. Reconcile leaves those alone: its
+  // check is older than what the person just did.
+  const changedDuringReconcile = useRef(new Set<MusicProvider>());
   const userId = live ? liveUserId : null;
 
   // An account starting on this phone: check what's really held here and
@@ -125,14 +128,21 @@ export function ProviderConnectionsProvider({
   useEffect(() => {
     if (!userId) return;
     let current = true;
+    const changed = new Set<MusicProvider>();
+    changedDuringReconcile.current = changed;
+    const skipped = Promise.resolve({ ok: true as const, value: undefined });
     void reconcileProviderRows(supportedProviders, {
       stored: storedConnection,
-      record: (provider) => recordProviderConnection(userId, provider),
-      remove: (provider) => removeProviderConnection(userId, provider),
+      record: (provider) =>
+        changed.has(provider) ? skipped : recordProviderConnection(userId, provider),
+      remove: (provider) =>
+        changed.has(provider) ? skipped : removeProviderConnection(userId, provider),
     }).then((outcome) => {
+      if (changedDuringReconcile.current === changed) changedDuringReconcile.current = new Set();
       if (!current) return;
-      for (const provider of outcome.recorded) recorded.current.add(`${accountId}:${provider}`);
-      const found = Object.entries(outcome.connected) as [MusicProvider, Connected][];
+      const found = (Object.entries(outcome.connected) as [MusicProvider, Connected][]).filter(
+        ([provider]) => !changed.has(provider),
+      );
       if (found.length === 0) return;
       setSaved((store) => {
         const base = store.accountId === accountId ? store : freshStore(accountId, returning);
@@ -171,6 +181,7 @@ export function ProviderConnectionsProvider({
         const key = `${accountId}:${provider}`;
         if (inFlight.current.has(key)) return;
         inFlight.current.add(key);
+        changedDuringReconcile.current.add(provider);
         update((current) => withAttempt(current, provider, 'connecting'));
         let connection: ConnectionState;
         try {
@@ -184,9 +195,7 @@ export function ProviderConnectionsProvider({
         }
         // Only a real connection is recorded; the row never holds tokens.
         if (userId && isRealConnection(connection)) {
-          const row = await recordProviderConnection(userId, provider);
-          if (row.ok) recorded.current.add(key);
-          else recorded.current.delete(key);
+          await recordProviderConnection(userId, provider);
         }
         const result = connection;
         // Someone else may have signed in meanwhile; their services stay untouched.
@@ -214,8 +223,8 @@ export function ProviderConnectionsProvider({
         );
         // A row exists only for a real connection. If deleting fails, the next
         // start on this phone removes it (no tokens are left behind it).
+        changedDuringReconcile.current.add(provider);
         if (userId && isRealConnection(store.connections[provider])) {
-          recorded.current.delete(`${accountId}:${provider}`);
           void removeProviderConnection(userId, provider);
         }
         update((current) => {
@@ -228,11 +237,10 @@ export function ProviderConnectionsProvider({
       ensureRecorded: async (provider) => {
         if (!userId) return true;
         if (!isRealConnection(store.connections[provider])) return false;
-        const key = `${accountId}:${provider}`;
-        if (recorded.current.has(key)) return true;
-        const row = await recordProviderConnection(userId, provider);
-        if (row.ok) recorded.current.add(key);
-        return row.ok;
+        // Written every time, not remembered: the same account signing in on
+        // another phone without these tokens deletes the row (startup
+        // reconcile), and this phone must still be able to host.
+        return (await recordProviderConnection(userId, provider)).ok;
       },
     };
   }, [store, accountId, returning, userId]);
