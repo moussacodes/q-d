@@ -9,7 +9,8 @@ type Props = {
   availability: Extract<TrackAvailability, { kind: 'uncertain' | 'unknown' }>;
   playsThrough: MusicProvider;
   isHost: boolean;
-  onSkip: () => void;
+  /** Absent while Skip isn't on the server (live rooms): the button shows, turned off. */
+  onSkip?: () => void;
   /**
    * "Wrong version?" (PRODUCT_SPEC.md §6, rule 8). The override card passes
    * it; until then the button doesn't appear, so nothing pretends to work.
@@ -59,7 +60,13 @@ export function MatchNotice({ availability, playsThrough, isHost, onSkip, onWron
       </View>
       {isHost ? (
         <View style={styles.actions}>
-          <Button size="small" label="Skip" accessibilityLabel="Skip this song" onPress={onSkip} />
+          <Button
+            size="small"
+            label="Skip"
+            accessibilityLabel="Skip this song"
+            disabled={!onSkip}
+            onPress={onSkip}
+          />
           {onWrongVersion && availability.kind === 'uncertain' ? (
             <Button size="small" kind="secondary" label="Wrong version?" onPress={onWrongVersion} />
           ) : null}

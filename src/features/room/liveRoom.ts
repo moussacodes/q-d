@@ -193,12 +193,18 @@ function useLiveRoomQueries(code: string | undefined) {
     queryFn: () => roomReads.queue(client!, roomId!),
     enabled: signedIn && !!roomId,
   });
+  // A read that failed before it ever answered can't be shown. One that fails
+  // on a later refetch keeps what it read (TanStack keeps `data`), so a
+  // flaky refetch never swaps the room for an error. The people and the
+  // queue count too: a queue that couldn't be read isn't an empty queue.
+  const failed = (query: { isError: boolean; data: unknown }) =>
+    query.isError && query.data === undefined;
   let status: RoomStatus;
   if (!isRoomCode(body)) status = 'missing';
-  else if (byCode.isError || detail.isError) status = 'error';
+  else if ([byCode, detail, members, queue].some(failed)) status = 'error';
   else if (!signedIn || byCode.isPending) status = 'loading';
   else if (!byCode.data) status = 'missing';
-  else if (detail.isPending) status = 'loading';
+  else if (detail.isPending || members.isPending || queue.isPending) status = 'loading';
   else status = detail.data ? 'ready' : 'missing';
   return { client, liveUserId, roomId, status, detail, members, queue, byCode };
 }
@@ -259,6 +265,9 @@ export function useServerRoom(code: string | undefined, view?: RoomView): RoomHa
     hostUserId: detail.data?.hostId ?? null,
   });
   const [queueError, setQueueError] = useState<string | null>(null);
+  // `useRoomRealtime` hands back a new object each render; the room only
+  // changes when these do.
+  const offline = realtime.connection === 'offline';
 
   const room = useMemo<LiveRoom>(() => {
     const row: RoomDetail = detail.data ?? {
@@ -275,10 +284,20 @@ export function useServerRoom(code: string | undefined, view?: RoomView): RoomHa
     };
     const live = liveRoomOf(row, memberList, queue.data ?? emptyQueue, liveUserId, {
       ended: realtime.ended,
-      offline: realtime.connection === 'offline',
+      offline,
     });
     return view ? { ...live, view } : live;
-  }, [detail.data, memberList, queue.data, liveUserId, realtime, roomId, code, view]);
+  }, [
+    detail.data,
+    memberList,
+    queue.data,
+    liveUserId,
+    realtime.ended,
+    offline,
+    roomId,
+    code,
+    view,
+  ]);
 
   const hostPresent = realtime.hostPresence.present;
   const now = useNow(!hostPresent);
@@ -589,7 +608,7 @@ export function useServerRoomInvite(roomCode: string, isHost: boolean) {
   };
 }
 
-/** For tests: forget the invite tokens this "phone" kept. */
+/** Forgets the invite tokens this phone kept: on an account change, and in tests. */
 export function forgetLiveInvites() {
   liveInvites.clear();
 }

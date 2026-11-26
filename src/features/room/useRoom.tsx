@@ -35,6 +35,7 @@ import { entryAvailability } from './availability';
 import { MockRoomServer, type RoomInvite } from './mockServer';
 import { RoomPlayer } from './RoomPlayer';
 import {
+  forgetLiveInvites,
   roomsAreLive,
   useServerActiveRoom,
   useServerJoinByInvite,
@@ -141,6 +142,7 @@ export function RoomsProvider({ children }: { children: ReactNode }) {
   // (or none) never sees the last one's rooms, even from the cache.
   useEffect(() => {
     queryClient.clear();
+    forgetLiveInvites();
   }, [accountId, queryClient]);
   const [rooms] = useState<Rooms>(() => ({
     store: createRoomStore(),

@@ -352,12 +352,6 @@ export function createRoomStore(now: () => number = Date.now) {
     },
 
     /**
-     * What Realtime Presence says about the host's phone. This is the input
-     * the Realtime Broadcast and Presence card plugs in: call it on every
-     * presence sync with `hostPresentIn(entries, hostUserId)`. In mock mode
-     * the `/dev` toggle calls it. Repeating the same answer changes nothing.
-     */
-    /**
      * `room.ended` (Realtime): the host ended the room. Playback stops and
      * the queue stays as history. Returns false if it had ended already.
      */
@@ -381,6 +375,12 @@ export function createRoomStore(now: () => number = Date.now) {
       update(ref, { ...room, offline, host });
     },
 
+    /**
+     * What Realtime Presence says about the host's phone. This is the input
+     * the Realtime Broadcast and Presence card plugs in: call it on every
+     * presence sync with `hostPresentIn(entries, hostUserId)`. In mock mode
+     * the `/dev` toggle calls it. Repeating the same answer changes nothing.
+     */
     setHostPresent(ref: RoomRef, present: boolean) {
       const room = get(ref);
       const host = nextHostPresence(room.host, present, now());
