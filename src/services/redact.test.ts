@@ -147,6 +147,23 @@ describe('redactString', () => {
     expect(redactString('')).toBe('');
   });
 
+  it('removes the row a Postgres constraint error echoes (song titles, names)', () => {
+    const details =
+      'Failing row contains (5d1c, Rain Down, Delta Rae (Live), K7CN4R, Baron, null).';
+    expect(redactString(details)).toBe('Failing row contains ([redacted]).');
+    const message = 'new row violates check constraint; Failing row contains (x, Lovers Rock)';
+    expect(redactString(message)).not.toContain('Lovers Rock');
+  });
+
+  it('removes the value an invalid-input error echoes, keeping the type', () => {
+    expect(redactString('invalid input syntax for type uuid: "Rain Down"')).toBe(
+      'invalid input syntax for type uuid: "[redacted]"',
+    );
+    expect(
+      redactString('invalid input value for enum music_provider: "say \\"hi\\" Lovers Rock"'),
+    ).toBe('invalid input value for enum music_provider: "[redacted]"');
+  });
+
   it('caps very long strings', () => {
     const output = redactString('a'.repeat(5000));
     expect(output.length).toBe(2000);
@@ -297,6 +314,15 @@ describe('redactError', () => {
     expect(output.message).toBe("Couldn't join [room-code] as [email] with [token]");
     expect(output.stack).toBeDefined();
     expectNoLeak(output, ['QD-7K4F9X', 'a@b.io', JWT]);
+  });
+
+  it('removes free text in `code`, keeping code-shaped values', () => {
+    const named = Object.assign(new Error('x'), { code: 'Rain Down by Delta Rae' });
+    expect(redactError(named).code).toBe(REDACTED);
+    for (const code of ['PGRST301', '23502', 'not_allowed', 'ERR_NETWORK', 'auth.expired']) {
+      expect(redactError(Object.assign(new Error('x'), { code })).code).toBe(code);
+    }
+    expect(redactError(Object.assign(new Error('x'), { code: 401 })).code).toBe(401);
   });
 
   it('keeps a code and redacts extra fields by key', () => {

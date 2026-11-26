@@ -123,6 +123,11 @@ const STRING_RULES: readonly [RegExp, string][] = [
   ],
   // Postgres constraint details, e.g. `Key (code)=(7K4F9X) already exists`.
   [/\bKey \(([^()]*)\)=\((?:[^()]|\([^()]*\))*\)/g, 'Key ($1)=([redacted])'],
+  // Postgres errors that echo a whole row or the value that failed, e.g. a
+  // not-null or check violation's `Failing row contains (…, Rain Down, …)`.
+  [/\bFailing row contains \((?:[^()]|\([^()]*\))*\)/g, 'Failing row contains ([redacted])'],
+  // `invalid input syntax for type uuid: "QD-7K4F9X"` echoes what was sent.
+  [/(\binvalid input (?:syntax|value) for (?:type )?[\w ]+: )"(?:[^"\\]|\\.)*"/g, '$1"[redacted]"'],
   // JWTs (header.payload.signature, header starts with eyJ).
   [/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]*)?/g, '[token]'],
   // Supabase API keys.
@@ -173,6 +178,9 @@ export interface RedactedError {
   cause?: unknown;
   [key: string]: unknown;
 }
+
+/** What an error code looks like. Anything else in `code` is free text. */
+const CODE_SHAPE = /^[A-Za-z0-9_.:-]{1,64}$/;
 
 /** Fields of an error that are safe to keep once their strings are redacted. */
 const ERROR_FIELDS = new Set(['name', 'message', 'stack', 'cause', 'code']);
@@ -247,7 +255,9 @@ function redactErrorInner(error: Error, depth: number, seen: WeakSet<object>): R
   };
   const { code, cause } = error as Error & { code?: unknown; cause?: unknown };
   if (typeof code === 'string' || typeof code === 'number') {
-    output.code = typeof code === 'string' ? redactString(code) : code;
+    // A code is a machine word (`PGRST301`, `23502`, `not_allowed`). Free
+    // text in `code`, which some libraries use, is removed whole.
+    output.code = typeof code === 'number' || CODE_SHAPE.test(code) ? code : REDACTED;
   }
   if (typeof error.stack === 'string') output.stack = redactString(error.stack);
   if (cause !== undefined) output.cause = redactInner(cause, depth + 1, seen);

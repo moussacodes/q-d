@@ -99,7 +99,8 @@ export function mapAuthError(error: unknown): AuthErrorCode {
 function failureContext(error: unknown, errorCode: AuthErrorCode) {
   return {
     errorCode,
-    supabaseErrorCode: readString(error, 'code') ?? null,
+    // A thrown library error may put words in `code`; only a code-shaped one is kept.
+    supabaseErrorCode: loggableReason(readString(error, 'code')),
     status: readStatus(error) ?? null,
   };
 }
@@ -378,7 +379,7 @@ export async function fetchSavedProfile(
       .eq('id', userId)
       .maybeSingle<ProfileFields>();
     if (error) {
-      authLog.warn('Profile check failed', { supabaseErrorCode: error.code ?? null });
+      authLog.warn('Profile check failed', { supabaseErrorCode: loggableReason(error.code) });
       return null;
     }
     if (!data || !isProfileComplete(data)) return null;
