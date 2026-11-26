@@ -18,6 +18,13 @@
  * The allowlists below are reviewed exceptions. Each one says why it's safe.
  * A new exception needs the same: a reason a reviewer can check. An entry
  * that no longer matches anything fails too, so the lists don't go stale.
+ *
+ * Limits: the guard reads names at the call site only. A value renamed first
+ * (`const e = user.email; log.info('x', { e })`) or a logger stored under a
+ * name that doesn't end in `log`/`Log`/`logger`/`Logger` isn't seen. The
+ * redactor's value scan (emails, codes, tokens, ids) and the runtime canary
+ * tests cover those; a song title behind an alias is caught by review only.
+ * "The guard itself" below pins what is and isn't caught.
  */
 const fs = jest.requireActual<typeof import('fs')>('fs');
 const path = jest.requireActual<typeof import('path')>('path');
@@ -128,9 +135,12 @@ describe('console', () => {
 
 const LEVELS = new Set(['debug', 'info', 'warn', 'error']);
 
-/** `log`, `authLog`, `log.child('x')`, `callbackLog`… */
+/** `log`, `logger`, `authLog`, `deps.log`, `this.logger`, `log.child('x')`… */
+const LOGGER_NAME = /^(?:log|logger)$|Log(?:ger)?$/;
+
 function isLoggerExpression(node: import('typescript').Expression): boolean {
-  if (ts.isIdentifier(node)) return node.text === 'log' || /Log$/.test(node.text);
+  if (ts.isIdentifier(node)) return LOGGER_NAME.test(node.text);
+  if (ts.isPropertyAccessExpression(node)) return LOGGER_NAME.test(node.name.text);
   if (
     ts.isCallExpression(node) &&
     ts.isPropertyAccessExpression(node.expression) &&
@@ -148,27 +158,35 @@ type Call = {
   node: import('typescript').CallExpression;
 };
 
-function findCalls(): Call[] {
+const REPORT_CALLS = new Set(['captureException', 'addBreadcrumb']);
+
+/** `addBreadcrumb(…)` and `crash.addBreadcrumb(…)` alike. */
+function calleeName(callee: import('typescript').Expression): string {
+  if (ts.isIdentifier(callee)) return callee.text;
+  if (ts.isPropertyAccessExpression(callee)) return callee.name.text;
+  return '';
+}
+
+function callsIn(file: string, source: import('typescript').SourceFile): Call[] {
   const calls: Call[] = [];
-  for (const file of files) {
-    walk(parse(file), (node) => {
-      if (!ts.isCallExpression(node)) return;
-      const callee = node.expression;
-      if (
-        ts.isPropertyAccessExpression(callee) &&
-        LEVELS.has(callee.name.text) &&
-        isLoggerExpression(callee.expression)
-      ) {
-        calls.push({ file, line: lineOf(node), kind: 'log', node });
-      } else if (
-        ts.isIdentifier(callee) &&
-        (callee.text === 'captureException' || callee.text === 'addBreadcrumb')
-      ) {
-        calls.push({ file, line: lineOf(node), kind: 'report', node });
-      }
-    });
-  }
+  walk(source, (node) => {
+    if (!ts.isCallExpression(node)) return;
+    const callee = node.expression;
+    if (
+      ts.isPropertyAccessExpression(callee) &&
+      LEVELS.has(callee.name.text) &&
+      isLoggerExpression(callee.expression)
+    ) {
+      calls.push({ file, line: lineOf(node), kind: 'log', node });
+    } else if (REPORT_CALLS.has(calleeName(callee))) {
+      calls.push({ file, line: lineOf(node), kind: 'report', node });
+    }
+  });
   return calls;
+}
+
+function findCalls(): Call[] {
+  return files.flatMap((file) => callsIn(file, parse(file)));
 }
 
 /**
@@ -252,8 +270,7 @@ const DYNAMIC_MESSAGE_ALLOWED: Record<string, string> = {
   'src/services/flags.ts': 'flag problems name the variable only',
 };
 
-describe('log, crash-report and breadcrumb calls', () => {
-  const calls = findCalls();
+function checkCalls(calls: Call[]) {
   const usedSensitive = new Set<string>();
   const usedDynamic = new Set<string>();
   const sensitive: string[] = [];
@@ -261,8 +278,10 @@ describe('log, crash-report and breadcrumb calls', () => {
 
   for (const call of calls) {
     const [message] = call.node.arguments;
+    // A log message and a breadcrumb message are both free text nothing can scan for songs.
+    const hasMessage = call.kind === 'log' || calleeName(call.node.expression) === 'addBreadcrumb';
     if (
-      call.kind === 'log' &&
+      hasMessage &&
       message !== undefined &&
       !ts.isStringLiteral(message) &&
       !ts.isNoSubstitutionTemplateLiteral(message)
@@ -279,6 +298,12 @@ describe('log, crash-report and breadcrumb calls', () => {
       }
     }
   }
+  return { usedSensitive, usedDynamic, sensitive, dynamic };
+}
+
+describe('log, crash-report and breadcrumb calls', () => {
+  const calls = findCalls();
+  const { usedSensitive, usedDynamic, sensitive, dynamic } = checkCalls(calls);
 
   it('finds the logging call sites (the scan works)', () => {
     expect(calls.length).toBeGreaterThan(20);
@@ -333,6 +358,58 @@ describe('log, crash-report and breadcrumb calls', () => {
     for (const name of ['errorCode', 'status', 'provider', 'step', 'roomId', 'error', 'reason']) {
       expect([name, isSensitiveName(name)]).toEqual([name, false]);
     }
+  });
+});
+
+describe('the guard itself', () => {
+  // Planted leaks, parsed in memory: each must be reported. If one stops being
+  // caught, the scan above silently stopped protecting that shape of call.
+  const planted = `
+    import * as crash from './crashReporting';
+    const deps = { log };
+    export function leak(user: { email: string }, token: string, roomCode: string, title: string) {
+      const { email } = user;
+      logger.info('a', { email });
+      log.info(\`joined \${roomCode}\`);
+      authLog.warn('b', { accessToken: token });
+      log.child('x').error('c', undefined, { reason: user.email });
+      addBreadcrumb('Added', { title });
+      crash.addBreadcrumb('Added', { title });
+      crash.captureException(new Error('x'), { roomCode });
+      deps.log.warn('d', { token });
+      addBreadcrumb(\`Opened \${roomCode.length}\`);
+      catalog.info('not a logger', { email });
+      const e = user.email;
+      log.info('alias', { e });
+    }
+  `;
+  const file = 'src/planted.ts';
+  const source = ts.createSourceFile(file, planted, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const { sensitive, dynamic } = checkCalls(callsIn(file, source));
+
+  it('catches a leak in every call shape it knows', () => {
+    expect(sensitive).toEqual([
+      `${file}:6 passes \`email\``,
+      `${file}:7 passes \`roomCode\``,
+      `${file}:8 passes \`token\``,
+      `${file}:9 passes \`user\``,
+      `${file}:9 passes \`email\``,
+      `${file}:10 passes \`title\``,
+      `${file}:11 passes \`title\``,
+      `${file}:12 passes \`roomCode\``,
+      `${file}:13 passes \`token\``,
+      `${file}:14 passes \`roomCode\``,
+    ]);
+    expect(dynamic).toEqual([`${file}:7`, `${file}:14`]);
+  });
+
+  it('has known blind spots, covered by the redactor and the runtime canaries', () => {
+    // `catalog` isn't a logger name. An alias (`const e = user.email`) hides the
+    // name: the static guard only sees names at the call site. The logger's
+    // value scan still turns an email into [email]; a song title in an alias
+    // isn't caught by anything but review.
+    expect(sensitive.some((entry) => entry.startsWith(`${file}:15`))).toBe(false);
+    expect(sensitive.some((entry) => entry.startsWith(`${file}:17`))).toBe(false);
   });
 });
 
