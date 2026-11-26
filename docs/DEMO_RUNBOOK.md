@@ -97,13 +97,13 @@ If the script says the `demo_reset` flag is off, you're pointed at the wrong pro
 
 The automated part runs in `npm run check` (see DECISIONS.md, "Logs and analytics privacy check"). This part needs a real iPhone, because only a device shows what the system log, Xcode and crash reports actually keep. Use the Dec 3 TestFlight build (a release build prints only warnings and errors) and, once, a development build (everything from `debug` up). Before you start, write down canaries: a throwaway email and password, the room code, the invite link, a search word and a song title.
 
-- [ ] Open Console.app on the Mac with the iPhone selected (or Xcode › Devices and Simulators › Open Console), filter on the q’d process, and start streaming.
+- [ ] Open Console.app on the Mac with the iPhone selected (or Xcode › Devices and Simulators › Open Console), filter on the app's process (the executable Xcode built, probably `qd`; the bundle id is `app.qd.mobile`), and start streaming. Include info and debug messages (Action menu) for the development build.
 - [ ] Sign up and sign in with the canary email and password, then a wrong password, then Google with the sheet cancelled.
 - [ ] Connect Spotify (Premium and non-Premium if possible), disconnect it, and reconnect after removing q’d at spotify.com/account/apps. Connect Apple Music.
 - [ ] Start a room, open Invite, copy and share the link. On the guest phone: a wrong code until "Too many tries", then the real code, then the invite link.
 - [ ] Search for the canary word, add the canary song, reorder and remove it, skip a song, and switch the host's service between songs.
 - [ ] Put the app in the background and reopen it. Turn on Airplane mode mid-search and mid-add.
-- [ ] Search the captured log for each canary, `@`, `QD-`, `eyJ`, `Bearer`, `access_token`, `refresh_token`, `code=`, `state=`, `invite=` and `spotify:track:`. Nothing may match. A placeholder (`[redacted]`, `[email]`, `[room-code]`, `[token]`) is fine.
+- [ ] Stop streaming, select all messages, copy them into a text file and search it for each canary, `@`, `QD-`, `eyJ`, `Bearer`, `access_token`, `refresh_token`, `code=`, `state=`, `invite=` and `spotify:track:`. Nothing may match. A placeholder (`[redacted]`, `[email]`, `[room-code]`, `[token]`) is fine. With the development build, search the Metro terminal the same way.
 - [ ] Xcode › Window › Organizer › Crashes for the build, and TestFlight feedback: no crash report or breadcrumb holds a canary. With no crash service connected, there should be only Apple's own reports.
 - [ ] Nothing is sent for analytics: no analytics SDK is installed, and `analytics_events` in the demo project stays empty.
 - [ ] Record the result (build number, date, pass or the line that leaked) on the Trello card. A leak blocks the demo build until it's fixed in the logger or at the call site.
