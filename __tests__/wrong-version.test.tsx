@@ -57,7 +57,7 @@ afterEach(() => {
 });
 
 describe('the host fixes a low-confidence match', () => {
-  it('lists the service’s versions, labeled mock, in the matcher’s order', async () => {
+  it('lists the service’s versions, labeled mock, what’s playing first', async () => {
     await signIn();
     await openRoom('uncertain');
     await press(WRONG_VERSION);
@@ -103,6 +103,9 @@ describe('the host fixes a low-confidence match', () => {
     await press(radioEdit);
     expect(screen.getByLabelText(radioEdit)).toBeSelected();
     expect(screen.getByLabelText(closest)).not.toBeSelected();
+    // Radio semantics: the choice is announced as checked, the others as not.
+    expect(screen.getByRole('radio', { checked: true })).toHaveAccessibleName(radioEdit);
+    expect(screen.getAllByRole('radio', { checked: false })).toHaveLength(3);
     expect(useButton()).toBeEnabled();
     await press('Use this version');
 
@@ -129,6 +132,13 @@ describe('the host fixes a low-confidence match', () => {
     await press('Change the version you picked');
 
     expect(await screen.findByText('Your pick')).toBeVisible();
+    // What's playing first, then the pick, then the rest.
+    expect((await screen.findAllByRole('radio')).map((r) => r.props.accessibilityLabel)).toEqual([
+      expect.stringMatching(closest),
+      expect.stringMatching(radioEdit),
+      expect.stringMatching(spedUp),
+      expect.stringMatching(live),
+    ]);
     expect(screen.getByLabelText(radioEdit)).toHaveAccessibleName(
       'Way Bigger - Radio Edit, Don Toliver · Single · 3:01, Radio edit, Clean, Your pick',
     );
@@ -176,10 +186,11 @@ describe('the host fixes a low-confidence match', () => {
     await press(WRONG_VERSION);
 
     const radios = await screen.findAllByRole('radio');
-    // The matcher's order: a version without an explicit/clean conflict ranks first.
+    // What's playing comes first, then the rest in the matcher's order (which
+    // ranks the version without an explicit/clean conflict above it).
     expect(radios.map((radio) => radio.props.accessibilityLabel)).toEqual([
-      'Ocho Rios - Radio Edit, Daniel Caesar · Never Enough · 2:21, Radio edit, Clean',
       'Ocho Rios, Daniel Caesar · Never Enough · 2:33, Explicit, Playing now',
+      'Ocho Rios - Radio Edit, Daniel Caesar · Never Enough · 2:21, Radio edit, Clean',
       expect.stringMatching(/^Ocho Rios \(Live\), .*, Live, Explicit$/),
     ]);
     await press(/^Ocho Rios - Radio Edit/);

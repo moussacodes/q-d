@@ -81,3 +81,22 @@ export function useVersionChoices(
   if (!recordingId) return { status: 'error', retry };
   return { ...(answer?.key === key ? answer.choices : { status: 'loading' }), retry };
 }
+
+/**
+ * The versions in the order "Wrong version?" shows them: what the entry plays
+ * now first, then the host's pick, then the rest in the matcher's order. The
+ * host sees what they're hearing before the alternatives, even when the
+ * matcher ranks another version above it (a clean radio edit above an
+ * explicit match).
+ */
+export function pinnedFirst<T extends Pick<ProviderTrack, 'providerTrackId'>>(
+  tracks: readonly T[],
+  first: readonly (string | null)[],
+): T[] {
+  const pinned = first.flatMap((id, index) =>
+    id !== null && first.indexOf(id) === index
+      ? tracks.filter((track) => track.providerTrackId === id)
+      : [],
+  );
+  return [...pinned, ...tracks.filter((track) => !pinned.includes(track))];
+}

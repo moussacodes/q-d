@@ -3,7 +3,7 @@ import { act, renderHook, waitFor } from '@testing-library/react-native';
 import type { CanonicalRecording, ProviderTrack } from '@/domain/recording';
 import type { VersionSource } from '@/providers';
 
-import { useVersionChoices, versionTags } from './versions';
+import { pinnedFirst, useVersionChoices, versionTags } from './versions';
 
 const recording: CanonicalRecording = {
   id: '00000000-0000-4000-8000-000000000001',
@@ -122,5 +122,27 @@ describe('useVersionChoices', () => {
     });
     if (result.current.status !== 'done') throw new Error('not loaded');
     expect(result.current.tracks.map((t) => t.providerTrackId)).toEqual(['am']);
+  });
+});
+
+describe('pinnedFirst', () => {
+  const t = (providerTrackId: string) => ({ providerTrackId });
+  const ids = (tracks: { providerTrackId: string }[]) => tracks.map((x) => x.providerTrackId);
+  const ranked = [t('a'), t('b'), t('c'), t('d')];
+
+  it('puts what plays now first, then the pick, then the rest in order', () => {
+    expect(ids(pinnedFirst(ranked, ['c', 'b']))).toEqual(['c', 'b', 'a', 'd']);
+  });
+
+  it('keeps the matcher’s order with nothing to pin', () => {
+    expect(ids(pinnedFirst(ranked, [null, null]))).toEqual(['a', 'b', 'c', 'd']);
+  });
+
+  it('lists a version once when the pick is what plays now', () => {
+    expect(ids(pinnedFirst(ranked, ['d', 'd']))).toEqual(['d', 'a', 'b', 'c']);
+  });
+
+  it('ignores ids the service doesn’t list', () => {
+    expect(ids(pinnedFirst(ranked, ['gone', 'b']))).toEqual(['b', 'a', 'c', 'd']);
   });
 });

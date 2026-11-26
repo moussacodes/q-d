@@ -10,14 +10,15 @@ import { formatArtists } from '@/domain/recording';
 import { formatDuration } from '@/domain/time';
 
 import { recordingIdOf, useRoom, type RoomEntry, type RoomView } from './useRoom';
-import { useVersionChoices, versionTags } from './versions';
+import { pinnedFirst, useVersionChoices, versionTags } from './versions';
 
 type Props = { code: string; view?: RoomView; entryId?: string };
 
 /**
  * "Wrong version?" (PRODUCT_SPEC.md §6, rule 8): the host picks the version
- * of a song to play on the room's service. Lists the service's versions, best
- * match first, each with its title, artists, album, length and tags. Saving
+ * of a song to play on the room's service. Lists the service's versions
+ * (what the song plays now first, then the host's pick, then the matcher's
+ * order), each with its title, artists, album, length and tags. Saving
  * calls `override_track_match`; the pick plays from the next time the song
  * comes up, never mid-song.
  */
@@ -134,7 +135,7 @@ export function WrongVersionSheet({ code, view, entryId }: Props) {
               {service} has no versions of this song.
             </Text>
           ) : null}
-          {choices.tracks.map((track) => {
+          {pinnedFirst(choices.tracks, [currentTrackId, pickedTrackId]).map((track) => {
             const id = track.providerTrackId;
             const isSelected = selected === id;
             const tags = versionTags(track);
@@ -157,7 +158,7 @@ export function WrongVersionSheet({ code, view, entryId }: Props) {
               <Pressable
                 key={id}
                 accessibilityRole="radio"
-                accessibilityState={{ selected: isSelected, disabled: saving }}
+                accessibilityState={{ checked: isSelected, selected: isSelected, disabled: saving }}
                 accessibilityLabel={[track.title, details, ...tags, status]
                   .filter(Boolean)
                   .join(', ')}
