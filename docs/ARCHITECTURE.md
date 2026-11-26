@@ -62,11 +62,11 @@ A broadcast that never arrives costs freshness but never correctness, because th
 | Interaction | Reanimated, Gesture Handler, a bottom-sheet library | Planned, added only where Figma needs them |
 | Backend | Supabase Auth, Postgres, RLS, Realtime, Edge Functions, migrations | Client built (`src/services/supabase.ts`, created only when the env validates; untested against a live project). Auth built for email/password and Google (`src/services/auth.ts`, `features/auth`; untested against a live project and on a device). Rest planned · Supabase cards |
 | Device storage | Supabase's recommended Expo session storage, plus SecureStore for provider credentials | Built: `expo-sqlite/localStorage` for the Supabase session (`sessionStorage.native.ts`; browser storage on the web), `expo-secure-store` for provider credentials (`providerCredentials.ts`; memory only on the web) |
-| Apple playback | Local Swift Expo module around MusicKit | Planned · qd-music-kit card |
+| Apple playback | Local Swift Expo module around MusicKit | Skeleton built · `modules/qd-music-kit` (wrapper, Swift stubs, config plugin). MusicKit playback planned · Apple Music playback card |
 | Spotify playback | Spotify iOS SDK (App Remote) and the Web API | Web API remote built, untested on device (`src/providers/spotify`: PKCE sign-in with expo-web-browser and expo-crypto, tokens in SecureStore, refresh; `SpotifyPlaybackAdapter` over the Web API player endpoints). App Remote not used (open question in DECISIONS.md) |
 | Tests | Jest/jest-expo, React Native Testing Library, Supabase integration tests, Maestro | Built: Jest, React Native Testing Library, `.maestro/` smoke flow (first runs with a development build), database tests on PGlite (`supabase/tests`, run by `npm test`). Planned: the same database tests against a Supabase local stack |
 | Quality gates | ESLint, Prettier, `tsc`, Jest, Expo Doctor, GitHub Actions, Git pre-push hook | Built · `npm run check`, `.github/workflows/ci.yml`, `.githooks/pre-push` (every push) |
-| Builds | EAS development, preview (internal) and production (TestFlight) profiles | Planned · EAS card |
+| Builds | EAS development, preview (internal) and production (TestFlight) profiles | Built · `eas.json`, iOS only. The first `eas build` needs a teammate logged in to EAS. |
 | Observability | Redacting structured logger, privacy-filtered crash reports, opt-in analytics | Built: logger (`src/services/logger.ts`, `redact.ts`), the crash-report filter (`crashReporting.ts`, no service connected yet) and the automated logs and analytics privacy check (`privacyGuard.test.ts`, `privacyLogs.test.ts`, `__tests__/privacy-logs.test.tsx`, `supabase/tests/functions/catalog-search-privacy.test.ts`, `supabase/tests/analytics-privacy.test.ts`). Planned: a crash-reporting service, analytics, and the on-device privacy check (DEMO_RUNBOOK.md) |
 
 **Why this stack.** Two students, one fixed demo date and one Windows machine. Expo gives one codebase for iOS, the web and later Android, and the web build lets Baron work without a Mac. Supabase provides auth, a relational database with row-level security, realtime and serverless functions in one managed service, so there's no backend to operate. Both are mainstream enough to learn from, which is half the point of the project (see [LEARNING_PATH.md](LEARNING_PATH.md)).
@@ -89,7 +89,7 @@ src/
   services/               Supabase, env, flags, logging, analytics               (data mode, env, flags, logging, Supabase client, storage, query client and Edge Function calls built; analytics planned)
   test/                   Fixtures and provider contract helpers
 modules/
-  qd-music-kit/           Local Swift Expo module and config plugin             (planned)
+  qd-music-kit/           Local Swift Expo module and config plugin             (skeleton built; playback planned)
 supabase/
   config.toml             Supabase CLI settings for a local stack
   migrations/             Schema, RPC functions, triggers, RLS                   (schema built)
@@ -184,6 +184,7 @@ ESLint enforces these rules (`no-restricted-imports` in `eslint.config.js`), so 
 
 - **Rule:** all Swift and MusicKit code lives in this local Expo module and its config plugin. JavaScript reaches it only through the Apple `PlaybackAdapter` (and the Apple `CatalogAdapter` if search runs on the device).
 - **Why:** native code needs a Mac, Xcode and a development build. Isolating it means the rest of the app still runs in Expo Go and on the web from Windows. Moussa owns this module, because it's Mac-only work.
+- **What's there (skeleton):** `expo-module.config.json` (Apple only, autolinked from `modules/`), `ios/QdMusicKitModule.swift` with one stub per `PlaybackAdapter` method (they throw `ERR_QD_NOT_IMPLEMENTED` and claim no capabilities), the TypeScript wrapper `index.ts` and `app.plugin.js`. The wrapper loads the native module with `requireOptionalNativeModule`. Without it (Expo Go, web, Android, Jest) it reports `unavailable`: no capabilities, `connect()` resolves to `{ status: 'error', code: 'unavailable' }` and player calls throw `QdMusicKitError`. The plugin adds `NSAppleMusicUsageDescription` and the `audio` background mode. MusicKit needs no entitlement key; it's an App Service on the bundle ID.
 
 ### 4.9 Generated native code vs. committed config
 

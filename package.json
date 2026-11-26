@@ -7,8 +7,9 @@
     "node": ">=22.13"
   },
   "scripts": {
-    "start": "expo start",
-    "ios": "expo start --ios",
+    "start": "expo start --go",
+    "start:dev-client": "expo start --dev-client",
+    "ios": "expo start --ios --go",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit && tsc --noEmit -p supabase/tests",
     "lint": "expo lint --max-warnings 0",
@@ -31,6 +32,7 @@
     "expo-clipboard": "~58.0.4",
     "expo-constants": "~58.0.16",
     "expo-crypto": "~58.0.9",
+    "expo-dev-client": "~58.0.21",
     "expo-font": "~58.0.12",
     "expo-image": "~58.0.19",
     "expo-linking": "~58.0.17",

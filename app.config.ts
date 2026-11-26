@@ -28,6 +28,8 @@ const config: ExpoConfig = {
       'expo-splash-screen',
       { backgroundColor: '#000000', image: './assets/splash-icon.png', imageWidth: 200 },
     ],
+    // MusicKit usage text and background audio (modules/qd-music-kit/app.plugin.js).
+    './modules/qd-music-kit/app.plugin.js',
   ],
   experiments: {
     typedRoutes: true,

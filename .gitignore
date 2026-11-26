@@ -42,3 +42,7 @@ yarn-error.*
 
 # env files (never commit real values)
 .env
+
+# EAS local credentials (never commit)
+credentials.json
+credentials/

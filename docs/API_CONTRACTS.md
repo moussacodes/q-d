@@ -502,6 +502,21 @@ type ProviderErrorCode =
 - A track the provider picked itself after the queue ran out is marked `autoplay: true` in the adapter's state, so the host's phone can report status `autoplay` and the app can label it. Only adapters whose `capabilities().autoplay` is true ever mark one. (Added with the autoplay-label card; the mock does this today.)
 - Nothing about tokens, emails or listening history reaches the logger unredacted.
 
+### `modules/qd-music-kit` (native bridge under the Apple adapter)
+
+Added 2026-11-24 with the qd-music-kit skeleton. The Apple `PlaybackAdapter` wraps this module; nothing else imports it. Its JavaScript API (`QdMusicKitApi` in `modules/qd-music-kit/src/QdMusicKit.types.ts`) has one method per `PlaybackAdapter` method above, with the same `PlaybackCapabilities` and `ConnectionState` shapes, plus:
+
+```ts
+availability(): { available: true } | { available: false; reason: 'native_module_missing' | 'unsupported_platform' };
+// prepare/enqueue take anything with { provider, providerTrackId }, so a ProviderTrack fits.
+// getState() returns the native player's state; the adapter builds the room PlaybackState (§6) from it.
+type QdMusicKitPlayerState = { status: 'playing' | 'paused' | 'stopped'; providerTrackId: string | null; positionMs: number };
+// Thrown errors: QdMusicKitError with code
+// 'unavailable' | 'not_implemented' | 'wrong_provider' | 'invalid_argument' | 'invalid_native_response' | 'native_error'
+```
+
+Without the native module (Expo Go, web, Android, tests) it claims no capabilities, `connect()` resolves to `{ status: 'error', code: 'unavailable' }`, `disconnect()` resolves, and the other calls throw `unavailable`. A Spotify track throws `wrong_provider` before anything crosses the bridge.
+
 ## 6. Shared domain types
 
 These are sketches. The domain types card writes them as Zod schemas in `src/domain`, and the TypeScript types are inferred from them.

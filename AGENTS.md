@@ -57,6 +57,7 @@ The full list is in [PRODUCT_SPEC.md § 2 and § 9](docs/PRODUCT_SPEC.md#9-words
 ```bash
 npm ci              # install exactly what package-lock.json says
 npm start           # Metro + QR code for Expo Go
+npm run start:dev-client  # Metro for a development build (eas.json "development")
 npm run web         # web preview with mock data
 npm run ios         # Mac only: Expo Go in the iOS Simulator
 npm run check       # typecheck + lint + format:check + test, in that order

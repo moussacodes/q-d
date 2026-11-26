@@ -511,6 +511,20 @@ The rules are PRODUCT_SPEC.md §6. These are the numbers and edge cases the matc
 - **The Live row shows the room's name as it was started.** It showed the sample name, so a room started as "Friday Fade" read "Sunday Slow Burn" on Home while the mini player said "Friday Fade".
 - **The mini player's Play/Pause is disabled** when the room's control rule leaves you out. Before, it looked active and did nothing.
 - A person still compares both states with Figma `20 · Mobile`.
+## 2026-11-24 · qd-music-kit skeleton
+
+- **The module's JavaScript wrapper lives in `modules/qd-music-kit`,** not in `src/providers`. The Apple `PlaybackAdapter` (provider cards) wraps it, so Apple specifics still reach the app only through `src/providers`.
+- **Missing native module means "unavailable", never a fake player.** In Expo Go, on the web, on Android and in Jest the wrapper claims no capabilities, `connect()` resolves to `{ status: 'error', code: 'unavailable' }` and player calls throw `QdMusicKitError('unavailable')`. That keeps the Expo Go and web previews working and makes a missing build visible.
+- **The Swift stubs claim nothing.** Every capability is `false` and every player method throws `ERR_QD_NOT_IMPLEMENTED` until the Apple Music playback card builds it and it's tested on an iPhone.
+- **Config plugin, no entitlements.** `app.plugin.js` adds `NSAppleMusicUsageDescription` ("q’d plays your room’s queue through Apple Music when you host from this iPhone.") and the `audio` background mode. MusicKit has no entitlement key: it's turned on as an App Service for `app.qd.mobile` in the Apple Developer portal. The usage text is a first draft for the team to confirm.
+
+## 2026-11-24 · EAS build profiles
+
+- **Three iOS-only profiles in `eas.json`.** `development` is a dev-client build for internal distribution (registered iPhones), `preview` is an internal release build, and `production` is a store build for TestFlight that bumps the build number on EAS (`appVersionSource: remote`). They share a `base` profile that pins Node 22.13.0, the same version as CI. There are no Android settings; build with `--platform ios`.
+- **Profile env is public only.** Each profile sets `EXPO_PUBLIC_APP_ENV` to its own name and `EXPO_PUBLIC_DATA_MODE=mock`, because the live data mode doesn't exist yet. Real secrets go in EAS environment variables or Edge Function secrets, never in `eas.json`. A Jest test (`__tests__/eas-profiles.test.ts`) fails on secret-looking names or values, credential-file settings or Apple account details.
+- **`expo-dev-client` is installed** for the development profile. With it installed, a bare `expo start` targets the dev client, so `npm start` and `npm run ios` now pass `--go` and keep opening Expo Go. `npm run start:dev-client` serves a development build. Expo Go itself is unaffected, and Expo Doctor passes.
+- **EAS local credentials are ignored** (`credentials.json`, `credentials/`), next to `/ios` and `/android`.
+- **Not done here:** `eas init` (it adds `owner` and the project ID to `app.config.ts`), the first `eas build` and the App Store Connect app for `eas submit`. They need a teammate logged in to EAS and the Apple Developer account.
 
 ## 2026-11-20 · Room screen: expanded cover only
 
