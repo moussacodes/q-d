@@ -1,0 +1,21 @@
+# A returning mock account: Welcome → Sign in → Home, then Sign out from
+# Settings → Account goes back to Welcome.
+appId: app.qd.mobile
+name: Sign in · returning mock account, then sign out
+tags:
+  - auth
+---
+- launchApp:
+    clearState: true
+- runFlow: subflows/sign-in.yaml
+- assertVisible: 'Recent rooms'
+- assertVisible: 'Sunday Slow Burn.*'
+- tapOn: 'Account'
+- assertVisible: 'Signed in with'
+- assertVisible: 'Apple'
+- scrollUntilVisible:
+    element:
+      text: 'Sign out'
+    direction: DOWN
+- tapOn: 'Sign out'
+- assertVisible: 'Different apps. One aux.'

@@ -1,0 +1,47 @@
+# Start a room: name, rules (who adds songs, who controls playback), the
+# service it plays through, then the room. Rooms are always aux: there's no
+# mode choice and sync (beta) is never shown.
+appId: app.qd.mobile
+name: Start a room · rules, aux, into the room
+tags:
+  - room
+---
+- launchApp:
+    clearState: true
+- runFlow: subflows/sign-in.yaml
+- tapOn: 'Start a room.*'
+- assertVisible: 'Room rules'
+- assertVisible: 'Add songs'
+- assertVisible: 'Play, skip, reorder, remove'
+- assertVisible: 'Plays through Spotify'
+- assertNotVisible: '.*[Ss]ync \(beta\).*'
+
+# A blank name can't start a room.
+- tapOn: 'Room name'
+- eraseText
+- hideKeyboard
+- assertVisible: 'Give the room a name.'
+- assertVisible:
+    text: 'Start room'
+    enabled: false
+- tapOn: 'Room name'
+- inputText: 'Mock Night'
+- hideKeyboard
+- assertNotVisible: 'Give the room a name.'
+
+# Each rule offers Everyone, Chosen and Only you, in that order; index 0 is
+# "Add songs" and index 1 is "Play, skip, reorder, remove".
+# Only the host controls playback:
+- tapOn:
+    text: 'Only you'
+    index: 1
+# Chosen people add songs, which says where they're picked:
+- tapOn:
+    text: 'Chosen'
+    index: 0
+- assertVisible: 'Pick who in Listeners once people join.*'
+
+- tapOn: 'Start room'
+- assertVisible: 'Mock Night'
+- assertVisible: 'Invite people'
+- assertVisible: 'Open up next'

@@ -1,0 +1,52 @@
+# A new mock account: Welcome → onboarding (name, color, 18+, services,
+# start or join) → Home. Checks the rules onboarding enforces on the way.
+appId: app.qd.mobile
+name: Onboarding · new mock account to Home
+tags:
+  - auth
+---
+- launchApp:
+    clearState: true
+- assertVisible: 'Different apps. One aux.'
+- tapOn: 'Continue with Apple'
+
+# Step 1: name, color and 18+ are all required.
+- assertVisible: 'Step 1 of 3 · You'
+- assertVisible: 'What should we call you?'
+- assertVisible:
+    text: 'Continue'
+    enabled: false
+- tapOn: 'Display name'
+- eraseText
+- inputText: 'Mock Guest'
+- hideKeyboard
+- tapOn: 'Color 3 of 6'
+# The first match is the row's text, the second is the switch.
+- tapOn:
+    text: 'I’m 18 or older'
+    index: 1
+- assertVisible:
+    text: 'Continue'
+    enabled: true
+- tapOn: 'Continue'
+
+# Step 2: a music service is optional. Nothing is connected for a new account.
+- assertVisible: 'Step 2 of 3 · Connect'
+- assertVisible: 'Bring your own music.'
+- assertVisible: 'Premium needed to play rooms'
+- assertVisible: 'Subscription needed for full tracks'
+- assertNotVisible: 'YouTube Music'
+- assertNotVisible: 'TIDAL'
+- assertNotVisible: 'Amazon Music'
+- assertNotVisible: 'Deezer'
+- tapOn: 'Continue'
+
+# Step 3: start or join, or neither.
+- assertVisible: 'Step 3 of 3 · Listen'
+- assertVisible: 'You’re all set.'
+- tapOn: 'I’ll do this later'
+
+# Home greets the new name.
+- assertVisible: 'Start a room or jump into one.'
+- assertVisible: '.*Mock Guest.*'
+- assertVisible: 'Join with a code'

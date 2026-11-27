@@ -1,0 +1,11 @@
+# Subflow: from Home, start the sample room with the default name and rules.
+# Needs a connected service (the returning mock account has mock Spotify),
+# so run it after subflows/sign-in.yaml. Ends in the room, as its host.
+appId: app.qd.mobile
+name: Subflow · start a room (defaults)
+---
+# Home's card reads "Start a room" plus its caption as one label.
+- tapOn: 'Start a room.*'
+- assertVisible: 'Plays through Spotify'
+- tapOn: 'Start room'
+- assertVisible: 'Invite people'

@@ -1,0 +1,19 @@
+# Subflow: a new mock account goes through onboarding without connecting a
+# music service, and lands on Home. Starts on Welcome.
+# Mock auth mode only. Nothing real is signed into.
+appId: app.qd.mobile
+name: Subflow · sign up (mock, new account, no music service)
+---
+- assertVisible: 'Different apps. One aux.'
+- tapOn: 'Continue with Apple'
+- assertVisible: 'What should we call you?'
+# The first match is the row's text, the second is the switch.
+- tapOn:
+    text: 'I’m 18 or older'
+    index: 1
+- tapOn: 'Continue'
+- assertVisible: 'Bring your own music.'
+- tapOn: 'Skip'
+- assertVisible: 'You’re all set.'
+- tapOn: 'I’ll do this later'
+- assertVisible: 'Start a room or jump into one.'
