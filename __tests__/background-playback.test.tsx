@@ -1,5 +1,6 @@
 /// <reference types="node" />
-import { readdirSync, readFileSync, statSync } from 'fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
 import { join } from 'path';
 
 import { router } from 'expo-router';
@@ -93,15 +94,32 @@ function sourceFiles(dir: string): string[] {
   });
 }
 
+/** The code without comments, so a comment that mentions AppState or pause() doesn't trip this. */
+const codeOf = (file: string) =>
+  readFileSync(file, 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|[^:])\/\/.*$/gm, '$1');
+
 it('nothing else in the app watches AppState, so nothing pauses playback on background', () => {
   const root = join(__dirname, '..');
   const watchers = ['src', 'app', 'modules']
     .flatMap((dir) => sourceFiles(join(root, dir)))
-    .filter((file) => /\bAppState\b/.test(readFileSync(file, 'utf8')))
+    .filter((file) => /\bAppState\b/.test(codeOf(file)))
     .map((file) => file.slice(root.length + 1).replace(/\\/g, '/'))
     .sort();
   expect(watchers).toEqual(APP_STATE_WATCHERS);
   for (const file of APP_STATE_WATCHERS) {
-    expect(readFileSync(join(root, file), 'utf8')).not.toMatch(/pause\(|disconnect\(|hold\(/);
+    expect(codeOf(join(root, file))).not.toMatch(/\b(pause|disconnect|hold)\(/);
   }
+});
+
+it('the guard ignores comments but still sees code', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'qd-appstate-'));
+  const commented = join(dir, 'commented.ts');
+  const used = join(dir, 'used.ts');
+  writeFileSync(commented, '// AppState could pause() here\n/* AppState */ export const a = 1;\n');
+  writeFileSync(used, "import { AppState } from 'react-native';\nAppState.currentState;\n");
+  expect(codeOf(commented)).not.toMatch(/\bAppState\b|pause\(/);
+  expect(codeOf(used)).toMatch(/\bAppState\b/);
+  rmSync(dir, { recursive: true, force: true });
 });
