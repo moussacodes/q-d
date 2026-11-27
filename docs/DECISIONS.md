@@ -2,6 +2,14 @@
 
 Product and technical decisions that are not obvious from the code. Newest first.
 
+## 2026-11-26 · Background playback with the screen locked
+
+- **Config only on the native side.** `app.config.ts` now sets `ios.infoPlist.UIBackgroundModes: ['audio']`. The qd-music-kit plugin already adds `audio` and keeps a single entry, so the generated Info.plist lists it once. `__tests__/app-config.test.ts` checks the static config, the config Expo's loader resolves, and the merge with the plugin.
+- **MusicKit's `ApplicationMusicPlayer` keeps playing natively; JavaScript must not stop it.** Checked: nothing in the app pauses, holds or disconnects the player on an AppState change. The only AppState watchers are Supabase's token refresh (`services/supabase.ts`, stops in the background) and TanStack Query's focus manager (`services/queryClient.ts`, refetches on return). `__tests__/background-playback.test.tsx` locks the screen during a mock room for 5 minutes and checks the player wasn't paused or disconnected, and fails if any other file starts watching AppState.
+- **Known risk for when live rooms play from q’d (decided here, not built):** Realtime may disconnect in the background. If the host's own phone then sees its own presence gone, the "host away after 30 s" rule would hold (pause) its own music. Today that can't happen: live rooms don't play from q’d yet and mock rooms take presence from the dev toggle. The live playback card must not apply the away rule to the host's own phone. **A teammate should confirm.**
+- **Songs added while the screen is locked** may reach the host's phone only after it's unlocked, since Realtime may stop. What was already queued in MusicKit keeps playing.
+- Not verified on an iPhone. The checklist is in DEMO_RUNBOOK.md ("Apple Music with the screen locked"). Until it passes, the demo keeps the host iPhone unlocked.
+
 ## 2026-11-26 · Apple playback adapter (aux)
 
 - **`AppleMusicPlaybackAdapter` (`src/providers/apple/playback.ts`) wraps the qd-music-kit player.** `createPlayback('apple_music')` returns it only with `realAppleMusic` on **and** the native module present. With the flag on and no module (Expo Go, web), it returns the "not in this build" stand-in, never the mock. Flag off: the labeled mock, as before.

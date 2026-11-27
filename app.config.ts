@@ -16,6 +16,12 @@ const config: ExpoConfig = {
     supportsTablet: false,
     // Sign in with Apple capability for EAS builds (Expo Go already has it).
     usesAppleSignIn: true,
+    infoPlist: {
+      // The host's Apple Music keeps playing with the screen locked (MusicKit's
+      // ApplicationMusicPlayer). The qd-music-kit plugin adds it too; it's
+      // kept once.
+      UIBackgroundModes: ['audio'],
+    },
   },
   web: {
     favicon: './assets/favicon.png',

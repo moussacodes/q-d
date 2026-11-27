@@ -108,6 +108,20 @@ The automated part runs in `npm run check` (see DECISIONS.md, "Logs and analytic
 - [ ] Nothing is sent for analytics: no analytics SDK is installed, and `analytics_events` in the demo project stays empty.
 - [ ] Record the result (build number, date, pass or the line that leaked) on the Trello card. A leak blocks the demo build until it's fixed in the logger or at the call site.
 
+### Apple Music with the screen locked (Moussa, iPhone, once per development or TestFlight build)
+
+Needs a q’d build made after `npx expo prebuild` picks up `UIBackgroundModes: ['audio']` (from `app.config.ts` and the qd-music-kit plugin), the Swift MusicKit player (`modules/qd-music-kit/README.md`), `EXPO_PUBLIC_FLAG_REAL_APPLE_MUSIC=true` and a host Apple Account with an active Apple Music subscription. Expo Go can't test this.
+
+- [ ] In the built app's Info.plist (Xcode › the target › Info, or `ios/qd/Info.plist` after a local prebuild, not committed), `UIBackgroundModes` lists `audio` exactly once.
+- [ ] Connect Apple Music in Settings, start a room, add three songs, and let the first one play for 10 seconds.
+- [ ] Lock the iPhone. The song keeps playing through the speaker and through AirPods or Bluetooth. Wait past the 30-second "Host reconnecting" grace: still playing.
+- [ ] The lock screen shows the song, and its play/pause works. Pause from the lock screen, unlock: q’d shows paused. Play from Control Center: q’d shows playing.
+- [ ] With the screen locked, let the song end. The next queued song starts on its own (it was queued in MusicKit). Note whether the one after it also starts while locked: songs added while locked reach the phone only after it's unlocked, because Realtime may stop in the background.
+- [ ] Unlock and reopen q’d: no "Host reconnecting" stuck on screen, the room is up to date within a few seconds, and nothing restarted the song.
+- [ ] Switch to another app (Safari) for 2 minutes with the screen on: still playing.
+- [ ] A phone call or Siri interrupts and then returns: write down whether the music resumes by itself (MusicKit's behavior, not q’d's).
+- [ ] Record the build number, iOS version, result and anything that stopped on the Trello card. Until this passes, the demo keeps the host iPhone unlocked.
+
 ## If something breaks
 
 | Symptom | First move | Fallback |
