@@ -12,8 +12,13 @@ import { parseDuration } from '@/domain/time';
  * - `unavailableOn`: no candidate on that service: unavailable;
  * - `uncertainOn` `low_confidence`: the closest candidate has another album
  *   and is 7 s longer (81/100): kept with a warning;
- * - `uncertainOn` `explicit_conflict`: the only candidate is the explicit
- *   version of a clean recording: kept with a warning, never automatic.
+ * - `uncertainOn` `explicit_conflict`: the only candidate of the same version
+ *   is the explicit one of a clean recording: kept with a warning, never
+ *   automatic.
+ *
+ * An uncertain fixture's service also offers other versions (a radio edit,
+ * live or sped-up take), which the matcher never picks without an ISRC. They
+ * are what "Wrong version?" lists next to the closest match.
  *
  * The candidates are invented and labeled mock; they aren't real catalog data.
  */
@@ -76,8 +81,26 @@ export function mockCandidates(fixture: MockMatchInput, provider: MusicProvider)
     artworkBackgroundColor: null,
   };
   if (fixture.uncertainOn?.provider !== provider) return [exact];
-  if (fixture.uncertainOn.because === 'explicit_conflict') return [{ ...exact, explicit: true }];
-  return [{ ...exact, album: 'Mock Compilation', durationMs: recording.durationMs + 7_000 }];
+  /** Another version on the service, with its own made-up id. */
+  const version = (slug: string, title: string, changes: Partial<ProviderTrack> = {}) => ({
+    ...exact,
+    providerTrackId: `mock-${provider}-${fixture.id}-${slug}`,
+    title: `${recording.title}${title}`,
+    ...changes,
+  });
+  if (fixture.uncertainOn.because === 'explicit_conflict') {
+    return [
+      { ...exact, explicit: true },
+      version('radio-edit', ' - Radio Edit', { durationMs: recording.durationMs - 12_000 }),
+      version('live', ' (Live)', { album: 'Mock Live Sessions', explicit: true }),
+    ];
+  }
+  return [
+    { ...exact, album: 'Mock Compilation', durationMs: recording.durationMs + 7_000 },
+    version('radio-edit', ' - Radio Edit', { durationMs: recording.durationMs - 15_000 }),
+    version('sped-up', ' - Sped Up', { durationMs: Math.round(recording.durationMs * 0.8) }),
+    version('live', ' (Live)', { album: 'Mock Live Sessions', explicit: true }),
+  ];
 }
 
 /** What the matcher decides for a fixture on every service. */

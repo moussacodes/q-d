@@ -31,7 +31,7 @@ import { getSupabase } from '@/services/supabase';
 import { entryAvailability } from './availability';
 import { networkMessage } from './errorCopy';
 import { newIdempotencyKey, type RoomInvite } from './mockServer';
-import { availableOn, type RoomEntry, type RoomView } from './roomStore';
+import { availableOn, type OverrideResult, type RoomEntry, type RoomView } from './roomStore';
 import type { AddOutcome, RoomStatus } from './roomHandle';
 import { unanswered, useCall, type CallResult } from './useCall';
 import type { LiveRoom, RoomHandle } from './useRoom';
@@ -50,8 +50,11 @@ import { useRoomRealtime } from './useRoomRealtime';
  *
  * Not on the server yet, so off or unchanged in live rooms, with copy that
  * says so: `advance_queue` (Skip), `report_playback_state` (play, pause and
- * progress), `request_playback`, `switch_playback_provider`,
- * `override_track_match` ("Wrong version?") and `update_room_rules`.
+ * progress), `request_playback`, `switch_playback_provider` and
+ * `update_room_rules`. `override_track_match` ("Wrong version?") is on the
+ * server (migration 20261125006000), but live rooms don't call it or read
+ * `track_match_overrides` yet: that wiring hasn't been reviewed, so the
+ * picker is mock-only and live rooms say so (`liveVersionNote`).
  */
 
 const newKey = newIdempotencyKey;
@@ -69,6 +72,10 @@ function liveClient(): LiveClient | null {
 /** Shown in live rooms under the controls while playback isn't on the server yet. */
 export const livePlaybackNote =
   'Playback isn’t connected to live rooms yet: the queue is shared, but q’d doesn’t play it from here. Skip comes with it.';
+
+/** Shown to the host where "Wrong version?" would be, while live rooms don't call `override_track_match`. */
+export const liveVersionNote =
+  'Picking a different version isn’t connected to live rooms yet. The room plays the match q’d found.';
 
 /** Shown to the host in Listeners while `update_room_rules` isn't on the server yet. */
 export const liveRulesNote =
@@ -135,6 +142,8 @@ export function liveRoomOf(
     rules: rulesOf(room),
     switched: null,
     autoplay: null,
+    // "Wrong version?" picks aren't read in live rooms yet.
+    overrides: [],
     ended: room.ended || signals.ended,
     offline: signals.offline,
   };
@@ -351,6 +360,7 @@ export function useServerRoom(code: string | undefined, view?: RoomView): RoomHa
     playback: stillPlayback(room.nowPlaying ? parseDuration(room.nowPlaying.duration) : 0),
     playbackLive: false,
     rulesEditable: false,
+    versionPickLive: false,
     queueError,
     isHost,
     you,
@@ -369,6 +379,10 @@ export function useServerRoom(code: string | undefined, view?: RoomView): RoomHa
     hostConnected: [room.playsThrough],
     switchProvider: (_to: MusicProvider) => ({ ok: false, error: 'not_needed' }) as const,
     setRules: (_rules: RoomRules) => {},
+    overrideVersion: async (
+      _entry: Pick<RoomEntry, 'matches'>,
+      _providerTrackId: string,
+    ): Promise<OverrideResult> => ({ ok: false, error: 'not_in_live_rooms' }),
     skip: () => {},
     moveUp: (entryId: string) => {
       const i = index(entryId);

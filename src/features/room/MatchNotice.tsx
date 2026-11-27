@@ -12,10 +12,16 @@ type Props = {
   /** Absent while Skip isn't on the server (live rooms): the button shows, turned off. */
   onSkip?: () => void;
   /**
-   * "Wrong version?" (PRODUCT_SPEC.md §6, rule 8). The override card passes
-   * it; until then the button doesn't appear, so nothing pretends to work.
+   * "Wrong version?" (PRODUCT_SPEC.md §6, rule 8): opens the version picker.
+   * The room passes it for the host only; without it the button doesn't appear.
    */
   onWrongVersion?: () => void;
+  /**
+   * Why "Wrong version?" is off for the host (live rooms, until their
+   * `override_track_match` wiring is reviewed). With it and no
+   * `onWrongVersion`, the button shows turned off with this note.
+   */
+  wrongVersionNote?: string;
 };
 
 /**
@@ -24,7 +30,14 @@ type Props = {
  * silently: everyone sees why it might be wrong, and the host can skip it.
  * A song with no match yet doesn't play; the host's phone waits.
  */
-export function MatchNotice({ availability, playsThrough, isHost, onSkip, onWrongVersion }: Props) {
+export function MatchNotice({
+  availability,
+  playsThrough,
+  isHost,
+  onSkip,
+  onWrongVersion,
+  wrongVersionNote,
+}: Props) {
   const { colors } = useTheme();
   const service = providerNames[playsThrough];
 
@@ -67,9 +80,67 @@ export function MatchNotice({ availability, playsThrough, isHost, onSkip, onWron
             disabled={!onSkip}
             onPress={onSkip}
           />
-          {onWrongVersion && availability.kind === 'uncertain' ? (
-            <Button size="small" kind="secondary" label="Wrong version?" onPress={onWrongVersion} />
+          {(onWrongVersion || wrongVersionNote) && availability.kind === 'uncertain' ? (
+            <Button
+              size="small"
+              kind="secondary"
+              label="Wrong version?"
+              accessibilityLabel="Wrong version? Pick the right one"
+              disabled={!onWrongVersion}
+              onPress={onWrongVersion}
+            />
           ) : null}
+        </View>
+      ) : null}
+      {isHost && !onWrongVersion && wrongVersionNote && availability.kind === 'uncertain' ? (
+        <Text variant="caption" color="text3">
+          {wrongVersionNote}
+        </Text>
+      ) : null}
+    </Panel>
+  );
+}
+
+type PickedProps = {
+  playsThrough: MusicProvider;
+  isHost: boolean;
+  /** The host can change the pick again. */
+  onPickAgain?: () => void;
+};
+
+/**
+ * The host picked another version ("Wrong version?") while the song was
+ * playing. The song never swaps mid-play: this play finishes as it started,
+ * and the pick plays from the next time the song comes up. Replaces the
+ * uncertain-match warning, and says plainly what happened.
+ */
+export function VersionPickedNotice({ playsThrough, isHost, onPickAgain }: PickedProps) {
+  const { colors } = useTheme();
+  const service = providerNames[playsThrough];
+  return (
+    <Panel style={[styles.notice, { borderColor: colors.strokeStrong }]}>
+      <View style={styles.row}>
+        <Icon name="check" size={18} color={colors.statusOk} />
+        <View style={styles.flex}>
+          <Text variant="bodyStrong">
+            {isHost ? 'You picked a different version' : 'The host picked a different version'}
+          </Text>
+          <Text variant="caption" color="text2">
+            {isHost
+              ? `This play finishes as it started. Your pick plays on ${service} from the next time this song comes up.`
+              : `This play finishes as it started. The host’s pick plays from the next time this song comes up.`}
+          </Text>
+        </View>
+      </View>
+      {isHost && onPickAgain ? (
+        <View style={styles.actions}>
+          <Button
+            size="small"
+            kind="secondary"
+            label="Change pick"
+            accessibilityLabel="Change the version you picked"
+            onPress={onPickAgain}
+          />
         </View>
       ) : null}
     </Panel>

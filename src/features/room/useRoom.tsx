@@ -33,6 +33,7 @@ import {
 
 import { entryAvailability } from './availability';
 import { MockRoomServer, type RoomInvite } from './mockServer';
+import { overrideTrackMatchRpc } from './overrideTrackMatch';
 import { RoomPlayer } from './RoomPlayer';
 import {
   forgetLiveInvites,
@@ -54,7 +55,10 @@ import {
   createRoomStore,
   listenerViews,
   previewRoom,
+  recordingIdOf,
   roomKey,
+  type MockMatchOverride,
+  type OverrideResult,
   type RoomEntry,
   type RoomRef,
   type RoomState,
@@ -62,7 +66,14 @@ import {
   type RoomView,
 } from './roomStore';
 
-export type { EnqueueResult, RoomEntry, RoomView } from './roomStore';
+export type {
+  EnqueueResult,
+  MockMatchOverride,
+  OverrideResult,
+  RoomEntry,
+  RoomView,
+} from './roomStore';
+export { recordingIdOf } from './roomStore';
 export type { AddOutcome, RoomStatus } from './roomHandle';
 export type { MockRoom } from '@/providers/mock/data';
 /** True when rooms read and write Supabase (data mode `live`). */
@@ -70,6 +81,7 @@ export { roomsAreLive };
 export {
   availabilityLabel,
   entryAvailability,
+  entryNote,
   mayBeOn,
   queueNote,
   resultAvailability,
@@ -89,6 +101,8 @@ export type LiveRoom = Omit<MockRoom, 'nowPlaying' | 'queue'> & {
   ended: boolean;
   /** This phone can't reach the room right now: what it shows may be out of date. */
   offline: boolean;
+  /** The host's "Wrong version?" picks, oldest first (`track_match_overrides`). */
+  overrides: MockMatchOverride[];
   /** The development preview being shown, if any. Sheets open with the same one. */
   view?: RoomView;
 };
@@ -296,6 +310,7 @@ function useMockRoomState(base: MockRoom | null, view?: RoomView) {
       autoplay: state.autoplay,
       ended: state.ended,
       offline: state.offline,
+      overrides: state.overrides,
       ...(view ? { view } : {}),
     };
   }, [base, view, state, playsThrough]);
@@ -394,6 +409,12 @@ function useMockRoom(code: string | undefined, view?: RoomView) {
     playbackLive: true,
     /** Whether the host can change the rules here (`update_room_rules`). */
     rulesEditable: true,
+    /**
+     * Whether the host can pick another version here ("Wrong version?",
+     * `override_track_match`). Live rooms say false until their wiring of the
+     * RPC is reviewed.
+     */
+    versionPickLive: true,
     /** Why the last queue edit didn't go through, if it didn't. */
     queueError: null as string | null,
     /**
@@ -468,6 +489,26 @@ function useMockRoom(code: string | undefined, view?: RoomView) {
     },
     /** `end_room`: the host ends the room for everyone. */
     endRoom: async (): Promise<boolean> => isHost && store.endRoom(at),
+    /**
+     * `override_track_match` ("Wrong version?"): the host picks the version of
+     * the entry's song to play on the room's service. Only the host sees it.
+     * Rejects when the call fails (no connection), like the RPC would.
+     */
+    overrideVersion: (
+      entry: Pick<RoomEntry, 'matches'>,
+      providerTrackId: string,
+    ): Promise<OverrideResult> => {
+      const recordingId = recordingIdOf(entry);
+      if (!recordingId) {
+        return Promise.resolve({ ok: false, error: 'invalid_input', field: 'recording_id' });
+      }
+      return overrideTrackMatchRpc.call(
+        store,
+        at,
+        { recordingId, provider: live.playsThrough, providerTrackId },
+        user.name,
+      );
+    },
   };
 }
 

@@ -40,10 +40,10 @@ Every flow starts with `launchApp: clearState: true`, so each one starts signed 
 | `offline.yaml` | `/dev` "This phone goes offline" → the room shows "You’re offline" and Add a song is off. Offline then back online leaves no notice. |
 | `room-ended.yaml` | `/dev` "Host ends the room" → "This room has ended". Back to Home goes to Home. |
 | `settings-services.yaml` | Settings shows mock Spotify, labeled as a mock. Connect Apple Music (mock), switch "Play rooms through", disconnect both. Start a room then asks for a music service and won't start. |
+| `wrong-version.yaml` | `/dev` "Song with a low-confidence match" → the host taps "Wrong version?", sees the labeled mock versions with what's playing first, picks the radio edit and saves. The room says "You picked a different version" and the warning is gone; the song keeps playing as it started. Mock rooms only: live rooms show the button turned off. |
 
 Subflows: `subflows/sign-in.yaml` (returning mock account to Home), `subflows/sign-up.yaml` (new mock account through onboarding, no service, to Home), `subflows/start-room.yaml` (default room, as host) and `subflows/open-screens.yaml` (Welcome → `/dev`).
 
-"Wrong version?" has no flow yet. The override card isn't on this branch, so the room never shows the button.
 
 ## Writing and fixing flows
 

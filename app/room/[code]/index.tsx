@@ -35,10 +35,10 @@ import {
 import { AutoplayNotice } from '@/features/room/AutoplayNotice';
 import { OfflineNotice, RoomEndedNotice } from '@/features/room/ConnectionNotice';
 import { hostAwayNote, HostNotice } from '@/features/room/HostNotice';
-import { MatchNotice } from '@/features/room/MatchNotice';
+import { MatchNotice, VersionPickedNotice } from '@/features/room/MatchNotice';
 import { ServiceMissingNotice } from '@/features/room/ServiceMissingNotice';
 import { SwitchedNote, UnavailableNotice } from '@/features/room/UnavailableNotice';
-import { livePlaybackNote } from '@/features/room/liveRoom';
+import { livePlaybackNote, liveVersionNote } from '@/features/room/liveRoom';
 import { RoomGate } from '@/features/room/RoomGate';
 import { roomParams, useRoom, type RoomView } from '@/features/room/useRoom';
 import { useMockSession } from '@/features/session/MockSession';
@@ -64,6 +64,7 @@ function Room() {
     canControl,
     canPlay,
     playbackLive,
+    versionPickLive,
     queueError,
     nowPlayingAvailability: availability,
     host,
@@ -103,6 +104,16 @@ function Room() {
 
   const openSheet = (sheet: 'add-song' | 'invite' | 'listeners' | 'queue') =>
     router.push({ pathname: `/room/[code]/${sheet}`, params: roomParams(room) });
+  // "Wrong version?" is the host's alone (PRODUCT_SPEC.md §6, rule 8). Live
+  // rooms don't call override_track_match yet, so it's off there.
+  const pickVersion =
+    isHost && track && versionPickLive
+      ? () =>
+          router.push({
+            pathname: '/room/[code]/version',
+            params: { ...roomParams(room), entry: track.entryId },
+          })
+      : undefined;
 
   const header = (
     <View style={styles.header}>
@@ -236,13 +247,21 @@ function Room() {
           {track && room.switched?.entryId === track.entryId ? (
             <SwitchedNote from={room.switched.from} to={room.switched.to} isHost={isHost} />
           ) : null}
-          {availability?.kind === 'uncertain' || availability?.kind === 'unknown' ? (
-            // "Wrong version?" (onWrongVersion) comes with the override card.
+          {track?.versionPickedWhilePlaying ? (
+            // The host picked another version; this play finishes as it started.
+            <VersionPickedNotice
+              playsThrough={room.playsThrough}
+              isHost={isHost}
+              onPickAgain={pickVersion}
+            />
+          ) : availability?.kind === 'uncertain' || availability?.kind === 'unknown' ? (
             <MatchNotice
               availability={availability}
               playsThrough={room.playsThrough}
               isHost={isHost}
               onSkip={playbackLive ? skip : undefined}
+              onWrongVersion={pickVersion}
+              wrongVersionNote={isHost && !versionPickLive ? liveVersionNote : undefined}
             />
           ) : null}
 

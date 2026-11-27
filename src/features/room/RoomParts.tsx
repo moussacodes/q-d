@@ -21,7 +21,7 @@ import { planSong } from '@/domain/provider-switch';
 import { formatDuration, formatMinutes, parseDuration } from '@/domain/time';
 import type { MockRoom, MockTrack } from '@/providers/mock/data';
 
-import { entryAvailability, queueNote } from './availability';
+import { entryNote } from './availability';
 import { endedCopy, offlineCopy } from './ConnectionNotice';
 import { cantAddNote } from './RoomRules';
 import { availableOn } from './roomStore';
@@ -348,7 +348,7 @@ function queueEntryNote(
       return `Not on ${providerNames[playsThrough]} · you can switch to ${providerNames[plan.to]} when it comes up`;
     }
   }
-  return queueNote(entryAvailability(entry, playsThrough), playsThrough);
+  return entryNote(entry, playsThrough);
 }
 
 /**

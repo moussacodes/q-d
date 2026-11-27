@@ -12,6 +12,7 @@ import {
 } from './apple';
 import { mockCatalog } from './mock/catalog';
 import { MockPlaybackAdapter } from './mock/playback';
+import { mockVersions } from './mock/versions';
 import {
   connectSpotify,
   createSpotifyPlayback,
@@ -19,7 +20,7 @@ import {
   spotify,
   spotifyConnectionStatus,
 } from './spotify';
-import type { CatalogAdapter, ConnectionState, PlaybackAdapter } from './types';
+import type { CatalogAdapter, ConnectionState, PlaybackAdapter, VersionSource } from './types';
 
 export type * from './types';
 export { isProviderError, ProviderError } from './errors';
@@ -33,6 +34,9 @@ export { createAppleMusicCatalog } from './apple';
  * report "not in this build"; their cards wire the live ones in here.
  */
 export const catalog: CatalogAdapter = mockCatalog;
+
+/** The versions "Wrong version?" offers. Mock only until the live provider cards. */
+export const versions: VersionSource = mockVersions;
 
 /**
  * A player for this phone. Spotify with the `realSpotify` flag on

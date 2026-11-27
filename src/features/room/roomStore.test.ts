@@ -1,7 +1,16 @@
 import { defaultRoomRules } from '@/domain/room-rules';
 import { findRoom } from '@/providers/mock/data';
 
-import { availableOn, createRoomStore, MOCK_START_MS, previewRoom, roomKey } from './roomStore';
+import { mockRecordingId } from '@/providers/mock/matches';
+
+import {
+  availableOn,
+  createRoomStore,
+  MOCK_START_MS,
+  previewRoom,
+  recordingIdOf,
+  roomKey,
+} from './roomStore';
 
 const room = { code: 'QD-7K4F9X' };
 const titles = (store: ReturnType<typeof createRoomStore>, ref = room) =>
@@ -323,6 +332,120 @@ describe('room store', () => {
       expect(store.get(away).pausedForHost).toBe(true);
       expect(store.get(back)).toMatchObject({ host: { present: true }, pausedForHost: true });
       expect(store.get(room)).toMatchObject({ host: { present: true }, pausedForHost: false });
+    });
+  });
+
+  describe('overrideMatch (override_track_match)', () => {
+    const wayBigger = mockRecordingId('q5');
+    const pick = (providerTrackId: string, recordingId = wayBigger) => ({
+      recordingId,
+      provider: 'spotify' as const,
+      providerTrackId,
+    });
+    const queued = (store: ReturnType<typeof createRoomStore>, ref = room) =>
+      store.get(ref).queue.find((entry) => entry.id === 'q5')!;
+
+    it('applies the pick to the queued song: it plays with no warning', () => {
+      const store = createRoomStore(() => Date.parse('2026-11-25T20:00:00Z'));
+      expect(queued(store).matches!.spotify).toMatchObject({ warning: 'low_confidence' });
+      const result = store.overrideMatch(room, pick('mock-spotify-q5-radio-edit'), 'Baron');
+      expect(result).toEqual({
+        ok: true,
+        override: {
+          id: '00000000-0000-4000-9000-000000000001',
+          recordingId: wayBigger,
+          provider: 'spotify',
+          providerTrackId: 'mock-spotify-q5-radio-edit',
+          createdBy: 'Baron',
+          createdAt: '2026-11-25T20:00:00.000Z',
+        },
+      });
+      expect(queued(store).matches!.spotify).toEqual({
+        recordingId: wayBigger,
+        provider: 'spotify',
+        providerTrackId: 'mock-spotify-q5-radio-edit',
+        confidence: 100,
+        method: 'override',
+        warning: null,
+      });
+      // Other services and other songs are untouched.
+      expect(queued(store).matches!.apple_music!.method).toBe('score');
+      expect(store.get(room).queue[0].matches!.spotify!.method).toBe('score');
+    });
+
+    it('never swaps the playing song: it keeps its match and is marked', () => {
+      const store = createRoomStore();
+      const uncertain = { code: room.code, view: 'uncertain' as const };
+      const before = store.get(uncertain).nowPlaying!;
+      expect(store.overrideMatch(uncertain, pick('mock-spotify-q5-live'), 'Baron').ok).toBe(true);
+      const after = store.get(uncertain).nowPlaying!;
+      expect(after.entryId).toBe(before.entryId);
+      expect(after.matches).toBe(before.matches);
+      expect(after.versionPickedWhilePlaying).toBe(true);
+      expect(store.get(uncertain).startAtMs).toBe(MOCK_START_MS);
+    });
+
+    it('applies to the same song added later', () => {
+      const store = createRoomStore();
+      store.overrideMatch(room, pick('mock-spotify-q5-sped-up'), 'Baron');
+      const wayBiggerTrack = findRoom(room.code).queue[4];
+      store.enqueue(room, wayBiggerTrack, 'Maya', true);
+      const copies = store.get(room).queue.filter((entry) => entry.id === 'q5');
+      expect(copies).toHaveLength(2);
+      for (const copy of copies) {
+        expect(copy.matches!.spotify).toMatchObject({
+          providerTrackId: 'mock-spotify-q5-sped-up',
+          method: 'override',
+        });
+      }
+    });
+
+    it('the newest pick wins, and every pick is kept', () => {
+      const store = createRoomStore();
+      store.overrideMatch(room, pick('mock-spotify-q5-radio-edit'), 'Baron');
+      store.overrideMatch(room, pick('mock-spotify-q5-live'), 'Baron');
+      expect(store.get(room).overrides.map((o) => o.providerTrackId)).toEqual([
+        'mock-spotify-q5-radio-edit',
+        'mock-spotify-q5-live',
+      ]);
+      expect(queued(store).matches!.spotify!.providerTrackId).toBe('mock-spotify-q5-live');
+    });
+
+    it('picking what’s already picked changes nothing and tells nobody', () => {
+      const store = createRoomStore();
+      const first = store.overrideMatch(room, pick('mock-spotify-q5-radio-edit'), 'Baron');
+      const listener = jest.fn();
+      store.subscribe(listener);
+      const state = store.get(room);
+      const again = store.overrideMatch(room, pick('mock-spotify-q5-radio-edit'), 'Baron');
+      expect(again).toEqual(first);
+      expect(store.get(room)).toBe(state);
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    it('rejects a song that isn’t playing or queued in the room', () => {
+      const store = createRoomStore();
+      const state = store.get(room);
+      expect(store.overrideMatch(room, pick('x', mockRecordingId('s6')), 'Baron')).toEqual({
+        ok: false,
+        error: 'invalid_input',
+        field: 'recording_id',
+      });
+      expect(store.get(room)).toBe(state);
+    });
+
+    it('keeps each room’s and preview’s picks apart', () => {
+      const store = createRoomStore();
+      const uncertain = { code: room.code, view: 'uncertain' as const };
+      store.overrideMatch(uncertain, pick('mock-spotify-q5-live'), 'Baron');
+      expect(store.get(room).overrides).toEqual([]);
+      expect(queued(store).matches!.spotify!.method).toBe('score');
+    });
+
+    it('reads an entry’s recording from its matches', () => {
+      const store = createRoomStore();
+      expect(recordingIdOf(queued(store))).toBe(wayBigger);
+      expect(recordingIdOf({})).toBeNull();
     });
   });
 });

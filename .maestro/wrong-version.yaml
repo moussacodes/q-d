@@ -1,0 +1,30 @@
+# "Wrong version?" in a mock room: the host opens the picker from the
+# low-confidence warning, sees the labeled mock versions, picks the radio
+# edit and saves it. The song keeps playing as it started; the pick plays
+# from the next time it comes up. Mock data mode only: live rooms show the
+# button turned off. Needs the Debug build (/dev is __DEV__ only).
+appId: app.qd.mobile
+name: Room · Wrong version? (mock)
+tags:
+  - states
+  - dev
+---
+- launchApp:
+    clearState: true
+- runFlow: subflows/open-screens.yaml
+- scrollUntilVisible:
+    element:
+      text: 'Song with a low-confidence match'
+    direction: DOWN
+- tapOn: 'Song with a low-confidence match'
+- assertVisible: 'Might be a different version'
+# VoiceOver reads the button by its own label.
+- tapOn: 'Wrong version\? Pick the right one'
+- assertVisible: 'Pick the version of “Way Bigger” to play on Spotify\.'
+- assertVisible: 'Mock versions for testing\. They aren’t from Spotify’s catalog\.'
+- assertVisible: 'Playing now'
+- tapOn: 'Way Bigger.* - Radio Edit.*'
+- tapOn: 'Use this version'
+- assertVisible: 'You picked a different version'
+- assertVisible: 'This play finishes as it started\..*'
+- assertNotVisible: 'Might be a different version'

@@ -3,7 +3,7 @@ import type { ComponentProps } from 'react';
 
 import { previewPalettes, ThemeProvider } from '@/design';
 
-import { MatchNotice } from './MatchNotice';
+import { MatchNotice, VersionPickedNotice } from './MatchNotice';
 
 type Props = ComponentProps<typeof MatchNotice>;
 
@@ -56,7 +56,7 @@ describe('MatchNotice', () => {
 
   const uncertain = { kind: 'uncertain', warning: 'low_confidence', confidence: 81 } as const;
 
-  it('hides “Wrong version?” until the override card passes it', async () => {
+  it('hides “Wrong version?” when the room doesn’t pass it', async () => {
     await renderNotice({ availability: uncertain });
     expect(await screen.findByText('Might be a different version')).toBeVisible();
     expect(screen.queryByText('Wrong version?')).toBeNull();
@@ -67,6 +67,32 @@ describe('MatchNotice', () => {
     await renderNotice({ availability: uncertain, onWrongVersion });
     fireEvent.press(await screen.findByText('Wrong version?'));
     expect(onWrongVersion).toHaveBeenCalledTimes(1);
+    expect(screen.getByLabelText('Wrong version? Pick the right one')).toHaveProp(
+      'accessibilityRole',
+      'button',
+    );
+  });
+
+  it('shows “Wrong version?” turned off with the note when only a note is passed (live rooms)', async () => {
+    await renderNotice({ availability: uncertain, wrongVersionNote: 'Not connected here yet.' });
+    expect(await screen.findByLabelText('Wrong version? Pick the right one')).toBeDisabled();
+    expect(screen.getByText('Not connected here yet.')).toBeVisible();
+  });
+
+  it('drops the note once the room passes a working “Wrong version?”', async () => {
+    await renderNotice({
+      availability: uncertain,
+      onWrongVersion: jest.fn(),
+      wrongVersionNote: 'Not connected here yet.',
+    });
+    expect(await screen.findByLabelText('Wrong version? Pick the right one')).toBeEnabled();
+    expect(screen.queryByText('Not connected here yet.')).toBeNull();
+  });
+
+  it('never shows the note to listeners or for an unmatched song', async () => {
+    await renderNotice({ availability: uncertain, isHost: false, wrongVersionNote: 'Note.' });
+    expect(screen.queryByText('Note.')).toBeNull();
+    expect(screen.queryByText('Wrong version?')).toBeNull();
   });
 
   it('never offers “Wrong version?” for a song with no match', async () => {
@@ -84,5 +110,50 @@ describe('MatchNotice', () => {
     expect(await screen.findByText('Explicit/clean version differs')).toBeVisible();
     expect(screen.queryByText('Wrong version?')).toBeNull();
     expect(screen.queryByLabelText('Skip this song')).toBeNull();
+  });
+});
+
+describe('VersionPickedNotice', () => {
+  const renderPicked = async (props: Partial<ComponentProps<typeof VersionPickedNotice>>) => {
+    await render(
+      <ThemeProvider initialPalette={previewPalettes.sonOfSpergy}>
+        <VersionPickedNotice playsThrough="spotify" isHost {...props} />
+      </ThemeProvider>,
+    );
+  };
+
+  it('tells the host the pick is saved and plays from next time, never mid-song', async () => {
+    const onPickAgain = jest.fn();
+    await renderPicked({ onPickAgain });
+    expect(await screen.findByText('You picked a different version')).toBeVisible();
+    expect(
+      screen.getByText(
+        'This play finishes as it started. Your pick plays on Spotify from the next time this song comes up.',
+      ),
+    ).toBeVisible();
+    fireEvent.press(screen.getByLabelText('Change the version you picked'));
+    expect(onPickAgain).toHaveBeenCalledTimes(1);
+  });
+
+  it('names the room’s service', async () => {
+    await renderPicked({ playsThrough: 'apple_music' });
+    expect(await screen.findByText(/Your pick plays on Apple Music/)).toBeVisible();
+  });
+
+  it('hides “Change pick” without a handler', async () => {
+    await renderPicked({});
+    expect(await screen.findByText('You picked a different version')).toBeVisible();
+    expect(screen.queryByLabelText('Change the version you picked')).toBeNull();
+  });
+
+  it('tells listeners plainly, with nothing to press', async () => {
+    await renderPicked({ isHost: false, onPickAgain: jest.fn() });
+    expect(await screen.findByText('The host picked a different version')).toBeVisible();
+    expect(
+      screen.getByText(
+        'This play finishes as it started. The host’s pick plays from the next time this song comes up.',
+      ),
+    ).toBeVisible();
+    expect(screen.queryByRole('button')).toBeNull();
   });
 });

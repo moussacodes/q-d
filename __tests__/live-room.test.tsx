@@ -240,6 +240,53 @@ describe('the room, live', () => {
     },
   );
 
+  // "Wrong version?" (override_track_match) is on the server, but live rooms
+  // don't call it yet (DECISIONS 2026-11-26 · Combined test branch).
+  it('shows the host “Wrong version?” turned off, with a note saying why', async () => {
+    mockData.update('track_matches', (row) => row.recording_id === ids.recA, {
+      warning: 'low_confidence',
+      confidence: 81,
+    });
+    await openRoom(ids.host);
+    expect(await screen.findByText('Might be a different version')).toBeVisible();
+    expect(screen.getByLabelText('Wrong version? Pick the right one')).toBeDisabled();
+    expect(
+      screen.getByText(/Picking a different version isn’t connected to live rooms yet/),
+    ).toBeVisible();
+    expect(rpcCalls('override_track_match')).toEqual([]);
+  });
+
+  it('never shows a listener “Wrong version?” or its note', async () => {
+    mockData.update('track_matches', (row) => row.recording_id === ids.recA, {
+      warning: 'low_confidence',
+      confidence: 81,
+    });
+    await openRoom(ids.guest);
+    expect(await screen.findByText('Might be a different version')).toBeVisible();
+    expect(screen.queryByLabelText('Wrong version? Pick the right one')).toBeNull();
+    expect(screen.queryByText(/Picking a different version/)).toBeNull();
+  });
+
+  it('opening the version sheet by link says it isn’t connected, lists nothing and calls nothing', async () => {
+    mockData.update('track_matches', (row) => row.recording_id === ids.recA, {
+      warning: 'low_confidence',
+    });
+    await openRoom(ids.host);
+    await act(async () => {
+      router.push({
+        pathname: '/room/[code]/version',
+        params: { code: `QD-${liveCode}`, entry: ids.entryA },
+      });
+    });
+    expect(
+      await screen.findByText(/Picking a different version isn’t connected to live rooms yet/),
+    ).toBeVisible();
+    expect(screen.queryAllByRole('radio')).toEqual([]);
+    expect(screen.queryByText(/Mock versions/)).toBeNull();
+    expect(screen.queryByLabelText('Use this version')).toBeNull();
+    expect(rpcCalls('override_track_match')).toEqual([]);
+  });
+
   it('says a room you aren’t in isn’t open to you', async () => {
     await signInAs(ids.guest, '/room/QD-ZZZZZZ');
     expect(await screen.findByText('This room isn’t open to you')).toBeVisible();

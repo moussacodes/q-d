@@ -4,6 +4,7 @@ import { mockQueue } from '@/providers/mock/data';
 import {
   availabilityLabel,
   entryAvailability,
+  entryNote,
   mayBeOn,
   queueNote,
   resultAvailability,
@@ -150,5 +151,40 @@ describe('live search results (only Apple Music checked)', () => {
     expect(mayBeOn(live(), 'apple_music')).toBe(true);
     expect(mayBeOn(live({ checkedOn: undefined }), 'spotify')).toBe(false);
     expect(mayBeOn(live({ checkedOn: ['apple_music', 'spotify'] }), 'spotify')).toBe(false);
+  });
+});
+
+describe('entryNote', () => {
+  const recordingId = '00000000-0000-4000-8000-000000000001';
+  const match = (method: 'score' | 'override', warning: 'low_confidence' | null) => ({
+    recordingId,
+    provider: 'spotify' as const,
+    providerTrackId: 'sp-1',
+    confidence: method === 'override' ? 100 : 81,
+    method,
+    warning,
+  });
+
+  it('says the host picked the version, for an override', () => {
+    expect(entryNote({ matches: { spotify: match('override', null) } }, 'spotify')).toBe(
+      'Version picked by the host',
+    );
+  });
+
+  it('otherwise is the queue note', () => {
+    expect(entryNote({ matches: { spotify: match('score', 'low_confidence') } }, 'spotify')).toBe(
+      'May be another version on Spotify',
+    );
+    expect(entryNote({ matches: { spotify: match('score', null) } }, 'spotify')).toBeUndefined();
+    expect(entryNote({}, 'spotify')).toBeUndefined();
+  });
+
+  it('reads only the room’s service: an override on another service doesn’t count', () => {
+    expect(
+      entryNote(
+        { matches: { apple_music: { ...match('override', null), provider: 'apple_music' } } },
+        'spotify',
+      ),
+    ).toBeUndefined();
   });
 });
