@@ -8,6 +8,7 @@ import type {
   QdMusicKitNativeModule,
   QdMusicKitPlayerState,
   QdMusicKitSubscription,
+  QdMusicKitTrackMetadata,
   QdMusicKitTrackRef,
 } from './QdMusicKit.types';
 
@@ -34,6 +35,10 @@ const NO_CAPABILITIES: QdMusicKitCapabilities = Object.freeze({
 /** Native error codes the Swift module throws on purpose. */
 const NATIVE_CODES: Record<string, QdMusicKitErrorCode> = {
   ERR_QD_NOT_IMPLEMENTED: 'not_implemented',
+  ERR_QD_NOT_AUTHORIZED: 'not_authorized',
+  ERR_QD_NOT_SUBSCRIBED: 'not_subscribed',
+  ERR_QD_UNAVAILABLE_IN_STOREFRONT: 'unavailable_in_storefront',
+  ERR_QD_NOT_FOUND: 'not_found',
 };
 
 const CONNECTION_STATUSES = new Set([
@@ -153,10 +158,44 @@ function toPlayerState(raw: unknown): QdMusicKitPlayerState {
   ) {
     throw new QdMusicKitError('invalid_native_response', 'MusicKit returned an unknown state');
   }
+  const metadata = toMetadata(raw.metadata);
   return {
     status: raw.status as QdMusicKitPlayerState['status'],
     providerTrackId: (raw.providerTrackId as string | null | undefined) || null,
     positionMs: Math.round(raw.positionMs),
+    ...(raw.autoplay === true ? { autoplay: true as const } : {}),
+    ...(metadata ? { metadata } : {}),
+  };
+}
+
+const nullableString = (value: unknown) =>
+  typeof value === 'string' && value.trim() ? value : null;
+
+/** Song details from the native side, or undefined when they're missing or malformed. */
+function toMetadata(raw: unknown): QdMusicKitTrackMetadata | undefined {
+  if (!isRecord(raw)) return undefined;
+  const artists = Array.isArray(raw.artists)
+    ? raw.artists.filter((a): a is string => typeof a === 'string' && a.trim() !== '')
+    : [];
+  if (
+    typeof raw.title !== 'string' ||
+    !raw.title.trim() ||
+    artists.length === 0 ||
+    typeof raw.durationMs !== 'number' ||
+    !Number.isFinite(raw.durationMs) ||
+    raw.durationMs <= 0
+  ) {
+    return undefined;
+  }
+  return {
+    title: raw.title,
+    artists,
+    album: nullableString(raw.album),
+    durationMs: Math.round(raw.durationMs),
+    isrc: nullableString(raw.isrc),
+    explicit: raw.explicit === true,
+    artworkUrl: nullableString(raw.artworkUrl),
+    artworkBackgroundColor: nullableString(raw.artworkBackgroundColor),
   };
 }
 
@@ -281,5 +320,19 @@ export function createQdMusicKit(
     subscription: () => optional('subscriptionStatus', toSubscription),
 
     storefront: () => optional('storefront', toStorefront),
+
+    addStateListener(listener) {
+      if (!player || typeof player.addListener !== 'function') return () => {};
+      const subscription = player.addListener('onPlayerStateChange', (raw) => {
+        let state: QdMusicKitPlayerState;
+        try {
+          state = toPlayerState(raw);
+        } catch {
+          return;
+        }
+        listener(state);
+      });
+      return () => subscription.remove();
+    },
   };
 }

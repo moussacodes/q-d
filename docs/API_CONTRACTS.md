@@ -467,6 +467,7 @@ type PlaylistPage = {
 type ProviderErrorCode =
   | 'not_in_this_build'  // the real adapter isn't in this build yet
   | 'not_found'
+  | 'unavailable_in_storefront' // Added (Apple playback card): the song isn't playable in this account's country
   | 'unsupported_link'   // not an Apple Music or Spotify link q’d reads
   | 'wrong_provider'     // e.g. a Spotify track given to the Apple player
   | 'invalid_argument'    // e.g. a negative seek position
@@ -528,6 +529,18 @@ storefront(): Promise<string | null>;                                 // 'us', o
 // Native names: authorizationStatus, requestAuthorization, subscriptionStatus, storefront.
 // A native method that doesn't exist yet throws QdMusicKitError('not_implemented').
 ```
+
+Added 2026-11-26 (Apple playback card, TypeScript only):
+
+```ts
+// QdMusicKitPlayerState may also carry, for a song q’d didn't queue:
+autoplay?: true; metadata?: { title; artists; album; durationMs; isrc; explicit; artworkUrl; artworkBackgroundColor };
+addStateListener(listener: (state: QdMusicKitPlayerState) => void): () => void; // native event onPlayerStateChange
+// More error codes: 'not_authorized' | 'not_subscribed' | 'unavailable_in_storefront' | 'not_found'
+// (native ERR_QD_NOT_AUTHORIZED, ERR_QD_NOT_SUBSCRIBED, ERR_QD_UNAVAILABLE_IN_STOREFRONT, ERR_QD_NOT_FOUND)
+```
+
+The Apple `PlaybackAdapter` (`src/providers/apple/playback.ts`) maps them to `needs_authorization`, `premium_required`, `unavailable_in_storefront` and `not_found`; `unavailable` / `not_implemented` to `not_in_this_build`; anything else to `provider_unavailable`. It also offers `onStateChange(listener)` (not part of `PlaybackAdapter`).
 
 Without the native module (Expo Go, web, Android, tests) it claims no capabilities, `connect()` resolves to `{ status: 'error', code: 'unavailable' }`, `disconnect()` resolves, and the other calls throw `unavailable`. A Spotify track throws `wrong_provider` before anything crosses the bridge.
 

@@ -119,6 +119,8 @@ export type ProviderErrorCode =
   | 'not_in_this_build'
   /** No such track or playlist. */
   | 'not_found'
+  /** Apple Music: the song exists, but not in this account's storefront (country). */
+  | 'unavailable_in_storefront'
   /** Not an Apple Music or Spotify link q’d understands. */
   | 'unsupported_link'
   /** The track belongs to a different provider than the player. */

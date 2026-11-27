@@ -36,6 +36,26 @@ export type QdMusicKitPlayerState = {
   /** Apple Music catalog id of the loaded song, or null with nothing loaded. */
   providerTrackId: string | null;
   positionMs: number;
+  /**
+   * Added by the Apple playback card: true only when MusicKit picked this
+   * song itself after q’d's queue ran out (Apple Music autoplay).
+   */
+  autoplay?: true;
+  /** Added by the Apple playback card: the song's details, when the native side sends them. */
+  metadata?: QdMusicKitTrackMetadata;
+};
+
+/** What MusicKit says about the song it's on. q’d needs it for songs it didn't queue. */
+export type QdMusicKitTrackMetadata = {
+  title: string;
+  artists: string[];
+  album: string | null;
+  durationMs: number;
+  isrc: string | null;
+  explicit: boolean;
+  artworkUrl: string | null;
+  /** Artwork's background color from Apple (`#rrggbb`), which q’d may use. */
+  artworkBackgroundColor: string | null;
 };
 
 /** The part of a ProviderTrack the native player needs. ProviderTrack fits it. */
@@ -78,7 +98,17 @@ export type QdMusicKitErrorCode =
   /** The native side answered with a shape the wrapper doesn't know. */
   | 'invalid_native_response'
   /** Any other native failure. */
-  | 'native_error';
+  | 'native_error'
+  // Added by the Apple playback card (native codes ERR_QD_NOT_AUTHORIZED,
+  // ERR_QD_NOT_SUBSCRIBED, ERR_QD_UNAVAILABLE_IN_STOREFRONT, ERR_QD_NOT_FOUND):
+  /** MusicKit access isn't granted. */
+  | 'not_authorized'
+  /** No Apple Music subscription: catalog songs can't play. */
+  | 'not_subscribed'
+  /** The song exists but not in this account's storefront. */
+  | 'unavailable_in_storefront'
+  /** No catalog song with that id. */
+  | 'not_found';
 
 /** The JavaScript API, method for method the PlaybackAdapter contract. */
 export interface QdMusicKitApi {
@@ -108,6 +138,14 @@ export interface QdMusicKitApi {
   subscription(): Promise<QdMusicKitSubscription>;
   /** The account's storefront, two lowercase letters (`us`), or null if MusicKit gave none. */
   storefront(): Promise<string | null>;
+
+  /**
+   * Added by the Apple playback card: calls `listener` whenever the native
+   * player's state changes (native event `onPlayerStateChange`). Returns an
+   * unsubscribe. Without the native module, or before the Swift side sends
+   * the event, it never calls back. A state that doesn't parse is dropped.
+   */
+  addStateListener(listener: (state: QdMusicKitPlayerState) => void): () => void;
 }
 
 /**
@@ -132,4 +170,11 @@ export interface QdMusicKitNativeModule {
   requestAuthorization?(): Promise<unknown>;
   subscriptionStatus?(): Promise<unknown>;
   storefront?(): Promise<unknown>;
+  /** Expo modules' event subscription. Optional: the skeleton sends no events. */
+  addListener?(
+    eventName: 'onPlayerStateChange',
+    listener: (state: unknown) => void,
+  ): {
+    remove(): void;
+  };
 }

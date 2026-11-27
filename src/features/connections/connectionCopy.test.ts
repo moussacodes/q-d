@@ -5,6 +5,7 @@ import { connectionProblemCopy, providerErrorCopy } from './connectionCopy';
 const codes: ProviderErrorCode[] = [
   'not_in_this_build',
   'not_found',
+  'unavailable_in_storefront',
   'unsupported_link',
   'wrong_provider',
   'invalid_argument',

@@ -20,3 +20,13 @@ The TypeScript wrapper already calls these. Each is an `AsyncFunction` on `QdMus
 Throw from `subscriptionStatus` and `storefront` when MusicKit throws (offline, for example). The wrapper reports it as `native_error`, which the app treats as "couldn't reach Apple Music" and keeps the account's connection row.
 
 `connect` can stay as it is: the app's Apple connection uses the four methods above, not `connect`.
+
+### Apple Music playback (card "Apple playback adapter (aux)")
+
+The existing stubs (`capabilities`, `prepare`, `play`, `pause`, `seek`, `enqueue`, `getState`, `disconnect`) keep their names and arguments. What the TypeScript side now expects from them:
+
+- **`capabilities`**: report `inAppAudio: true` and `backgroundPlayback: true` only once they're verified on an iPhone (background with the screen locked). Report `autoplay: true` only if `ApplicationMusicPlayer` keeps playing songs it picked itself after the queue ends, and the state below marks them.
+- **`prepare(trackId, startPositionMs)`**: load the catalog song (`MusicCatalogResourceRequest<Song>` by id) into `ApplicationMusicPlayer.shared.queue`, seek to the start, don't play. `play`/`pause`/`seek(positionMs)`/`enqueue(trackIds)` map to the player (`enqueue` appends with `queue.insert(…, position: .tail)`). `disconnect` stops and clears the queue.
+- **`getState`** returns `{ status: "playing" | "paused" | "stopped", providerTrackId, positionMs }`, plus, for a song q’d didn't queue, `autoplay: true` and `metadata: { title, artists: [String], album, durationMs, isrc, explicit, artworkUrl, artworkBackgroundColor }` (artwork color from `Artwork.backgroundColor` as `#rrggbb`). Without `autoplay` and `metadata`, a song q’d didn't queue is treated as the end of the room's song.
+- **Event `onPlayerStateChange`** (declare `Events("onPlayerStateChange")`, send the same shape as `getState`) when the status or song changes, including lock-screen and Control Center play/pause. Optional: the app also polls `getState`.
+- **Error codes** to throw: `ERR_QD_NOT_AUTHORIZED` (MusicKit access not granted), `ERR_QD_NOT_SUBSCRIBED` (no subscription; catalog songs can't play), `ERR_QD_UNAVAILABLE_IN_STOREFRONT` (the song isn't playable in this storefront), `ERR_QD_NOT_FOUND` (no catalog song with that id). Anything else is reported as "couldn't reach Apple Music". Don't put song titles or account details in error messages; the app drops them anyway.

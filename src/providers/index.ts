@@ -3,7 +3,13 @@ import { isEnabled } from '@/services/flags';
 import { providerCredentials } from '@/services/providerCredentials';
 
 import { QdMusicKit } from '../../modules/qd-music-kit';
-import { appleMusicConnectionStatus, connectAppleMusic, disconnectAppleMusic } from './apple';
+import {
+  AppleMusicPlaybackAdapter,
+  appleMusicConnectionStatus,
+  connectAppleMusic,
+  createAppleMusicPlayback,
+  disconnectAppleMusic,
+} from './apple';
 import { mockCatalog } from './mock/catalog';
 import { MockPlaybackAdapter } from './mock/playback';
 import {
@@ -30,9 +36,17 @@ export const catalog: CatalogAdapter = mockCatalog;
 
 /**
  * A player for this phone. Spotify with the `realSpotify` flag on
- * remote-controls the Spotify app; everything else is the labeled mock.
+ * remote-controls the Spotify app. Apple Music with `realAppleMusic` on
+ * plays inside q’d through MusicKit when the native module is here (the q’d
+ * app build); without it (Expo Go, web) it's the "not in this build" stand-in,
+ * never the mock. Everything else is the labeled mock.
  */
 export function createPlayback(provider: MusicProvider): PlaybackAdapter {
+  if (provider === 'apple_music' && usesRealAppleMusic()) {
+    return QdMusicKit.availability().available
+      ? new AppleMusicPlaybackAdapter({ kit: QdMusicKit, marker: providerCredentials })
+      : createAppleMusicPlayback();
+  }
   if (provider === 'spotify' && usesRealSpotify()) return createSpotifyPlayback();
   // Both services can autoplay once the queue ends; the mock does too, labeled.
   return new MockPlaybackAdapter(provider, Date.now, { autoplay: true });

@@ -21,6 +21,9 @@ export const appleMusicCatalog = new UnavailableCatalogAdapter('apple_music');
 // needs a Supabase session and the catalog-search Edge Function, so the app
 // wires it in once live data mode exists (the Supabase client card).
 
+export { AppleMusicPlaybackAdapter, type AppleMusicPlaybackDeps } from './playback';
+
+/** The stand-in when real Apple Music isn't in this build (no native module). */
 export function createAppleMusicPlayback() {
   return new UnavailablePlaybackAdapter('apple_music');
 }

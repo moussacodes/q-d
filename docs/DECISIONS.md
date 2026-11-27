@@ -2,6 +2,17 @@
 
 Product and technical decisions that are not obvious from the code. Newest first.
 
+## 2026-11-26 · Apple playback adapter (aux)
+
+- **`AppleMusicPlaybackAdapter` (`src/providers/apple/playback.ts`) wraps the qd-music-kit player.** `createPlayback('apple_music')` returns it only with `realAppleMusic` on **and** the native module present. With the flag on and no module (Expo Go, web), it returns the "not in this build" stand-in, never the mock. Flag off: the labeled mock, as before.
+- **Capabilities are what the module reports,** with `requiresExternalApp: false` and `isMock: false` forced. `autoplay` only when the module claims it. Today's Swift skeleton claims nothing, so nothing is claimed.
+- **Songs q’d didn't queue.** The adapter reports q’d's own metadata for songs it prepared or queued. A song MusicKit picked itself is reported as `autoplay: true` only when the module claims autoplay, marks the state `autoplay` and sends parseable details; otherwise the state is idle, which ends the room's song. A blank or made-up track is never shown.
+- **Errors in the room's words.** Native not authorized → `needs_authorization`, no subscription → `premium_required` ("An Apple Music subscription is needed to play rooms."), not in this storefront → a new `ProviderErrorCode` `unavailable_in_storefront` ("This song isn’t available on Apple Music in your country. Skip it or pick another."), no such song → `not_found`, module missing or method not built → `not_in_this_build`, anything else → `provider_unavailable`. A `ProviderError` never carries MusicKit's message, which could name a song.
+- **`connect()` on the adapter never prompts:** it's the stored check from the Apple Music connection card. Connect in Settings is what asks iOS.
+- **State events.** The wrapper's `addStateListener` (native event `onPlayerStateChange`) and the adapter's `onStateChange` pass changes on; polling `getState` still works without them. Nothing in the app subscribes yet.
+- **TypeScript only.** What the Swift player must do, return and throw is in `modules/qd-music-kit/README.md`. No Swift was changed.
+- Passes the shared contract suite against a fake native player. Not run on an iPhone, so it isn't claimed to work. Figma not re-checked (no visual change).
+
 ## 2026-11-26 · Apple Music connection
 
 - **Behind `EXPO_PUBLIC_FLAG_REAL_APPLE_MUSIC` (`realAppleMusic`), off by default.** Off, Apple Music is still the labeled mock. On, `connectProvider('apple_music')` goes through `src/providers/apple/connection.ts`, over the qd-music-kit wrapper. It's never a mock, and nothing fakes success.

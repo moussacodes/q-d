@@ -26,6 +26,8 @@ export function providerErrorCopy(provider: MusicProvider, code: ProviderErrorCo
       return provider === 'apple_music'
         ? 'Apple Music needs the q’d app build. It can’t connect in Expo Go or on the web.'
         : `${name} isn’t available in this build of q’d yet.`;
+    case 'unavailable_in_storefront':
+      return `This song isn’t available on ${name} in your country. Skip it or pick another.`;
     case 'permission_denied':
       return `q’d doesn’t have access to ${name}. Turn it on in Settings › q’d, then try again.`;
     case 'rate_limited':
