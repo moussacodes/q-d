@@ -105,13 +105,23 @@ export async function appleMusicConnectionStatus(
   marker: AppleMarkerStore,
 ): Promise<ConnectionState | null> {
   if (!hasModule(kit)) return null;
+  // Asked first (it never prompts): a build without the Swift methods can't
+  // tell, even with no marker, so the row stays.
+  let status: Awaited<ReturnType<AppleMusicKit['authorizationStatus']>> | null = null;
+  let failure: ProviderErrorCode | null = null;
+  try {
+    status = await kit.authorizationStatus();
+  } catch (error) {
+    failure = errorCodeOf(error);
+    if (failure === 'not_in_this_build') return null;
+  }
   const held = await marker.peek('apple_music').catch(() => 'unreadable' as const);
   // A Keychain that can't be read right now isn't "disconnected".
   if (held === 'unreadable') return errorState('provider_unavailable');
   if (held === 'none') return { status: 'needs_authorization', ...notMock };
+  if (failure) return errorState(failure);
+  if (status !== 'authorized') return { status: 'needs_authorization', ...notMock };
   try {
-    const status = await kit.authorizationStatus();
-    if (status !== 'authorized') return { status: 'needs_authorization', ...notMock };
     return await subscribedState(kit);
   } catch (error) {
     const code = errorCodeOf(error);

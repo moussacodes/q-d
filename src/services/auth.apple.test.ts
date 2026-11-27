@@ -292,6 +292,52 @@ describe('signInWithApple', () => {
       apple.answer({ kind: 'ok', fullName: { givenName: 'Sam', familyName: 'Lee' } });
       expect(await run()).toMatchObject({ ok: true });
     });
+
+    it('a failed save never logs the name, even when Supabase’s message repeats it', async () => {
+      fake.auth.updateUser.mockResolvedValueOnce({
+        data: { user: null },
+        error: new AuthApiError('could not save Canaryfirst Canarylast', 500, undefined),
+      } as never);
+      apple.answer({
+        kind: 'ok',
+        fullName: { givenName: 'Canaryfirst', familyName: 'Canarylast' },
+      });
+      await run();
+      expect(entries.some((e) => e.level === 'warn')).toBe(true);
+      expect(logged()).not.toContain('Canary');
+    });
+
+    it('is forgotten when Supabase refuses the token too', async () => {
+      fake.auth.signInWithIdToken.mockResolvedValueOnce({
+        data: { user: null, session: null },
+        error: new AuthApiError('Nonces mismatch', 400, undefined),
+      } as never);
+      apple.answer({ kind: 'ok', fullName: { givenName: 'Sam', familyName: 'Lee' } });
+      expect(await run()).toEqual({ ok: false, code: 'verification_failed' });
+      expect(fake.auth.updateUser).not.toHaveBeenCalled();
+      const changes: AuthChange[] = [];
+      const stop = onAuthChange((change) => changes.push(change), fake.client);
+      fake.emit('SIGNED_IN', fakeSession(appleUser()));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      stop();
+      expect(changes[0]?.user?.name).toBeNull();
+    });
+
+    it('never names another sign-in method’s account, even mid-call', async () => {
+      const changes: AuthChange[] = [];
+      const stop = onAuthChange((change) => changes.push(change), fake.client);
+      fake.auth.signInWithIdToken.mockImplementationOnce(async () => {
+        const other = fakeUser({ id: 'email-user', app_metadata: { provider: 'email' } });
+        fake.emit('SIGNED_IN', fakeSession(other));
+        const user = appleUser();
+        return { data: { user, session: fakeSession(user) }, error: null } as never;
+      });
+      apple.answer({ kind: 'ok', fullName: { givenName: 'Sam', familyName: 'Lee' } });
+      await run();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      stop();
+      expect(changes.find((c) => c.user?.id === 'email-user')?.user?.name).toBeNull();
+    });
   });
 
   it('never logs the token, nonce, name, email or Apple user id', async () => {

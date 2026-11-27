@@ -23,6 +23,7 @@ Product and technical decisions that are not obvious from the code. Newest first
 - **Startup reconcile** (`storedConnection('apple_music')`, never a prompt): no marker, or permission not `authorized`: `needs_authorization`, so the row is deleted. A Keychain that can't be read, or MusicKit failing: `provider_unavailable`, so the row is kept. Marker, permission and subscription: connected, with the storefront, and the row is written or marked checked. No native module or Swift methods: null, so a row made on another build stays. `permission_denied` also counts as unusable for the row.
 - **TypeScript only on the module.** The wrapper and its types gained `authorizationStatus`, `requestAuthorization`, `subscription` and `storefront` (native names `authorizationStatus`, `requestAuthorization`, `subscriptionStatus`, `storefront`), each `not_implemented` until the native method exists. `modules/qd-music-kit/README.md` lists what each Swift method must call and return. No Swift was changed.
 - Built, tested only against a fake native module (`src/test/fakeMusicKit.ts`). Not run on an iPhone, so it isn't claimed to work. Figma not re-checked (only new copy in the existing Connect states).
+- **Review fix: the startup check asks MusicKit's status before the marker.** It read the marker first, so on a build without the Swift methods (today's skeleton) a phone with no marker returned `needs_authorization` and deleted the account's row made on another phone, though the rule above says such a build can't tell. `authorizationStatus()` never prompts, so it's now asked first: not built → null (row kept); then the marker as before. A status call that fails with a marker is `provider_unavailable` (row kept); without a marker it's still `needs_authorization`.
 
 ## 2026-11-26 · Sign in with Apple
 
@@ -544,6 +545,7 @@ The rules are PRODUCT_SPEC.md §6. These are the numbers and edge cases the matc
 - **The Live row shows the room's name as it was started.** It showed the sample name, so a room started as "Friday Fade" read "Sunday Slow Burn" on Home while the mini player said "Friday Fade".
 - **The mini player's Play/Pause is disabled** when the room's control rule leaves you out. Before, it looked active and did nothing.
 - A person still compares both states with Figma `20 · Mobile`.
+
 ## 2026-11-24 · qd-music-kit skeleton
 
 - **The module's JavaScript wrapper lives in `modules/qd-music-kit`,** not in `src/providers`. The Apple `PlaybackAdapter` (provider cards) wraps it, so Apple specifics still reach the app only through `src/providers`.
