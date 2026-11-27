@@ -13,6 +13,7 @@ import {
 } from '@/components';
 import { useTheme } from '@/design';
 
+import { AppleButton } from './AppleButton';
 import { useEmailAuth } from './useEmailAuth';
 import { useSocialSignIn } from './useSocialSignIn';
 
@@ -137,10 +138,8 @@ export function AuthForm({
         <View style={[styles.line, { backgroundColor: colors.stroke }]} />
       </View>
       <View style={styles.form}>
-        <Button
-          block
-          icon="apple"
-          label="Continue with Apple"
+        <AppleButton
+          kind={social.appleButton}
           disabled={busy}
           onPress={() => void social.continueWith('apple')}
         />

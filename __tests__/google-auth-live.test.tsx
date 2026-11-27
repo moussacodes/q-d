@@ -113,7 +113,9 @@ it('says so while the sheet is open, and allows one sign-in at a time', async ()
 
   expect(await screen.findByLabelText('Opening Google…')).toBeDisabled();
   expect(screen.getByLabelText('Sign in')).toBeDisabled();
-  expect(screen.getByLabelText('Continue with Apple')).toBeDisabled();
+  // Sign in with Apple can't run in Jest (no native module), so it's hidden;
+  // __tests__/apple-auth-live.test.tsx covers it next to Google.
+  expect(screen.queryByLabelText('Continue with Apple')).toBeNull();
 
   await act(async () => close({ type: 'dismiss' }));
   expect(await screen.findByLabelText('Continue with Google')).toBeEnabled();

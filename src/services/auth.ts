@@ -1,4 +1,6 @@
 import { isAuthRetryableFetchError, type SupabaseClient, type User } from '@supabase/supabase-js';
+import * as AppleAuthentication from 'expo-apple-authentication';
+import * as Crypto from 'expo-crypto';
 import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
 import { Platform } from 'react-native';
@@ -14,6 +16,12 @@ import {
   type ProfileFields,
   type SignInMethod,
 } from '@/domain/auth';
+import {
+  appleDisplayName,
+  identityTokenMatchesNonce,
+  toHex,
+  type AppleFullName,
+} from '@/domain/appleSignIn';
 
 import { log } from './logger';
 import { providerCredentials, type ProviderCredentialStore } from './providerCredentials';
@@ -137,12 +145,22 @@ export function providerNameOf(user: Pick<User, 'user_metadata'>): string | null
   return null;
 }
 
+/**
+ * The name Apple shared during the Sign in with Apple call that's running
+ * now, if any. Apple sends it only in the credential (never in the identity
+ * token) and only the first time, and Supabase announces the new session
+ * before `signInWithIdToken` returns, so the `SIGNED_IN` event reads it from
+ * here. Holds a name for the length of one call, never longer.
+ */
+let appleNameInFlight: string | null = null;
+
 function summarize(user: User): SignedInUser {
+  const method = signInMethodOf(user);
   return {
     id: user.id,
     email: user.email ?? null,
-    method: signInMethodOf(user),
-    name: providerNameOf(user),
+    method,
+    name: providerNameOf(user) ?? (method === 'apple' ? appleNameInFlight : null),
   };
 }
 
@@ -319,6 +337,208 @@ export async function signInWithGoogle(
     return await completeAuthRedirect(result.url, client);
   } catch (error) {
     return report('google_start', error);
+  }
+}
+
+/**
+ * The part of expo-apple-authentication that Sign in with Apple uses, so
+ * tests can stand in for it.
+ */
+export interface AppleAuthenticationModule {
+  isAvailableAsync(): Promise<boolean>;
+  signInAsync(options: {
+    requestedScopes: AppleAuthentication.AppleAuthenticationScope[];
+    nonce: string;
+  }): Promise<{ identityToken: string | null; fullName: AppleFullName | null }>;
+}
+
+/** Random bytes and SHA-256 for the nonce. expo-crypto in the app, Node's in tests. */
+export interface NonceCrypto {
+  randomBytes(count: number): Uint8Array;
+  /** Lowercase hex SHA-256 of the UTF-8 text. */
+  sha256Hex(text: string): Promise<string>;
+}
+
+const expoNonceCrypto: NonceCrypto = {
+  randomBytes: (count) => Crypto.getRandomBytes(count),
+  sha256Hex: async (text) =>
+    (
+      await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, text, {
+        encoding: Crypto.CryptoEncoding.HEX,
+      })
+    ).toLowerCase(),
+};
+
+type AppleOptions = {
+  client?: SupabaseClient | null;
+  apple?: AppleAuthenticationModule;
+  crypto?: NonceCrypto;
+  platform?: string;
+};
+
+/**
+ * Whether this phone can show Sign in with Apple: iOS 13 or later with the
+ * module present. Expo Go on an iPhone has it; the web and Android don't,
+ * and there the button is hidden.
+ */
+export async function isAppleSignInAvailable(
+  options: Pick<AppleOptions, 'apple' | 'platform'> = {},
+): Promise<boolean> {
+  const { apple = AppleAuthentication, platform = Platform.OS } = options;
+  if (platform !== 'ios') return false;
+  try {
+    return (await apple.isAvailableAsync()) === true;
+  } catch {
+    return false;
+  }
+}
+
+/** expo-apple-authentication's error codes, by what the person can do. */
+const APPLE_CODE_MAP: Record<string, AuthErrorCode> = {
+  ERR_REQUEST_CANCELED: 'cancelled',
+  // The build has no Sign in with Apple entitlement, or iOS can't show the sheet.
+  ERR_REQUEST_NOT_HANDLED: 'method_unavailable',
+  ERR_REQUEST_NOT_INTERACTIVE: 'method_unavailable',
+  ERR_INVALID_OPERATION: 'method_unavailable',
+  ERR_UNAVAILABLE: 'method_unavailable',
+  // The sheet answered without an identity token, or with a broken response.
+  ERR_REQUEST_FAILED: 'verification_failed',
+  ERR_INVALID_RESPONSE: 'verification_failed',
+};
+
+/**
+ * What Supabase says when it refuses an Apple identity token. GoTrue
+ * reports most of these without a specific code, so the message decides;
+ * only the mapped code is ever logged, never the message.
+ */
+export function mapAppleTokenError(error: unknown): AuthErrorCode {
+  if (readString(error, 'code') === 'bad_jwt') return 'verification_failed';
+  const message = readString(error, 'message') ?? '';
+  // The token's audience isn't a client ID the project lists (for example
+  // `host.exp.Exponent` missing for Expo Go): a setup gap, not the person's.
+  if (readStatus(error) === 400 && /audience/i.test(message)) return 'method_unavailable';
+  if (readStatus(error) === 400 && /nonce|id[ _]?token|signature|expired/i.test(message)) {
+    return 'verification_failed';
+  }
+  return mapAuthError(error);
+}
+
+function reportApple(step: string, errorCode: AuthErrorCode, error: unknown) {
+  const context = { step, ...failureContext(error, errorCode) };
+  if (errorCode === 'unknown') authLog.error('Auth step failed', undefined, context);
+  else authLog.warn('Auth step failed', context);
+  return fail(errorCode);
+}
+
+type AppleCredential = Awaited<ReturnType<AppleAuthenticationModule['signInAsync']>>;
+
+/**
+ * Sign in with Apple through Supabase Auth, using Apple's native sheet
+ * (expo-apple-authentication, which ships in Expo Go on iOS).
+ *
+ * 1. A random nonce is made on the phone; Apple gets its SHA-256.
+ * 2. Apple's identity token must carry that hash, or nothing is sent on.
+ * 3. Supabase gets the token and the raw nonce (`signInWithIdToken`), checks
+ *    both, and starts the session.
+ *
+ * Apple shares the person's name only the first time, in the credential.
+ * It's offered on onboarding step 1 (through the `SIGNED_IN` event) and
+ * saved to the account's metadata so a restart before onboarding keeps it;
+ * that save is best effort.
+ *
+ * Cancelling is reported as `cancelled` and never shown as a failure. Logs
+ * hold codes only: never the token, nonce, name or email.
+ *
+ * Built, not yet tested on a device: it needs Apple enabled on the Supabase
+ * project with `host.exp.Exponent` (Expo Go) and `app.qd.mobile` (builds)
+ * as client IDs.
+ */
+export async function signInWithApple(
+  options: AppleOptions = {},
+): Promise<AuthOutcome<SignedInUser>> {
+  const {
+    client = getSupabase(),
+    apple = AppleAuthentication,
+    crypto = expoNonceCrypto,
+    platform = Platform.OS,
+  } = options;
+  if (!client) return fail('not_configured');
+  if (!(await isAppleSignInAvailable({ apple, platform }))) {
+    authLog.warn('Auth step failed', { step: 'apple_start', errorCode: 'method_unavailable' });
+    return fail('method_unavailable');
+  }
+
+  let rawNonce: string;
+  let hashedNonce: string;
+  try {
+    rawNonce = toHex(crypto.randomBytes(32));
+    hashedNonce = await crypto.sha256Hex(rawNonce);
+  } catch (error) {
+    return reportApple('apple_nonce', 'unknown', error);
+  }
+
+  let credential: AppleCredential;
+  try {
+    credential = await apple.signInAsync({
+      requestedScopes: [
+        AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+        AppleAuthentication.AppleAuthenticationScope.EMAIL,
+      ],
+      nonce: hashedNonce,
+    });
+  } catch (error) {
+    const appleCode = readString(error, 'code');
+    const errorCode = (appleCode && APPLE_CODE_MAP[appleCode]) || 'unknown';
+    if (errorCode === 'cancelled') {
+      authLog.info('Sign-in cancelled', { method: 'apple' });
+      return fail('cancelled');
+    }
+    return reportApple('apple_sheet', errorCode, error);
+  }
+
+  const token = credential?.identityToken;
+  if (!token) {
+    authLog.warn('Auth step failed', { step: 'apple_sheet', errorCode: 'verification_failed' });
+    return fail('verification_failed');
+  }
+  if (!identityTokenMatchesNonce(token, hashedNonce)) {
+    authLog.warn('Auth step failed', { step: 'apple_nonce', errorCode: 'verification_failed' });
+    return fail('verification_failed');
+  }
+
+  const sharedName = appleDisplayName(credential.fullName);
+  appleNameInFlight = sharedName;
+  try {
+    const { data, error } = await client.auth.signInWithIdToken({
+      provider: 'apple',
+      token,
+      nonce: rawNonce,
+    });
+    if (error) return reportApple('apple_id_token', mapAppleTokenError(error), error);
+    if (!data.user) return report('apple_id_token', null);
+    const user = summarize(data.user);
+    if (sharedName && !providerNameOf(data.user)) await saveAppleName(client, sharedName);
+    authLog.info('Signed in', { method: 'apple' });
+    return { ok: true, data: user };
+  } catch (error) {
+    return reportApple('apple_id_token', mapAppleTokenError(error), error);
+  } finally {
+    appleNameInFlight = null;
+  }
+}
+
+/**
+ * Keeps Apple's one-time name on the account (`user_metadata.full_name`),
+ * where `providerNameOf` finds it after a restart. Never fails the sign-in.
+ */
+async function saveAppleName(client: SupabaseClient, fullName: string): Promise<void> {
+  try {
+    const { error } = await client.auth.updateUser({ data: { full_name: fullName } });
+    if (error) {
+      authLog.warn('Could not save the Apple name', failureContext(error, mapAuthError(error)));
+    }
+  } catch (error) {
+    authLog.warn('Could not save the Apple name', failureContext(error, mapAuthError(error)));
   }
 }
 

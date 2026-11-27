@@ -14,6 +14,8 @@ const config: ExpoConfig = {
   ios: {
     bundleIdentifier: 'app.qd.mobile',
     supportsTablet: false,
+    // Sign in with Apple capability for EAS builds (Expo Go already has it).
+    usesAppleSignIn: true,
   },
   web: {
     favicon: './assets/favicon.png',
@@ -24,6 +26,8 @@ const config: ExpoConfig = {
     'expo-font',
     'expo-image',
     'expo-web-browser',
+    // Sign in with Apple entitlement (com.apple.developer.applesignin).
+    'expo-apple-authentication',
     [
       'expo-splash-screen',
       { backgroundColor: '#000000', image: './assets/splash-icon.png', imageWidth: 200 },

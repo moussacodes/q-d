@@ -107,6 +107,19 @@ export function createFakeSupabase() {
       },
       error: null as unknown,
     })),
+    signInWithIdToken: jest.fn(
+      async (_credentials: { provider: string; token: string; nonce?: string }) => ({
+        data: {
+          user: fakeUser({ app_metadata: { provider: 'apple' } }),
+          session: fakeSession(fakeUser({ app_metadata: { provider: 'apple' } })),
+        },
+        error: null as unknown,
+      }),
+    ),
+    updateUser: jest.fn(async (_attributes: { data?: Record<string, unknown> }) => ({
+      data: { user: fakeUser() },
+      error: null as unknown,
+    })),
     exchangeCodeForSession: jest.fn(async () => ({
       data: { user: fakeUser(), session: fakeSession() },
       error: null as unknown,

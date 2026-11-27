@@ -25,6 +25,7 @@ export const authErrorMessages: Record<AuthErrorCode, string> = {
   link_expired: 'That link has expired. Sign in again to get a new one.',
   link_invalid:
     'That link didn’t work. It may have been used already or opened on another device. Sign in again.',
+  verification_failed: 'We couldn’t verify that sign-in, so you’re not signed in. Try again.',
   network: 'Couldn’t reach q’d. Check your connection and try again.',
   not_configured: 'Sign-in isn’t set up in this build of q’d.',
   unknown: 'Something went wrong. Try again.',

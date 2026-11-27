@@ -284,8 +284,9 @@ Not an RPC: the app calls Supabase Auth through `src/services/auth.ts` only. Bui
 
 - `signInWithEmail({ email, password })`, `signUpWithEmail({ email, password }, { emailRedirectTo })`, `signOut()` (this device, `scope: 'local'`), `fetchSavedProfile(userId)` (reads the caller's own `profiles` row) and `onAuthChange(listener)`.
 - `signInWithGoogle(redirectTo)` opens Google through Supabase OAuth (PKCE, `skipBrowserRedirect`) and exchanges the returned code. `exchangeAuthCode(code)` and `completeAuthRedirect(url)` finish any PKCE redirect; a code is exchanged once. `authRedirectUrl()` is the `/auth/callback` link; that route accepts `code`, or `error` / `error_code` / `error_description`, in the query or fragment (`parseAuthCallbackUrl` in `src/domain/auth.ts`).
+- `signInWithApple()` (iOS only) opens Apple's sheet with the SHA-256 of a fresh nonce, checks the identity token's `nonce` claim, then calls `signInWithIdToken({ provider: 'apple', token, nonce })`. Apple's first-time name is returned and saved to `user_metadata.full_name`. `isAppleSignInAvailable()` is false off iOS or without the module.
 - Each returns `{ ok: true, data } | { ok: false, code: AuthErrorCode }` and never throws. Sign-up's `data.needsEmailConfirmation` is true when the project makes new accounts confirm their email first.
-- `AuthErrorCode` (`src/domain/auth.ts`): `invalid_credentials`, `email_not_confirmed`, `email_taken`, `weak_password`, `invalid_email`, `rate_limited`, `signups_disabled`, `method_unavailable`, `cancelled`, `link_expired`, `link_invalid`, `network`, `not_configured`, `unknown`.
+- `AuthErrorCode` (`src/domain/auth.ts`): `invalid_credentials`, `email_not_confirmed`, `email_taken`, `weak_password`, `invalid_email`, `rate_limited`, `signups_disabled`, `method_unavailable`, `cancelled`, `link_expired`, `link_invalid`, `verification_failed`, `network`, `not_configured`, `unknown`.
 - `onAuthChange` reports `{ event, user: { id, email, method, name } | null }`, never tokens, on the tick after Supabase's callback (a listener that calls Supabase inside the callback would wait on its auth lock).
 
 #### Own profile (direct write, client side)

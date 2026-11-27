@@ -42,6 +42,12 @@ export type AuthErrorCode =
   | 'link_expired'
   /** A sign-in or email link that can't be used: wrong device, used twice, or broken. */
   | 'link_invalid'
+  /**
+   * The sign-in provider's answer couldn't be verified: Sign in with Apple
+   * returned no identity token, or one that doesn't match this request's
+   * nonce, or Supabase refused the token.
+   */
+  | 'verification_failed'
   /** The device couldn't reach the server. */
   | 'network'
   /** This build has no Supabase settings. */

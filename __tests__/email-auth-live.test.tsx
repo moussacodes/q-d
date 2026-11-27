@@ -255,14 +255,13 @@ describe('creating an account', () => {
 });
 
 describe('Apple', () => {
-  it('says it isn’t available yet instead of pretending to sign in', async () => {
+  it('hides Sign in with Apple where it can’t run, instead of pretending to sign in', async () => {
+    // Jest has no native Sign in with Apple module, like the web and Android.
     await renderRouter('./app', { initialUrl: '/sign-in' });
     await flushAuthEvents();
-    await press('Continue with Apple');
-    expect(
-      await screen.findByText('Sign in with Apple isn’t available yet. Use email instead.'),
-    ).toBeVisible();
-    expect(screen).toHavePathname('/sign-in');
+    expect(await screen.findByLabelText('Continue with Google')).toBeVisible();
+    expect(screen.queryByLabelText('Continue with Apple')).toBeNull();
+    expect(screen.queryByText(/Sign in with Apple/)).toBeNull();
   });
 });
 

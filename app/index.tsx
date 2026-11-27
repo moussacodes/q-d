@@ -11,12 +11,13 @@ import {
   Text,
   useScreenPalette,
 } from '@/components';
+import { AppleButton } from '@/features/auth/AppleButton';
 import { useSocialSignIn } from '@/features/auth/useSocialSignIn';
 
 /**
  * 1.1 Welcome. In mock auth mode, Apple and Google here start a new account
  * (onboarding); Sign in is for returning users. In live auth mode they sign
- * in for real, or say the method isn't available yet.
+ * in for real; Sign in with Apple shows only on iOS.
  */
 export default function Welcome() {
   useScreenPalette();
@@ -74,10 +75,8 @@ export default function Welcome() {
             {social.error}
           </Text>
         ) : null}
-        <Button
-          block
-          icon="apple"
-          label="Continue with Apple"
+        <AppleButton
+          kind={social.appleButton}
           disabled={social.pending !== null}
           onPress={() => void social.continueWith('apple')}
         />
