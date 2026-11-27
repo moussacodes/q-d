@@ -13,7 +13,10 @@ import { log } from './logger';
 /** Errors that retrying can't fix, e.g. the RPC error codes in API_CONTRACTS.md. */
 function isPermanent(error: unknown): boolean {
   if (error === null || typeof error !== 'object') return false;
-  const { status, code } = error as { status?: unknown; code?: unknown };
+  const { status, code, hint } = error as { status?: unknown; code?: unknown; hint?: unknown };
+  // A q’d RPC error as supabase-js reports it, unmapped: SQLSTATE `P0001`,
+  // our code as the message and the hint `qd` (the RPC foundation migration).
+  if (hint === 'qd') return true;
   if (
     typeof status === 'number' &&
     status >= 400 &&

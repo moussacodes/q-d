@@ -22,6 +22,7 @@ describe('shouldRetryQuery', () => {
     ['another RPC error code', { code: 'room_full' }],
     ['a 401', { status: 401 }],
     ['a 404', { status: 404 }],
+    ['a raw q’d RPC error', { code: 'P0001', message: 'room_not_found', hint: 'qd' }],
   ])('does not retry %s', (_label, error) => {
     expect(shouldRetryQuery(0, error)).toBe(false);
   });
@@ -32,6 +33,7 @@ describe('shouldRetryQuery', () => {
     ['rate limiting (429)', { status: 429 }],
     ['a Postgres code', { code: '57014' }],
     ['a PostgREST code', { code: 'PGRST301' }],
+    ['a P0001 without the qd hint', { code: 'P0001', message: 'boom', hint: null }],
     ['a string', 'offline'],
     ['null', null],
   ])('retries %s', (_label, error) => {
