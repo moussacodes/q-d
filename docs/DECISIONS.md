@@ -2,6 +2,10 @@
 
 Product and technical decisions that are not obvious from the code. Newest first.
 
+## 2026-11-27 · create_room name trimming
+
+- **The server trims a room name the way the app does.** `create_room` strips leading and trailing whitespace of every kind (tabs, newlines, no-break and other Unicode spaces, the BOM), matching JavaScript's `trim()`, before the 1–40 character check. Before, only spaces were stripped, so a name of tabs or newlines made a room with a blank name. Inner whitespace stays as typed.
+
 ## 2026-11-26 · Combined test branch
 
 `chore/integration-2026-11-26` is `review/background-playback` (d59067a, every reviewed stack, Expo SDK 58 patches) plus `review/maestro-smoke` (2efeb69) and `review/wrong-version-override` (cc92552), merged with `--no-ff`. What had to be decided while merging:

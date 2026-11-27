@@ -100,6 +100,36 @@ describe('create_room', () => {
     expect(room).toEqual({ name: 'Late Drive Home' });
   });
 
+  it('trims tabs, newlines and Unicode spaces too, and keeps inner whitespace', async () => {
+    const host = await db.createUser({ provider: 'spotify' });
+    const result = await create(host, { name: '\t\u00a0Friday\u00a0night \u3000\n' });
+    const [room] = await db.query('select name from public.rooms where id = $1', [result.room_id]);
+    expect(room).toEqual({ name: 'Friday\u00a0night' });
+  });
+
+  it('counts the 40-character limit after trimming', async () => {
+    const host = await db.createUser({ provider: 'spotify' });
+    const result = await create(host, { name: `\n  ${'x'.repeat(40)}\t ` });
+    const [room] = await db.query('select name from public.rooms where id = $1', [result.room_id]);
+    expect(room).toEqual({ name: 'x'.repeat(40) });
+  });
+
+  it('sends no realtime broadcast: nobody listens to a room that did not exist', async () => {
+    const host = await db.createUser({ provider: 'spotify' });
+    const { room_id: roomId } = await create(host);
+    expect(await db.broadcasts(roomId)).toEqual([]);
+  });
+
+  it('is a security definer with a pinned search_path', async () => {
+    const [fn] = await db.query<{ definer: boolean; config: string[] }>(
+      `select p.prosecdef as definer, p.proconfig as config
+         from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+        where n.nspname = 'public' and p.proname = 'create_room'`,
+    );
+    expect(fn.definer).toBe(true);
+    expect(fn.config).toContain('search_path=""');
+  });
+
   it('lets one host run several rooms, each with its own code', async () => {
     const host = await db.createUser({ provider: 'spotify' });
     const a = await create(host);
@@ -195,6 +225,11 @@ describe('create_room errors', () => {
     ['an empty name', { name: '' }, 'name'],
     ['a missing name', { name: null }, 'name'],
     ['a name over 40 characters', { name: 'x'.repeat(41) }, 'name'],
+    ['a name of tabs and newlines', { name: '\t\n\r ' }, 'name'],
+    ['a name of no-break spaces', { name: '\u00a0\u00a0' }, 'name'],
+    ['a name of ideographic spaces and a BOM', { name: '\u3000\ufeff' }, 'name'],
+    ['a name over 40 characters after trimming', { name: ` ${'x'.repeat(41)} ` }, 'name'],
+
     ['a missing service', { playback_provider: null }, 'playback_provider'],
     ['a missing add-songs rule', { add_songs: null }, 'add_songs'],
     ['a missing control rule', { control: null }, 'control'],
@@ -207,6 +242,19 @@ describe('create_room errors', () => {
       details: { field },
     });
     expect(await roomCount(host)).toBe(0);
+  });
+
+  it('rejects a mode that is neither aux nor sync before doing anything', async () => {
+    const host = await db.createUser({ provider: 'spotify' });
+    await expect(create(host, { mode: 'party' })).rejects.toMatchObject({ sqlstate: '22P02' });
+    expect(await roomCount(host)).toBe(0);
+  });
+
+  it('checks the profile before the mode, so sync never hints at a flag to an unfinished profile', async () => {
+    const host = await db.createUser({ provider: 'spotify', profile: false });
+    await expect(create(host, { mode: 'sync' })).rejects.toMatchObject({
+      code: 'profile_incomplete',
+    });
   });
 
   it('accepts a 40-character name', async () => {
@@ -341,6 +389,29 @@ describe('room codes', () => {
       ]);
       const second = await create(host);
       expect(second.code).toBe('REUSE2');
+    });
+
+    it('draws exactly ten codes before giving up, and the key stays free', async () => {
+      const host = await db.createUser({ provider: 'spotify' });
+      await useGenerator(`return 'STUCK3';`);
+      await create(host);
+      await db.query('alter sequence private.test_draws restart');
+      const key = newKey();
+      await expect(create(host, { idempotency_key: key })).rejects.toMatchObject({
+        code: 'could not generate a unique room code',
+      });
+      const [{ draws }] = await db.query<{ draws: number }>(
+        'select last_value::int as draws from private.test_draws',
+      );
+      expect(draws).toBe(10);
+      expect(
+        await db.query('select 1 from public.idempotency_keys where idempotency_key = $1', [key]),
+      ).toEqual([]);
+      // Once codes are free again, the same key succeeds.
+      await useGenerator(`return 'FREE34';`);
+      await expect(create(host, { idempotency_key: key })).resolves.toMatchObject({
+        code: 'FREE34',
+      });
     });
 
     it('gives up after ten collisions without creating anything', async () => {
