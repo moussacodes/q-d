@@ -47,7 +47,10 @@ Subflows: `subflows/sign-in.yaml` (returning mock account to Home), `subflows/si
 
 ## Writing and fixing flows
 
-- Select by what VoiceOver reads: a button's label, a field's label or visible copy. On iOS a pressable row reads as one label made of all its text, so match it with a regex like `'Start a room.*'`. No `testID`s exist yet. Add one only when nothing else can tell two elements apart.
+- Select by what VoiceOver reads: a button's label, a field's label or visible copy. On iOS a pressable row reads as one label made of all its text, so match it with a regex like `'Start a room.*Pick the room name.*'`. Make the regex specific: without `index`, Maestro taps the first match, and `'Start a room.*'` alone also matches Home's greeting line. No `testID`s exist yet. Add one only when nothing else can tell two elements apart.
+- Maestro matches text **case-insensitively**, so a text field's uppercase eyebrow label ("ROOM NAME") matches its field's label ("Room name"). Tap the field with `index: 1`.
+- A button with its own `accessibilityLabel` is found by that label, not its visible text (`'Resume the music'`, not `'Resume'`). The Jest check flags this.
+- To close the keyboard, tap plain text on the screen instead of `hideKeyboard`: the app's scroll views dismiss it on a tap nothing handles (`keyboardShouldPersistTaps="handled"`). A sheet's footer (the Add a song toast, Start room) sits under the keyboard while it's up.
 - Text selectors are regexes. Escape `?`, `(` and `)` (`'Already have an account\? Sign in'`). Split composed copy with `.*` (`'Rain Down.*added.*in line'`) so the check can find each piece in the source.
 - Use the curly apostrophe (’), as the app does. Use single quotes in YAML so backslashes stay literal.
 - Use only mock data and `example.com` addresses. Never type a password, token or real account.

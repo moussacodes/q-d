@@ -14,6 +14,9 @@ tags:
 # Search starts with mock results for "daniel caesar".
 - tapOn: 'Add a song'
 - assertVisible: 'Songs play on.*your.*phone through.*Spotify.*'
+# Search opens with the keyboard up, and the toast (with Undo) sits under it.
+# A tap on plain text closes it (keyboardShouldPersistTaps="handled").
+- tapOn: 'Songs play on.*your.*phone through.*Spotify.*'
 - assertVisible: 'Add Rain Down'
 - tapOn: 'Add Rain Down'
 - assertVisible: 'Rain Down.*added.*in line'

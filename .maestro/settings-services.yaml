@@ -36,7 +36,7 @@ tags:
 
 # Hosting needs a service, so Start a room asks for one and won't start.
 - tapOn: 'Back'
-- tapOn: 'Start a room.*'
+- tapOn: 'Start a room.*Pick the room name.*'
 - assertVisible: 'Connect a music service to host'
 - assertVisible:
     text: 'Start room'

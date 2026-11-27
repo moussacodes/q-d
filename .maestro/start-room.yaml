@@ -9,24 +9,31 @@ tags:
 - launchApp:
     clearState: true
 - runFlow: subflows/sign-in.yaml
-- tapOn: 'Start a room.*'
+- tapOn: 'Start a room.*Pick the room name.*'
 - assertVisible: 'Room rules'
 - assertVisible: 'Add songs'
 - assertVisible: 'Play, skip, reorder, remove'
 - assertVisible: 'Plays through Spotify'
 - assertNotVisible: '.*[Ss]ync \(beta\).*'
 
-# A blank name can't start a room.
-- tapOn: 'Room name'
+# A blank name can't start a room. The field is the second "Room name": its
+# eyebrow label matches first (Maestro ignores case). A tap on plain text
+# closes the keyboard (keyboardShouldPersistTaps="handled"), so the footer's
+# Start room isn't under it.
+- tapOn:
+    text: 'Room name'
+    index: 1
 - eraseText
-- hideKeyboard
+- tapOn: 'Room rules'
 - assertVisible: 'Give the room a name.'
 - assertVisible:
     text: 'Start room'
     enabled: false
-- tapOn: 'Room name'
+- tapOn:
+    text: 'Room name'
+    index: 1
 - inputText: 'Mock Night'
-- hideKeyboard
+- tapOn: 'Room rules'
 - assertNotVisible: 'Give the room a name.'
 
 # Each rule offers Everyone, Chosen and Only you, in that order; index 0 is

@@ -145,12 +145,34 @@ function sourceFiles(dir: string): string[] {
 const collapse = (text: string) => text.replace(/\s+/g, ' ');
 const escapeRegex = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-type Corpus = { text: string; templates: RegExp[]; testIds: Set<string> };
+type Corpus = {
+  text: string;
+  templates: RegExp[];
+  testIds: Set<string>;
+  /**
+   * Visible button labels VoiceOver never reads, because the element has its
+   * own accessibilityLabel (`label="Resume" accessibilityLabel="Resume the
+   * music"`) and no other element shows that text.
+   */
+  relabeled: Set<string>;
+};
 
 function buildCorpus(sources: string[]): Corpus {
   const templates: RegExp[] = [];
   const testIds = new Set<string>();
+  const overridden = new Set<string>();
+  const readable = new Set<string>();
   for (const source of sources) {
+    // `label="X"`, and whether its next prop is a different accessibilityLabel.
+    for (const match of source.matchAll(
+      /\blabel="([^"]+)"(\s+accessibilityLabel=(?:"([^"]*)"|\{`([^`]*)`\}))?/g,
+    )) {
+      const spoken = match[3] ?? match[4];
+      if (match[2] && spoken !== match[1]) overridden.add(match[1]);
+      else readable.add(match[1]);
+    }
+    // Plain JSX text, like <Text>Skip</Text>.
+    for (const match of source.matchAll(/>\s*([^<>{}\n]+?)\s*</g)) readable.add(match[1]);
     for (const match of source.matchAll(/`((?:[^`\\]|\\.)*)`/g)) {
       const parts = match[1].split(/\$\{[^}]*\}/);
       if (parts.length < 2) continue;
@@ -160,7 +182,8 @@ function buildCorpus(sources: string[]): Corpus {
       testIds.add(match[1] ?? match[2] ?? match[3]);
     }
   }
-  return { text: collapse(sources.join('\n')), templates, testIds };
+  const relabeled = new Set([...overridden].filter((label) => !readable.has(label)));
+  return { text: collapse(sources.join('\n')), templates, testIds, relabeled };
 }
 
 /**
@@ -183,6 +206,9 @@ function unresolved(selector: Selector, corpus: Corpus, inputs: string[]): strin
     return `"${text}" isn't a valid regex`;
   }
   if (text.includes("'")) return `"${text}" uses a straight apostrophe; app copy uses ’`;
+  if (!selector.negative && corpus.relabeled.has(text)) {
+    return `"${text}" is visible text, but VoiceOver reads that element by its accessibilityLabel`;
+  }
   const pieces = text
     .split(/\.\*|\.\+/)
     .map((piece) => piece.replace(/\\(.)/g, '$1').trim())
@@ -311,6 +337,10 @@ describe('the selector check itself', () => {
     'const b = `Move ${title} up`;',
     '<Text>Room codes don’t use 0, O, 1 or I.</Text>',
     '<View testID="queue-list" />',
+    '<Button label="Resume" accessibilityLabel="Resume the music" />',
+    '<Button label="Up" accessibilityLabel={`Move ${title} up`} />',
+    '<Button label="Skip" accessibilityLabel="Skip this song" />',
+    '<Pressable><Text>Skip</Text></Pressable>',
   ]);
   const text = (value: string, negative = false): Selector => ({
     text: value,
@@ -336,6 +366,15 @@ describe('the selector check itself', () => {
     );
     expect(unresolved(text('.*'), sample, [])).toMatch(/matches anything/);
     expect(unresolved(text('(unclosed'), sample, [])).toMatch(/valid regex/);
+  });
+
+  it('finds a button by its accessibilityLabel, not by text VoiceOver never reads', () => {
+    expect(unresolved(text('Resume the music'), sample, [])).toBeNull();
+    expect(unresolved(text('Resume'), sample, [])).toMatch(/accessibilityLabel/);
+    expect(unresolved(text('Up'), sample, [])).toMatch(/accessibilityLabel/);
+    // Another element shows "Skip" as plain text, so it can still be found.
+    expect(unresolved(text('Skip'), sample, [])).toBeNull();
+    expect(unresolved(text('Resume', true), sample, [])).toBeNull();
   });
 
   it('lets a guardrail be asserted absent without being in the source', () => {

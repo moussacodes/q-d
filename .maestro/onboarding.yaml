@@ -16,10 +16,18 @@ tags:
 - assertVisible:
     text: 'Continue'
     enabled: false
-- tapOn: 'Display name'
+# A TextField's eyebrow label matches too (Maestro ignores case), so the
+# field itself is the second match.
+- tapOn:
+    text: 'Display name'
+    index: 1
 - eraseText
 - inputText: 'Mock Guest'
-- hideKeyboard
+# Close the keyboard by tapping plain text: the screen's ScrollView dismisses
+# it on a tap nothing handles (keyboardShouldPersistTaps="handled"), which is
+# more dependable on iOS than hideKeyboard. The footer's Continue sits under
+# the keyboard otherwise.
+- tapOn: 'What should we call you?'
 - tapOn: 'Color 3 of 6'
 # The first match is the row's text, the second is the switch.
 - tapOn:

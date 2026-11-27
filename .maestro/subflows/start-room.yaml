@@ -4,8 +4,10 @@
 appId: app.qd.mobile
 name: Subflow · start a room (defaults)
 ---
-# Home's card reads "Start a room" plus its caption as one label.
-- tapOn: 'Start a room.*'
+# Home's card reads "Start a room" plus its caption as one label. Match the
+# caption too: 'Start a room.*' alone also matches Home's greeting line
+# "Start a room or jump into one.", which comes first and does nothing.
+- tapOn: 'Start a room.*Pick the room name.*'
 - assertVisible: 'Plays through Spotify'
 - tapOn: 'Start room'
 - assertVisible: 'Invite people'

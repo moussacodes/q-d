@@ -38,4 +38,5 @@ tags:
     direction: DOWN
 - tapOn: 'Host back after a pause · host'
 - assertVisible: 'You’re back'
-- assertVisible: 'Resume'
+# VoiceOver reads the Resume button as "Resume the music".
+- assertVisible: 'Resume the music'
