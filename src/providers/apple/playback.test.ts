@@ -82,6 +82,25 @@ describe('capabilities', () => {
 });
 
 describe('connect', () => {
+  it('today’s Swift skeleton with no marker is not_in_this_build, not "needs authorization"', async () => {
+    const { native } = setup();
+    const skeleton = { ...native } as Partial<typeof native>;
+    delete skeleton.authorizationStatus;
+    delete skeleton.requestAuthorization;
+    delete skeleton.subscriptionStatus;
+    delete skeleton.storefront;
+    const { store } = memorySecureStore();
+    const adapter = new AppleMusicPlaybackAdapter({
+      kit: createQdMusicKit(skeleton as typeof native, 'ios'),
+      marker: store,
+    });
+    expect(await adapter.connect()).toEqual({
+      status: 'error',
+      code: 'not_in_this_build',
+      isMock: false,
+    });
+  });
+
   it('is the stored check, never a prompt', async () => {
     const { adapter, native, secure } = setup({ authorization: 'authorized' });
     expect(await adapter.connect()).toEqual({ status: 'needs_authorization', isMock: false });
@@ -240,6 +259,36 @@ describe('errors', () => {
     await adapter.prepare(first);
     native[m].mockRejectedValueOnce(nativeError('ERR_QD_NOT_SUBSCRIBED'));
     expect(await codeOf(adapter[m]())).toBe('premium_required');
+  });
+
+  it('a failing seek or enqueue rejects with a code', async () => {
+    const { adapter, native } = setup();
+    await adapter.prepare(first);
+    native.seek.mockRejectedValueOnce(nativeError('ERR_QD_NOT_AUTHORIZED'));
+    expect(await codeOf(adapter.seek(1_000))).toBe('needs_authorization');
+    native.enqueue.mockRejectedValueOnce(nativeError('ERR_QD_NOT_FOUND'));
+    expect(await codeOf(adapter.enqueue([second]))).toBe('not_found');
+  });
+
+  it('a song whose enqueue failed is never reported with q’d’s metadata', async () => {
+    const { adapter, native } = setup();
+    await adapter.prepare(first);
+    native.enqueue.mockRejectedValueOnce(nativeError('ERR_X'));
+    await adapter.enqueue([second]).catch(() => {});
+    native.getState.mockResolvedValueOnce({
+      status: 'playing',
+      providerTrackId: second.providerTrackId,
+      positionMs: 0,
+    });
+    expect(await adapter.getState()).toEqual({ status: 'idle', track: null, positionMs: 0 });
+  });
+
+  it('a failed prepare of a song already known keeps its metadata', async () => {
+    const { adapter, native } = setup();
+    await adapter.prepare(first);
+    native.prepare.mockRejectedValueOnce(nativeError('ERR_X'));
+    await adapter.prepare({ ...first, title: 'Other title' }).catch(() => {});
+    expect(await adapter.getState()).toMatchObject({ status: 'paused', track: first });
   });
 
   it('a state MusicKit returns that doesn’t parse is provider_unavailable', async () => {

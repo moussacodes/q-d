@@ -142,7 +142,9 @@ describe('appleMusicConnectionStatus (startup, no prompt)', () => {
       status: 'needs_authorization',
       ...notMock,
     });
-    expect(native.authorizationStatus).not.toHaveBeenCalled();
+    // Asked without a prompt, never the prompt itself.
+    expect(native.requestAuthorization).not.toHaveBeenCalled();
+    expect(native.subscriptionStatus).not.toHaveBeenCalled();
   });
 
   it('a Keychain that can’t be read is provider_unavailable, so the row is kept', async () => {
@@ -183,6 +185,55 @@ describe('appleMusicConnectionStatus (startup, no prompt)', () => {
     expect(
       await appleMusicConnectionStatus(createQdMusicKit(skeleton as typeof native, 'ios'), marker),
     ).toBeNull();
+  });
+
+  it('today’s Swift skeleton can’t tell even with no marker on this phone, so a row made elsewhere stays', async () => {
+    const { native, marker } = setup({ authorization: 'authorized' });
+    const skeleton = { ...native } as Partial<typeof native>;
+    delete skeleton.authorizationStatus;
+    delete skeleton.requestAuthorization;
+    delete skeleton.subscriptionStatus;
+    delete skeleton.storefront;
+    expect(
+      await appleMusicConnectionStatus(createQdMusicKit(skeleton as typeof native, 'ios'), marker),
+    ).toBeNull();
+  });
+
+  it('a subscription method not built yet is null too, not "disconnected"', async () => {
+    const { native, marker } = setup({ authorization: 'authorized' });
+    await marker.save('apple_music', { accessToken: APPLE_MUSIC_MARKER });
+    const partial = { ...native } as Partial<typeof native>;
+    delete partial.subscriptionStatus;
+    expect(
+      await appleMusicConnectionStatus(createQdMusicKit(partial as typeof native, 'ios'), marker),
+    ).toBeNull();
+  });
+
+  it('a MusicKit status that fails: provider_unavailable with the marker, needs_authorization without', async () => {
+    const { kit, marker, native } = setup({ authorization: 'authorized' });
+    native.authorizationStatus.mockRejectedValueOnce(nativeError('ERR_OFFLINE'));
+    expect(await appleMusicConnectionStatus(kit, marker)).toEqual({
+      status: 'needs_authorization',
+      ...notMock,
+    });
+    await marker.save('apple_music', { accessToken: APPLE_MUSIC_MARKER });
+    native.authorizationStatus.mockRejectedValueOnce(nativeError('ERR_OFFLINE'));
+    expect(await appleMusicConnectionStatus(kit, marker)).toMatchObject({
+      status: 'error',
+      code: 'provider_unavailable',
+    });
+  });
+
+  it('a marker that reads as unreadable (not thrown) keeps the row', async () => {
+    const { kit } = setup({ authorization: 'authorized' });
+    const marker = {
+      save: jest.fn(),
+      clear: jest.fn(),
+      peek: jest.fn(async () => 'unreadable' as const),
+    };
+    expect(await appleMusicConnectionStatus(kit, marker)).toMatchObject({
+      code: 'provider_unavailable',
+    });
   });
 
   it('MusicKit failing is provider_unavailable', async () => {
