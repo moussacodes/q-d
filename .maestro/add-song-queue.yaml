@@ -1,0 +1,51 @@
+# Add a song from mock search, undo it, add it again, then open Up next and
+# reorder and remove a song as the host.
+appId: app.qd.mobile
+name: Add a song · queue · reorder and remove
+tags:
+  - room
+  - queue
+---
+- launchApp:
+    clearState: true
+- runFlow: subflows/sign-in.yaml
+- runFlow: subflows/start-room.yaml
+
+# Search starts with mock results for "daniel caesar".
+- tapOn: 'Add a song'
+- assertVisible: 'Songs play on.*your.*phone through.*Spotify.*'
+# Search opens with the keyboard up, and the toast (with Undo) sits under it.
+# A tap on plain text closes it (keyboardShouldPersistTaps="handled").
+- tapOn: 'Songs play on.*your.*phone through.*Spotify.*'
+- assertVisible: 'Add Rain Down'
+- tapOn: 'Add Rain Down'
+- assertVisible: 'Rain Down.*added.*in line'
+- tapOn: 'Undo adding Rain Down'
+- assertNotVisible: 'Undo adding Rain Down'
+- tapOn: 'Add Rain Down'
+- assertVisible: 'Rain Down.*added.*in line'
+- tapOn: 'Close'
+
+# Up next, as the host: a tap on a song opens Up, Down and Remove.
+- tapOn: 'Open up next'
+- assertVisible: 'Up next'
+- scrollUntilVisible:
+    element:
+      text: 'Reorder or remove Rain Down'
+    direction: DOWN
+- scrollUntilVisible:
+    element:
+      text: 'Reorder or remove Lovers Rock'
+    direction: UP
+- tapOn: 'Reorder or remove Lovers Rock'
+# First in line, so it can't move up yet.
+- assertVisible:
+    text: 'Move Lovers Rock up'
+    enabled: false
+- tapOn: 'Move Lovers Rock down'
+- assertVisible:
+    text: 'Move Lovers Rock up'
+    enabled: true
+- tapOn: 'Remove Lovers Rock'
+- assertNotVisible: 'Reorder or remove Lovers Rock'
+- assertVisible: 'Reorder or remove Always'

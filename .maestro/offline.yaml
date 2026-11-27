@@ -1,0 +1,47 @@
+# This phone offline, through the /dev toggles (they stand in for
+# Realtime's connection state): the room says "You’re offline" and Add a
+# song is off. Back online, the notice is gone. Needs the Debug build.
+appId: app.qd.mobile
+name: Room states · this phone offline, then back online
+tags:
+  - states
+  - dev
+---
+- launchApp:
+    clearState: true
+- runFlow: subflows/open-screens.yaml
+- scrollUntilVisible:
+    element:
+      text: 'This phone goes offline'
+    direction: DOWN
+- tapOn: 'This phone goes offline'
+- scrollUntilVisible:
+    element:
+      text: '3.2 Room · host'
+    direction: UP
+- tapOn: '3.2 Room · host'
+- assertVisible: 'You’re offline'
+- assertVisible: 'q’d can’t reach the room right now.*'
+- assertVisible:
+    text: 'Add a song'
+    enabled: false
+
+# A fresh launch resets the mock store: offline, then back online, leaves no notice.
+- launchApp
+- runFlow: subflows/open-screens.yaml
+- scrollUntilVisible:
+    element:
+      text: 'This phone goes offline'
+    direction: DOWN
+- tapOn: 'This phone goes offline'
+- tapOn: 'This phone is back online'
+- scrollUntilVisible:
+    element:
+      text: '3.2 Room · host'
+    direction: UP
+- tapOn: '3.2 Room · host'
+- assertVisible: 'Open up next'
+- assertNotVisible: 'You’re offline'
+- assertVisible:
+    text: 'Add a song'
+    enabled: true

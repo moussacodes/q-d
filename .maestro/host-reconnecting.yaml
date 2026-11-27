@@ -1,0 +1,42 @@
+# Host reconnecting, through the /dev "Host connection · mock" toggles
+# (they stand in for Realtime Presence): the listener sees "Host
+# reconnecting", then "Paused" after 30 seconds. Then the host's own view
+# once their phone is back. Needs the Debug build (/dev is __DEV__ only).
+appId: app.qd.mobile
+name: Room states · host reconnecting, paused, back
+tags:
+  - states
+  - dev
+---
+- launchApp:
+    clearState: true
+- runFlow: subflows/open-screens.yaml
+- scrollUntilVisible:
+    element:
+      text: 'Host’s phone leaves'
+    direction: DOWN
+- tapOn: 'Host’s phone leaves'
+- scrollUntilVisible:
+    element:
+      text: '4.1 Listener view'
+    direction: UP
+- tapOn: '4.1 Listener view'
+- assertVisible: 'Host reconnecting'
+- assertVisible: 'Baron.*phone plays the music and lost the room.*'
+# After 30 seconds without the host, the room pauses.
+- extendedWaitUntil:
+    visible: 'Paused'
+    timeout: 45000
+- assertVisible: 'Baron.*hasn’t come back, so the music is paused.*'
+
+# The host's view after coming back. A fresh launch resets the mock store.
+- launchApp
+- runFlow: subflows/open-screens.yaml
+- scrollUntilVisible:
+    element:
+      text: 'Host back after a pause · host'
+    direction: DOWN
+- tapOn: 'Host back after a pause · host'
+- assertVisible: 'You’re back'
+# VoiceOver reads the Resume button as "Resume the music".
+- assertVisible: 'Resume the music'

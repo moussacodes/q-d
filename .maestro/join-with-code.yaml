@@ -1,0 +1,54 @@
+# Join with a code on Home, as a new account with no music service (guests
+# never need one): a wrong code, look-alike characters, a full room, an
+# ended room, then a good code typed in lowercase without the QD- prefix.
+# Mock codes: src/providers/mock/data.ts (mockRooms, mockJoinErrorCodes).
+appId: app.qd.mobile
+name: Join with a code · wrong, look-alike, full, ended, good
+tags:
+  - join
+---
+- launchApp:
+    clearState: true
+- runFlow: subflows/sign-up.yaml
+- assertVisible: 'Join with a code'
+- assertVisible:
+    text: 'Join'
+    enabled: false
+
+# A code no room uses.
+- tapOn: 'Room code'
+- inputText: 'ZZZZZ2'
+- tapOn: 'Join'
+- assertVisible: 'That code doesn’t match a room.*'
+
+# Look-alike characters: no code uses 0, O, 1 or I, so Join stays off.
+- tapOn: 'Room code'
+- eraseText
+- inputText: '7K4F0O'
+- assertVisible: 'Room codes don’t use 0, O, 1 or I.*'
+- assertVisible:
+    text: 'Join'
+    enabled: false
+
+# A full room and an ended room each say so.
+- eraseText
+- inputText: 'FULL22'
+- tapOn: 'Join'
+- assertVisible: 'That room is full.*'
+- tapOn: 'Room code'
+- eraseText
+- inputText: 'ENDED2'
+- tapOn: 'Join'
+- assertVisible: 'That room has ended.*'
+
+# A good code: lowercase and no prefix are fine.
+- tapOn: 'Room code'
+- eraseText
+- inputText: '9m2xr4'
+- tapOn: 'Join'
+- assertVisible: 'Kitchen Disco'
+- assertVisible: 'Room options'
+# A guest with no music service can still add songs.
+- assertVisible:
+    text: 'Add a song'
+    enabled: true

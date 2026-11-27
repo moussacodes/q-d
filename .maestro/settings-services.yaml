@@ -1,0 +1,43 @@
+# Settings → Music services: connect and disconnect the labeled mocks.
+# The returning mock account starts with mock Spotify, and every mock says
+# it's a mock. With nothing connected, Start a room asks for a service.
+appId: app.qd.mobile
+name: Settings · connect and disconnect a mock service
+tags:
+  - settings
+---
+- launchApp:
+    clearState: true
+- runFlow: subflows/sign-in.yaml
+- tapOn: 'Settings'
+- assertVisible: 'Music services'
+- assertVisible: 'Mock connection · no Spotify account used'
+- assertVisible: 'Subscription needed for full tracks'
+- assertNotVisible: 'YouTube Music'
+- assertNotVisible: 'TIDAL'
+- assertNotVisible: 'Amazon Music'
+- assertNotVisible: 'Deezer'
+
+# Connect Apple Music (the mock). It's the only Connect button here.
+- tapOn: 'Connect'
+- extendedWaitUntil:
+    visible: 'Mock connection · no Apple Music account used'
+    timeout: 10000
+- assertVisible: 'Play rooms through Spotify'
+- tapOn: 'Play rooms through Spotify'
+- assertVisible: 'Play rooms through Apple Music'
+
+# Disconnect both.
+- tapOn: 'Disconnect Apple Music'
+- assertVisible: 'Subscription needed for full tracks'
+- tapOn: 'Disconnect Spotify'
+- assertVisible: 'Premium needed to play rooms'
+- assertNotVisible: 'Play rooms through.*'
+
+# Hosting needs a service, so Start a room asks for one and won't start.
+- tapOn: 'Back'
+- tapOn: 'Start a room.*Pick the room name.*'
+- assertVisible: 'Connect a music service to host'
+- assertVisible:
+    text: 'Start room'
+    enabled: false

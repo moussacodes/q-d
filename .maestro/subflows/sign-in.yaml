@@ -1,0 +1,14 @@
+# Subflow: a returning mock account signs in and lands on Home.
+# Starts on Welcome (the calling flow runs launchApp with clearState first).
+# Mock auth mode only: there "Continue with Apple" is q’d's mock button. In
+# live auth mode it's Apple's own button, which opens iOS's Sign in with Apple
+# sheet, and this flow can't go further. No email, password or token is typed.
+# The returning mock account already has a labeled mock Spotify connection.
+appId: app.qd.mobile
+name: Subflow · sign in (mock, returning account)
+---
+- assertVisible: 'Different apps. One aux.'
+- tapOn: 'Already have an account\? Sign in'
+- assertVisible: 'Welcome back.'
+- tapOn: 'Continue with Apple'
+- assertVisible: 'Start a room or jump into one.'

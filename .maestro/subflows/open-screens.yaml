@@ -1,0 +1,9 @@
+# Subflow: open the development screen index (/dev) from Welcome.
+# "Screens" exists only in a Debug build (__DEV__), so these flows need the
+# Debug development build, not a Release one.
+appId: app.qd.mobile
+name: Subflow · open the /dev screen index
+---
+- assertVisible: 'Different apps. One aux.'
+- tapOn: 'Screens'
+- assertVisible: 'Every screen shell, numbered like the Figma page.*'

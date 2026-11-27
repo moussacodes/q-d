@@ -1,0 +1,27 @@
+# The room ends, through the /dev "Host ends the room" toggle (it stands in
+# for the room.ended event): the room says so, and Back to Home leaves it.
+# Needs the Debug build.
+appId: app.qd.mobile
+name: Room states · room ended
+tags:
+  - states
+  - dev
+---
+- launchApp:
+    clearState: true
+- runFlow: subflows/open-screens.yaml
+- scrollUntilVisible:
+    element:
+      text: 'Host ends the room'
+    direction: DOWN
+- tapOn: 'Host ends the room'
+- scrollUntilVisible:
+    element:
+      text: '3.2 Room · host'
+    direction: UP
+- tapOn: '3.2 Room · host'
+- assertVisible: 'This room has ended'
+- assertVisible: 'You ended this room. Nothing more plays, and its code doesn’t work any more.'
+- assertNotVisible: 'Open up next'
+- tapOn: 'Back to Home'
+- assertVisible: 'Start a room or jump into one.'

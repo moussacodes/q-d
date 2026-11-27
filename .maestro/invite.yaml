@@ -1,0 +1,26 @@
+# The host's Invite sheet: room code, a QR code with the invite link, the
+# mock label (a mock invite isn't a working link), Copy link, Share and
+# Make a new link.
+appId: app.qd.mobile
+name: Invite · QR code and mock label
+tags:
+  - room
+---
+- launchApp:
+    clearState: true
+- runFlow: subflows/sign-in.yaml
+- runFlow: subflows/start-room.yaml
+- tapOn: 'Invite people'
+- assertVisible: 'Room code'
+- assertVisible: 'Read it out, or let people scan the QR code.'
+- assertVisible: 'QR code with the invite link'
+- assertVisible: 'Mock invite · not a working link'
+- assertVisible: 'Copy link'
+- assertVisible: 'Share'
+- assertVisible: '.*No music service needed.*'
+- tapOn: 'Make a new link'
+- assertVisible: 'QR code with the invite link'
+- assertVisible: 'Mock invite · not a working link'
+- assertVisible: 'The old QR code and link stop working.*'
+- tapOn: 'Close'
+- assertVisible: 'Open up next'

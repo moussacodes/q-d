@@ -51,6 +51,14 @@ Product and technical decisions that are not obvious from the code. Newest first
 - **`@react-native-masked-view/masked-view` is now an optional peer of expo-router.** It's no longer installed. It's only needed for the masked iOS back-button label in `expo-router/js-stack`, which we don't use, since our screens hide the header.
 - **`expo/fetch` reports body errors now.** As of expo 58.1.0, a connection that fails partway through the body rejects the read, and `response.body` stays locked while `text()` or `arrayBuffer()` reads it. Nothing on this branch imports `expo/fetch`.
 
+## 2026-11-26 · Maestro smoke flows
+
+- **Flows are written and statically checked, but have never run.** `.maestro/` has one flow per main path (onboarding, sign in, start a room, invite, join with a code, add a song and the queue, host reconnecting, offline, room ended, Settings music services) plus `subflows/`. They need a Debug development build on the Mac's simulator, in mock data mode. Until Moussa runs them, they prove nothing about the app on a device.
+- **Selectors can't rot silently.** `__tests__/maestro-flows.test.ts` parses every flow with `js-yaml`, now a pinned dev dependency, the version already installed through ESLint. It checks that each flow names `app.qd.mobile`, starts with `launchApp: clearState: true`, holds no real email, password or key, and only calls subflows that exist. Every text selector must still be in `app/` or `src/`: as a literal, as a template literal's shape, or split with `.*` into pieces that are. Only the guardrail names (other providers, sync (beta)) may be asserted absent without being in the source.
+- **No `testID`s were added.** Every element can be reached by its accessibility label or visible copy. The places with repeated labels use Maestro's `index`: the 18+ text and its switch, the room-rule segments, and a text field under its eyebrow label (Maestro matches text case-insensitively, so "ROOM NAME" matches too).
+- **The `/dev` states are tested through the `/dev` toggles,** since Maestro on iOS has no Back. A flow sets the toggle first, then opens the screen. A later `launchApp` resets the in-memory mock for the next check.
+- **"Wrong version?" has no flow.** Its card isn't on this branch, and the room doesn't show the button yet.
+
 ## 2026-11-26 · Record real provider connections
 
 - **A row means "this account can play through this service", and only a real connection makes one.** In live auth mode, when Connect returns a real `connected` (today: Spotify with `realSpotify` on), the app writes the account's own `provider_connections` row: provider and `last_verified_at` (now), `connected_at` from the database, a storefront only when one is known (none is yet). Never a token. Connect shows "connecting" until the write answers; a failed write still shows Spotify connected (the tokens are on the phone) and is retried before Start room. A mock connection never writes, in either data mode.
