@@ -522,6 +522,7 @@ The rules are PRODUCT_SPEC.md §6. These are the numbers and edge cases the matc
 - **The Live row shows the room's name as it was started.** It showed the sample name, so a room started as "Friday Fade" read "Sunday Slow Burn" on Home while the mini player said "Friday Fade".
 - **The mini player's Play/Pause is disabled** when the room's control rule leaves you out. Before, it looked active and did nothing.
 - A person still compares both states with Figma `20 · Mobile`.
+
 ## 2026-11-24 · qd-music-kit skeleton
 
 - **The module's JavaScript wrapper lives in `modules/qd-music-kit`,** not in `src/providers`. The Apple `PlaybackAdapter` (provider cards) wraps it, so Apple specifics still reach the app only through `src/providers`.
