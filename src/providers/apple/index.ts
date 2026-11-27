@@ -1,6 +1,14 @@
 import { UnavailableCatalogAdapter, UnavailablePlaybackAdapter } from '../unavailable';
 
 export { CATALOG_SEARCH_FUNCTION, createAppleMusicCatalog } from './catalog';
+export {
+  APPLE_MUSIC_MARKER,
+  appleMusicConnectionStatus,
+  connectAppleMusic,
+  disconnectAppleMusic,
+  type AppleMarkerStore,
+  type AppleMusicKit,
+} from './connection';
 
 /**
  * Apple Music. The real adapters wrap `modules/qd-music-kit` (MusicKit,

@@ -439,7 +439,7 @@ type PlaybackCapabilities = {
 };
 
 type ConnectionState = { isMock: boolean } & (  // isMock: the UI labels mock connections
-  | { status: 'connected'; accountLabel?: string }
+  | { status: 'connected'; accountLabel?: string; storefront?: string }  // storefront: added (Apple Music connection card), two lowercase letters, written to provider_connections
   | { status: 'needs_authorization' }
   | { status: 'needs_subscription' }   // e.g. no Apple Music subscription or Spotify Premium
   | { status: 'app_not_installed' }    // Spotify
@@ -474,6 +474,8 @@ type ProviderErrorCode =
   | 'not_configured'      // no client ID (or other setup) in this build
   | 'needs_authorization' // not connected, or access revoked: reconnect
   | 'auth_failed'         // sign-in didn't finish: state mismatch, refused code exchange
+  // Added by the Apple Music connection card:
+  | 'permission_denied'   // Apple Music access refused or restricted for q’d; only iOS Settings changes it
   | 'premium_required'    // Spotify Premium (or a subscription) needed
   | 'not_approved_user'   // Spotify development mode: not on the app's user list
   | 'no_active_device'    // Spotify: no Spotify app open to control
@@ -514,6 +516,17 @@ availability(): { available: true } | { available: false; reason: 'native_module
 type QdMusicKitPlayerState = { status: 'playing' | 'paused' | 'stopped'; providerTrackId: string | null; positionMs: number };
 // Thrown errors: QdMusicKitError with code
 // 'unavailable' | 'not_implemented' | 'wrong_provider' | 'invalid_argument' | 'invalid_native_response' | 'native_error'
+```
+
+Added 2026-11-26 (Apple Music connection card, TypeScript only; the Swift side is listed for Moussa in `modules/qd-music-kit/README.md`):
+
+```ts
+authorizationStatus(): Promise<'authorized' | 'denied' | 'restricted' | 'not_determined'>; // never prompts
+requestAuthorization(): Promise<same>;                                // prompts once
+subscription(): Promise<{ canPlayCatalogContent: boolean; canBecomeSubscriber: boolean }>;
+storefront(): Promise<string | null>;                                 // 'us', or null
+// Native names: authorizationStatus, requestAuthorization, subscriptionStatus, storefront.
+// A native method that doesn't exist yet throws QdMusicKitError('not_implemented').
 ```
 
 Without the native module (Expo Go, web, Android, tests) it claims no capabilities, `connect()` resolves to `{ status: 'error', code: 'unavailable' }`, `disconnect()` resolves, and the other calls throw `unavailable`. A Spotify track throws `wrong_provider` before anything crosses the bridge.

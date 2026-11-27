@@ -16,7 +16,8 @@ import type { ConnectionRowResult } from '@/services/providerConnections';
  */
 
 export interface ConnectionRowDeps {
-  record: (provider: MusicProvider) => Promise<ConnectionRowResult>;
+  /** `state` is the real connection found, when there is one (Apple Music carries a storefront). */
+  record: (provider: MusicProvider, state?: ConnectionState) => Promise<ConnectionRowResult>;
   remove: (provider: MusicProvider) => Promise<ConnectionRowResult>;
   /** A real connection held on this phone, checked; null when this build can't tell. */
   stored: (provider: MusicProvider) => Promise<ConnectionState | null>;
@@ -37,6 +38,8 @@ export function localConnectionOf(state: ConnectionState | null): LocalConnectio
   if (state.status === 'connected') return 'usable';
   if (state.status === 'needs_authorization') return 'unusable';
   if (state.status === 'error' && state.code === 'not_approved_user') return 'unusable';
+  // Apple Music access turned off for q’d in iOS Settings.
+  if (state.status === 'error' && state.code === 'permission_denied') return 'unusable';
   return 'unknown';
 }
 
@@ -80,7 +83,7 @@ export async function reconcileProviderRows(
   }
   const recorded: MusicProvider[] = [];
   for (const provider of plan.record) {
-    if ((await deps.record(provider)).ok) recorded.push(provider);
+    if ((await deps.record(provider, connected[provider])).ok) recorded.push(provider);
   }
   if (plan.remove.length > 0 || plan.record.length > 0) {
     rowsLog.info('Connection rows reconciled', { removed: plan.remove, recorded });

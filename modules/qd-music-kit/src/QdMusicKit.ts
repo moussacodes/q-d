@@ -1,11 +1,13 @@
 import type {
   QdMusicKitApi,
+  QdMusicKitAuthorizationStatus,
   QdMusicKitAvailability,
   QdMusicKitCapabilities,
   QdMusicKitConnectionState,
   QdMusicKitErrorCode,
   QdMusicKitNativeModule,
   QdMusicKitPlayerState,
+  QdMusicKitSubscription,
   QdMusicKitTrackRef,
 } from './QdMusicKit.types';
 
@@ -98,6 +100,47 @@ function toConnectionState(raw: unknown): QdMusicKitConnectionState {
   return { status: 'error', code: 'invalid_native_response' };
 }
 
+/** Apple's raw values (`notDetermined`) and ours (`not_determined`) are both accepted. */
+const AUTHORIZATION_STATUSES: Record<string, QdMusicKitAuthorizationStatus> = {
+  authorized: 'authorized',
+  denied: 'denied',
+  restricted: 'restricted',
+  notDetermined: 'not_determined',
+  not_determined: 'not_determined',
+};
+
+function toAuthorizationStatus(raw: unknown): QdMusicKitAuthorizationStatus {
+  const status = typeof raw === 'string' ? AUTHORIZATION_STATUSES[raw] : undefined;
+  if (!status) {
+    throw new QdMusicKitError('invalid_native_response', 'MusicKit returned an unknown status');
+  }
+  return status;
+}
+
+function toSubscription(raw: unknown): QdMusicKitSubscription {
+  if (
+    !isRecord(raw) ||
+    typeof raw.canPlayCatalogContent !== 'boolean' ||
+    typeof raw.canBecomeSubscriber !== 'boolean'
+  ) {
+    throw new QdMusicKitError(
+      'invalid_native_response',
+      'MusicKit returned an unknown subscription',
+    );
+  }
+  return {
+    canPlayCatalogContent: raw.canPlayCatalogContent,
+    canBecomeSubscriber: raw.canBecomeSubscriber,
+  };
+}
+
+/** Two letters, lowercased; anything else is "no storefront known". */
+function toStorefront(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const code = raw.trim().toLowerCase();
+  return /^[a-z]{2}$/.test(code) ? code : null;
+}
+
 function toPlayerState(raw: unknown): QdMusicKitPlayerState {
   if (
     !isRecord(raw) ||
@@ -145,6 +188,25 @@ export function createQdMusicKit(
       );
     }
     return player;
+  }
+
+  /** A native method the Swift skeleton doesn't have yet is `not_implemented`. */
+  async function optional<T>(
+    name: 'authorizationStatus' | 'requestAuthorization' | 'subscriptionStatus' | 'storefront',
+    parse: (raw: unknown) => T,
+  ): Promise<T> {
+    const module = requirePlayer();
+    const method = module[name];
+    if (typeof method !== 'function') {
+      throw new QdMusicKitError('not_implemented', `qd-music-kit: ${name} isn't implemented yet`);
+    }
+    let raw: unknown;
+    try {
+      raw = await method.call(module);
+    } catch (error) {
+      throw toError(error);
+    }
+    return parse(raw);
   }
 
   async function call<T>(run: (module: QdMusicKitNativeModule) => Promise<T>): Promise<T> {
@@ -211,5 +273,13 @@ export function createQdMusicKit(
       if (!player) return;
       await call((m) => m.disconnect());
     },
+
+    authorizationStatus: () => optional('authorizationStatus', toAuthorizationStatus),
+
+    requestAuthorization: () => optional('requestAuthorization', toAuthorizationStatus),
+
+    subscription: () => optional('subscriptionStatus', toSubscription),
+
+    storefront: () => optional('storefront', toStorefront),
   };
 }

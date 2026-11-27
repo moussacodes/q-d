@@ -31,7 +31,8 @@ import { isRealConnection, reconcileProviderRows } from './connectionRows';
  * Connections belong to the signed-in account. They start fresh for each
  * account and are gone after signing out. With the `realSpotify` flag on,
  * Spotify connects for real (tokens in SecureStore on this phone, never in
- * Supabase); everything else is the labeled mock.
+ * Supabase); with `realAppleMusic` on, Apple Music connects through MusicKit
+ * (the q’d app build only). Everything else is the labeled mock.
  *
  * In live auth mode a real connection is also recorded in the account's
  * `provider_connections` row (metadata only, never tokens), which
@@ -103,6 +104,11 @@ function withAttempt(store: Store, provider: MusicProvider, attempt: ConnectAtte
   return { ...store, attempts };
 }
 
+/** What a row may hold beyond the service: the storefront, when the service gave one. */
+function rowInputOf(state: ConnectionState | undefined) {
+  return state?.status === 'connected' && state.storefront ? { storefront: state.storefront } : {};
+}
+
 const ProviderConnectionsContext = createContext<ProviderConnectionsValue | null>(null);
 
 export function ProviderConnectionsProvider({
@@ -133,8 +139,10 @@ export function ProviderConnectionsProvider({
     const skipped = Promise.resolve({ ok: true as const, value: undefined });
     void reconcileProviderRows(supportedProviders, {
       stored: storedConnection,
-      record: (provider) =>
-        changed.has(provider) ? skipped : recordProviderConnection(userId, provider),
+      record: (provider, state) =>
+        changed.has(provider)
+          ? skipped
+          : recordProviderConnection(userId, provider, rowInputOf(state)),
       remove: (provider) =>
         changed.has(provider) ? skipped : removeProviderConnection(userId, provider),
     }).then((outcome) => {
@@ -195,7 +203,7 @@ export function ProviderConnectionsProvider({
         }
         // Only a real connection is recorded; the row never holds tokens.
         if (userId && isRealConnection(connection)) {
-          await recordProviderConnection(userId, provider);
+          await recordProviderConnection(userId, provider, rowInputOf(connection));
         }
         const result = connection;
         // Someone else may have signed in meanwhile; their services stay untouched.
@@ -240,7 +248,9 @@ export function ProviderConnectionsProvider({
         // Written every time, not remembered: the same account signing in on
         // another phone without these tokens deletes the row (startup
         // reconcile), and this phone must still be able to host.
-        return (await recordProviderConnection(userId, provider)).ok;
+        return (
+          await recordProviderConnection(userId, provider, rowInputOf(store.connections[provider]))
+        ).ok;
       },
     };
   }, [store, accountId, returning, userId]);

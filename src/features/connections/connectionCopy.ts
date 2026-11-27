@@ -22,7 +22,12 @@ export function providerErrorCopy(provider: MusicProvider, code: ProviderErrorCo
       return `Connect ${name} again to keep playing.`;
     case 'not_configured':
     case 'not_in_this_build':
-      return `${name} isn’t available in this build of q’d yet.`;
+      // Real Apple Music needs MusicKit, which Expo Go and the web don't have.
+      return provider === 'apple_music'
+        ? 'Apple Music needs the q’d app build. It can’t connect in Expo Go or on the web.'
+        : `${name} isn’t available in this build of q’d yet.`;
+    case 'permission_denied':
+      return `q’d doesn’t have access to ${name}. Turn it on in Settings › q’d, then try again.`;
     case 'rate_limited':
       return `${name} is busy right now. Try again in a minute.`;
     case 'provider_unavailable':

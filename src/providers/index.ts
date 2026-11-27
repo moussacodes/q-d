@@ -1,6 +1,9 @@
 import type { MusicProvider } from '@/domain/music-provider';
 import { isEnabled } from '@/services/flags';
+import { providerCredentials } from '@/services/providerCredentials';
 
+import { QdMusicKit } from '../../modules/qd-music-kit';
+import { appleMusicConnectionStatus, connectAppleMusic, disconnectAppleMusic } from './apple';
 import { mockCatalog } from './mock/catalog';
 import { MockPlaybackAdapter } from './mock/playback';
 import {
@@ -44,11 +47,25 @@ export function usesRealSpotify(): boolean {
 }
 
 /**
+ * Whether this build talks to MusicKit for Apple Music. Off by default
+ * (`EXPO_PUBLIC_FLAG_REAL_APPLE_MUSIC`): it's built but untested on a
+ * device. With it on in Expo Go or on the web, Apple Music says it needs the
+ * q’d app build instead of connecting the mock.
+ */
+export function usesRealAppleMusic(): boolean {
+  return isEnabled('realAppleMusic');
+}
+
+/**
  * "Connect" for a music service. Real Spotify (flag on) opens Spotify's
- * sign-in sheet and stores the tokens on this phone. Everything else connects
- * the labeled mock.
+ * sign-in sheet and stores the tokens on this phone. Real Apple Music (flag
+ * on) asks iOS for Apple Music access through MusicKit. Everything else
+ * connects the labeled mock.
  */
 export async function connectProvider(provider: MusicProvider): Promise<ConnectionState> {
+  if (provider === 'apple_music' && usesRealAppleMusic()) {
+    return connectAppleMusic(QdMusicKit, providerCredentials);
+  }
   if (provider === 'spotify' && usesRealSpotify()) {
     const { auth, api } = spotify();
     return connectSpotify(auth, api);
@@ -62,11 +79,15 @@ export async function connectProvider(provider: MusicProvider): Promise<Connecti
  * Null when this build can't tell: the labeled mock holds nothing to check.
  *
  * - Spotify with `realSpotify` on: the stored tokens, checked with Spotify.
- * - Apple Music: always null for now. The MusicKit path needs the Mac
- *   (`modules/qd-music-kit`); the Apple card answers here whether this phone
- *   is authorized, and the rows then follow it the same way.
+ * - Apple Music with `realAppleMusic` on: this account's marker on this
+ *   phone, then MusicKit's authorization and subscription, never a prompt.
+ *   Null without the native module (Expo Go, web) or before the Swift
+ *   methods exist, so a row made on another build stays.
  */
 export async function storedConnection(provider: MusicProvider): Promise<ConnectionState | null> {
+  if (provider === 'apple_music' && usesRealAppleMusic()) {
+    return appleMusicConnectionStatus(QdMusicKit, providerCredentials);
+  }
   if (provider === 'spotify' && usesRealSpotify()) {
     const { auth, api } = spotify();
     return spotifyConnectionStatus(auth, api);
@@ -74,8 +95,16 @@ export async function storedConnection(provider: MusicProvider): Promise<Connect
   return null;
 }
 
-/** "Disconnect": real Spotify forgets its tokens on this phone. Mocks hold none. */
+/**
+ * "Disconnect": real Spotify forgets its tokens on this phone, and real
+ * Apple Music its marker (iOS keeps q’d's MusicKit permission; only Settings
+ * can take it back). Mocks hold none.
+ */
 export async function disconnectProvider(provider: MusicProvider): Promise<void> {
+  if (provider === 'apple_music' && usesRealAppleMusic()) {
+    await disconnectAppleMusic(providerCredentials);
+    return;
+  }
   if (provider === 'spotify' && usesRealSpotify()) {
     await disconnectSpotify(spotify().auth);
   }

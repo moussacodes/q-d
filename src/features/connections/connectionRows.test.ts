@@ -56,6 +56,7 @@ describe('localConnectionOf', () => {
     [{ status: 'connected', isMock: false }, 'usable'],
     [{ status: 'needs_authorization', isMock: false }, 'unusable'],
     [{ status: 'error', code: 'not_approved_user', isMock: false }, 'unusable'],
+    [{ status: 'error', code: 'permission_denied', isMock: false }, 'unusable'],
     // Offline or Spotify failing: keep the row, try later.
     [{ status: 'error', code: 'provider_unavailable', isMock: false }, 'unknown'],
     [{ status: 'error', code: 'rate_limited', isMock: false }, 'unknown'],
@@ -81,7 +82,7 @@ describe('reconcileProviderRows', () => {
   it('a real connection that checks out: writes its row and reports it connected', async () => {
     const d = deps({ spotify: { status: 'connected', isMock: false } });
     const outcome = await reconcileProviderRows(providers, d);
-    expect(d.record).toHaveBeenCalledWith('spotify');
+    expect(d.record).toHaveBeenCalledWith('spotify', { status: 'connected', isMock: false });
     expect(d.remove).not.toHaveBeenCalled();
     expect(outcome.connected).toEqual({ spotify: { status: 'connected', isMock: false } });
     expect(outcome.recorded).toEqual(['spotify']);

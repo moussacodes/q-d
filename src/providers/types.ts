@@ -69,6 +69,12 @@ export type ConnectionState = { isMock: boolean } & (
       status: 'connected';
       /** e.g. "baron.li · Premium". Mocks say "Mock account". */
       accountLabel?: string;
+      /**
+       * The account's storefront (two lowercase letters, `us`), when the
+       * service tells us. Apple Music does; it's written to the
+       * `provider_connections` row.
+       */
+      storefront?: string;
     }
   | { status: 'needs_authorization' }
   /** e.g. no Apple Music subscription or no Spotify Premium. */
@@ -125,6 +131,11 @@ export type ProviderErrorCode =
   | 'needs_authorization'
   /** Authorization didn't finish: state mismatch, a refused code exchange. */
   | 'auth_failed'
+  /**
+   * The person said no (or the phone is restricted), and only iOS Settings
+   * can change it: Apple Music access for q’d.
+   */
+  | 'permission_denied'
   /** The account needs Premium (Spotify) or a subscription for this. */
   | 'premium_required'
   /** Spotify development mode: the account isn't on the app's user list. */

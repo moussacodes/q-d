@@ -44,6 +44,21 @@ export type QdMusicKitTrackRef = {
   providerTrackId: string;
 };
 
+/**
+ * MusicKit's `MusicAuthorization.Status`. Only `authorized` lets q’d play;
+ * `denied` and `restricted` can only be changed in iOS Settings.
+ */
+export type QdMusicKitAuthorizationStatus =
+  'authorized' | 'denied' | 'restricted' | 'not_determined';
+
+/** MusicKit's `MusicSubscription`: what this Apple Account can play. */
+export type QdMusicKitSubscription = {
+  /** True with an active Apple Music subscription: full catalog songs play. */
+  canPlayCatalogContent: boolean;
+  /** True when Apple would offer this account a subscription. */
+  canBecomeSubscriber: boolean;
+};
+
 export type QdMusicKitAvailability =
   | { available: true }
   | {
@@ -79,6 +94,20 @@ export interface QdMusicKitApi {
   enqueue(tracks: QdMusicKitTrackRef[]): Promise<void>;
   getState(): Promise<QdMusicKitPlayerState>;
   disconnect(): Promise<void>;
+
+  // Added by the Apple Music connection card (TypeScript only; the Swift
+  // side is Moussa's, see modules/qd-music-kit/README.md). Each throws
+  // `not_implemented` until the native method exists, and `unavailable`
+  // without the native module.
+
+  /** `MusicAuthorization.currentStatus`, without asking the person. */
+  authorizationStatus(): Promise<QdMusicKitAuthorizationStatus>;
+  /** `MusicAuthorization.request()`: shows iOS's Apple Music prompt once. */
+  requestAuthorization(): Promise<QdMusicKitAuthorizationStatus>;
+  /** `MusicSubscription.current`. */
+  subscription(): Promise<QdMusicKitSubscription>;
+  /** The account's storefront, two lowercase letters (`us`), or null if MusicKit gave none. */
+  storefront(): Promise<string | null>;
 }
 
 /**
@@ -95,4 +124,12 @@ export interface QdMusicKitNativeModule {
   enqueue(trackIds: string[]): Promise<void>;
   getState(): Promise<unknown>;
   disconnect(): Promise<void>;
+  /**
+   * Not in the Swift skeleton yet (optional until Moussa adds them; see
+   * modules/qd-music-kit/README.md for what each must return).
+   */
+  authorizationStatus?(): Promise<unknown>;
+  requestAuthorization?(): Promise<unknown>;
+  subscriptionStatus?(): Promise<unknown>;
+  storefront?(): Promise<unknown>;
 }

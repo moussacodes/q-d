@@ -11,6 +11,7 @@ const codes: ProviderErrorCode[] = [
   'not_configured',
   'needs_authorization',
   'auth_failed',
+  'permission_denied',
   'premium_required',
   'not_approved_user',
   'no_active_device',
@@ -48,6 +49,26 @@ describe('providerErrorCopy', () => {
       // Curly apostrophes, like the rest of the app.
       expect(copy).not.toContain("'");
     }
+  });
+});
+
+describe('Apple Music copy', () => {
+  it('says real Apple Music needs the q’d app build, never that it works', () => {
+    expect(providerErrorCopy('apple_music', 'not_in_this_build')).toBe(
+      'Apple Music needs the q’d app build. It can’t connect in Expo Go or on the web.',
+    );
+  });
+
+  it('sends a refused permission to iOS Settings', () => {
+    expect(providerErrorCopy('apple_music', 'permission_denied')).toBe(
+      'q’d doesn’t have access to Apple Music. Turn it on in Settings › q’d, then try again.',
+    );
+  });
+
+  it('asks for a subscription', () => {
+    expect(
+      connectionProblemCopy('apple_music', { status: 'needs_subscription', isMock: false }),
+    ).toBe('An Apple Music subscription is needed to play rooms.');
   });
 });
 
