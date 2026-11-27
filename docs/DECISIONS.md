@@ -2,6 +2,10 @@
 
 Product and technical decisions that are not obvious from the code. Newest first.
 
+## 2026-11-27 · create_room name trimming
+
+- **The server trims a room name the way the app does.** `create_room` strips leading and trailing whitespace of every kind (tabs, newlines, no-break and other Unicode spaces, the BOM), matching JavaScript's `trim()`, before the 1–40 character check. Before, only spaces were stripped, so a name of tabs or newlines made a room with a blank name. Inner whitespace stays as typed.
+
 ## 2026-11-24 · create_room
 
 - **Room codes leave out look-alike characters.** Codes use `23456789ABCDEFGHJKLMNPQRSTUVWXYZ` (no `0`, `O`, `1` or `I`), so a code read aloud or typed from a screen can't be misread. Six characters still give about a billion codes. This answers part of PRODUCT_SPEC.md § 13; **a teammate should confirm it**.
